@@ -38,6 +38,13 @@ export function workingDaysBetween(from: DateStr, to: DateStr, cfg: Config): Dat
   return out;
 }
 
+const MOSCOW_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' });
+
+/** Сегодняшняя дата по Москве: игра и сервер считают дни по Москве, а не по часам браузера. */
+export function moscowToday(now = new Date()): DateStr {
+  return MOSCOW_DAY.format(now);
+}
+
 /** Дата из внешнего ввода (адресная строка): только существующий день `yyyy-MM-dd`, иначе `fallback`. */
 export function parseDate(raw: string | null, fallback: DateStr): DateStr {
   if (raw === null || !/^\d{4}-\d{2}-\d{2}$/.test(raw) || Number.isNaN(toMs(raw))) return fallback;

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { defaultConfig } from './config';
-import { isWorkingDay, prevWorkingDay, nextWorkingDay, addDays, parseDate, workingDaysBetween } from './calendar';
+import { isWorkingDay, moscowToday, prevWorkingDay, nextWorkingDay, addDays, parseDate, workingDaysBetween } from './calendar';
 
 const cfg = defaultConfig;
 
@@ -32,6 +32,18 @@ describe('calendar', () => {
   });
   test('14 рабочих дней за игру (21 день минус 6 выходных и 4.11)', () => {
     expect(workingDaysBetween(cfg.startDate, cfg.endDate, cfg)).toHaveLength(14);
+  });
+});
+
+describe('moscowToday', () => {
+  test('берёт дату по Москве (UTC+3), а не по UTC', () => {
+    expect(moscowToday(new Date('2026-11-12T10:00:00+03:00'))).toBe('2026-11-12');
+    expect(moscowToday(new Date('2026-11-11T21:30:00Z'))).toBe('2026-11-12'); // 00:30 в Москве
+    expect(moscowToday(new Date('2026-11-12T20:59:59Z'))).toBe('2026-11-12'); // 23:59:59 в Москве
+    expect(moscowToday(new Date('2026-11-12T21:00:00Z'))).toBe('2026-11-13');
+  });
+  test('без аргумента возвращает корректную дату', () => {
+    expect(moscowToday()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });
 
