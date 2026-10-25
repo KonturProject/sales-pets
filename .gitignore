@@ -1,0 +1,8 @@
+node_modules
+dist
+work/
+.superpowers/
+sales-structure.json
+*.xlsx
+*.zip
+graphify-out/cache
