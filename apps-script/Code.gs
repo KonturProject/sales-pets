@@ -271,7 +271,7 @@ function groupOfPin_(pin) {
   return found;
 }
 
-/** Секунд до конца блокировки для связки PIN (`pin` — админ, `group_pin` — группы); 0 — не заблокировано. */
+/** Секунд до конца блокировки для связки PIN (`pin` — админ, `group_pin_<группа>` — каждая группа отдельно); 0 — не заблокировано. */
 function lockRemainingSec_(prefix) {
   const until = Number(CacheService.getScriptCache().get(prefix + '_lock_until'));
   if (!until) return 0;
@@ -292,15 +292,20 @@ function recordPinFailure_(prefix) {
   return PIN_BLOCK_SEC;
 }
 
-/** { denied } с готовым ответом или { group } (для админа null). PIN не строка — просто отказ, в счётчик не идёт. */
+/**
+ * { denied } с готовым ответом или { group } (для админа null). PIN группы проверяется только против хеша заявленной
+ * `body.group` и считает ошибки отдельно по каждой группе: общий счётчик давал бы перебор 6-значных PIN чужих групп,
+ * сбрасываясь верным входом «своей». PIN не строка — просто отказ, в счётчик не идёт.
+ */
 function authorize_(who, body) {
-  const prefix = who === 'admin' ? 'pin' : 'group_pin';
+  if (who === 'group' && !isGroup_(body.group)) return { denied: { ok: false, error: 'bad_request' } };
+  const prefix = who === 'admin' ? 'pin' : 'group_pin_' + body.group;
   const waitSec = lockRemainingSec_(prefix);
   if (waitSec > 0) return { denied: { ok: false, error: 'locked', retryAfterSec: waitSec } };
   const given = body[who === 'admin' ? 'pin' : 'groupPin'];
   if (typeof given !== 'string') return { denied: { ok: false, error: 'invalid_pin' } };
-  const group = who === 'admin' ? null : groupOfPin_(given);
-  const verified = who === 'admin' ? matchesAdminPin_(given) : group !== null;
+  const group = who === 'admin' ? null : body.group;
+  const verified = who === 'admin' ? matchesAdminPin_(given) : matchesHash_(given, readGroupHashes_()[group]);
   if (!verified) {
     const blockSec = recordPinFailure_(prefix);
     return { denied: blockSec > 0 ? { ok: false, error: 'locked', retryAfterSec: blockSec } : { ok: false, error: 'invalid_pin' } };
@@ -380,12 +385,17 @@ function importPaymentsAction_(body) {
   const to = body.to;
   if (!isDate_(from) || !isDate_(to) || from > to || to >= today_() || daysInclusive_(from, to) > MAX_IMPORT_DAYS) fail_();
   if (!Array.isArray(body.rows)) fail_();
-  const added = body.rows.map(function (r) {
+  // Форма строки проверяется у всех (мусор отклоняет файл), а выгрузка «хвостом» (сегодня, прошлый месяц) не ломает
+  // импорт: строки вне периода отбрасываются и считаются в ignored.
+  const valid = body.rows.map(function (r) {
     const ok =
-      r && typeof r === 'object' && isDate_(r.date) && r.date >= from && r.date <= to && isGroup_(r.group) &&
+      r && typeof r === 'object' && isDate_(r.date) && isGroup_(r.group) &&
       typeof r.author === 'string' && typeof r.invoice === 'string' && r.invoice.trim() !== '';
     if (!ok) fail_();
     return [r.date, r.group, r.author.trim(), r.invoice.trim()];
+  });
+  const added = valid.filter(function (r) {
+    return r[0] >= from && r[0] <= to;
   });
   const inPeriod = function (r) {
     return r[0] >= from && r[0] <= to;
@@ -401,7 +411,12 @@ function importPaymentsAction_(body) {
   const removedProvisional = provisional.filter(inPeriod).reduce(function (sum, r) {
     return sum + Number(r[2]);
   }, 0);
-  const summary = { added: added.length, removed: old.length - kept.length, removedProvisional: removedProvisional };
+  const summary = {
+    added: added.length,
+    ignored: valid.length - added.length,
+    removed: old.length - kept.length,
+    removedProvisional: removedProvisional,
+  };
   if (body.dryRun === true) return Object.assign({ ok: true, dryRun: true }, summary);
 
   const payments = kept.concat(added).sort(function (a, b) {
@@ -426,10 +441,15 @@ function importFunnelAction_(body) {
   staff.forEach(function (e, i) {
     rank[e.id] = i;
   });
-  const incoming = body.rows.map(function (r) {
+  // Файл воронки содержит колонки до конца месяца (нули без данных): дни после through отбрасываются и считаются в
+  // ignored, а мусор (неизвестное ФИО, плохая дата, счётчики) по-прежнему отклоняет весь файл.
+  const valid = body.rows.map(function (r) {
     const employeeId = r && typeof r === 'object' && typeof r.name === 'string' ? byName[normalizeName_(r.name)] : undefined;
-    if (!employeeId || !isDate_(r.date) || r.date > through || !isCount_(r.quality) || !isCount_(r.long)) fail_();
+    if (!employeeId || !isDate_(r.date) || !isCount_(r.quality) || !isCount_(r.long)) fail_();
     return [employeeId, r.date, String(r.quality), String(r.long)];
+  });
+  const incoming = valid.filter(function (r) {
+    return r[1] <= through;
   });
   const merged = Object.create(null);
   readRows_('Funnel').concat(incoming).forEach(function (r) {
@@ -445,7 +465,7 @@ function importFunnelAction_(body) {
       return compare_(a[1], b[1]) || ra - rb || compare_(a[0], b[0]);
     });
   writeRows_('Funnel', rows);
-  return { ok: true, version: bump_({ funnelThrough: through }), added: incoming.length };
+  return { ok: true, version: bump_({ funnelThrough: through }), added: incoming.length, ignored: valid.length - incoming.length };
 }
 
 /** «Фамилия И.» из полного ФИО; одно слово остаётся как есть. */

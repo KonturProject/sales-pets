@@ -85,6 +85,20 @@ describe('buildFacts', () => {
     expect(buildFacts(s, '2026-11-10').states.СР1).toMatchObject({ medkits: 1, toys: 1, piles: 1 });
   });
 
+  test('funnelThrough на выходном или празднике оценивает дни до него, как через предыдущий рабочий день', () => {
+    const day = (date: DateStr, quality: number, long: number) => ({ employeeId: 'e1', date, quality, long });
+    const funnel = [day('2026-11-02', 5, 3), day('2026-11-03', 0, 0), day('2026-11-05', 0, 0), day('2026-11-06', 5, 3), day('2026-11-09', 0, 0)];
+    const at = (funnelThrough: DateStr, asOf: DateStr) =>
+      buildFacts(snap({ staff: [emp('e1', 'Тест Иванов')], funnelThrough, funnel }), asOf).states.СР1;
+    // 4 ноября — праздник: оцениваются 02 и 03, а нули 05 (воронки за него ещё нет) штрафа не дают
+    expect(at('2026-11-04', '2026-11-06')).toEqual(at('2026-11-03', '2026-11-06'));
+    expect(at('2026-11-04', '2026-11-06')).toMatchObject({ medkits: 1, toys: 1, piles: 1 });
+    // 8 ноября — воскресенье, asOf — понедельник: оцениваются дни по 06 (выполненный день убирает кучку),
+    // нули понедельника не штрафуют
+    expect(at('2026-11-08', '2026-11-09')).toEqual(at('2026-11-06', '2026-11-09'));
+    expect(at('2026-11-08', '2026-11-09')).toMatchObject({ medkits: 2, toys: 2, piles: 1 });
+  });
+
   test('без funnelThrough воронка не оценивается: ни наград, ни кучек', () => {
     const s = snap({
       staff: [emp('e1', 'Тест Иванов')],

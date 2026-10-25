@@ -29,12 +29,12 @@ describe('api.post', () => {
   test('тело — JSON с action, заголовок text/plain, без cookie; ответ отдаётся как есть', async () => {
     const fetchFn = vi.fn().mockResolvedValue(json({ ok: true, group: 'СР1' }));
     const api = createApi({ url: () => BASE, fetchFn });
-    expect(await api.post('groupLogin', { groupPin: '123456' })).toEqual({ ok: true, group: 'СР1' });
+    expect(await api.post('groupLogin', { group: 'СР1', groupPin: '123456' })).toEqual({ ok: true, group: 'СР1' });
     const [url, init] = fetchFn.mock.calls[0];
     expect(url).toBe(BASE);
     expect(init).toMatchObject({ method: 'POST', credentials: 'omit' });
     expect(init.headers['content-type']).toMatch(/^text\/plain/);
-    expect(JSON.parse(init.body)).toEqual({ action: 'groupLogin', groupPin: '123456' });
+    expect(JSON.parse(init.body)).toEqual({ action: 'groupLogin', group: 'СР1', groupPin: '123456' });
   });
 });
 

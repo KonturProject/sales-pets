@@ -59,10 +59,54 @@ describe('PIN', () => {
     for (const p of pins) expect(p).toMatch(/^\d{6,12}$/);
     expect(new Set(pins).size).toBe(6);
     expect(pins).not.toContain(PIN);
-    expect(b.post({ action: 'groupLogin', groupPin: first.groupPins['СР5'] })).toEqual({ ok: true, group: 'СР5' });
+    expect(b.post({ action: 'groupLogin', group: 'СР5', groupPin: first.groupPins['СР5'] })).toEqual({ ok: true, group: 'СР5' });
     const second = admin(b, 'setGroupPins');
-    expect(b.post({ action: 'groupLogin', groupPin: first.groupPins['СР5'] }).error).toBe('invalid_pin');
-    expect(b.post({ action: 'groupLogin', groupPin: second.groupPins['СР5'] })).toEqual({ ok: true, group: 'СР5' });
+    expect(b.post({ action: 'groupLogin', group: 'СР5', groupPin: first.groupPins['СР5'] }).error).toBe('invalid_pin');
+    expect(b.post({ action: 'groupLogin', group: 'СР5', groupPin: second.groupPins['СР5'] })).toEqual({ ok: true, group: 'СР5' });
+  });
+
+  test('PIN группы проверяется только против заявленной группы: чужой верный PIN — invalid_pin', () => {
+    const b = loadBackend();
+    const { groupPins } = admin(b, 'setGroupPins');
+    expect(b.post({ action: 'groupLogin', group: 'СР1', groupPin: groupPins['СР2'] })).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.post({ action: 'groupLogin', group: 'СР1', groupPin: groupPins['СР1'] })).toEqual({ ok: true, group: 'СР1' });
+  });
+
+  test('groupLogin без группы или с неизвестной группой — bad_request, счётчик ошибок не растёт', () => {
+    const b = loadBackend();
+    const { groupPins } = admin(b, 'setGroupPins');
+    const bad = [{}, { group: 'СР4' }, { group: 5 }, { group: null }];
+    for (let i = 0; i < 3; i++) {
+      for (const extra of bad) {
+        expect(b.post({ action: 'groupLogin', groupPin: '000000', ...extra }), JSON.stringify(extra)).toEqual({ ok: false, error: 'bad_request' });
+      }
+    }
+    expect(b.post({ action: 'groupLogin', group: 'СР1', groupPin: groupPins['СР1'] })).toEqual({ ok: true, group: 'СР1' });
+  });
+
+  test('у каждой группы свой счётчик ошибок: пять промахов по СР1 блокируют только СР1', () => {
+    const b = loadBackend();
+    const { groupPins } = admin(b, 'setGroupPins');
+    for (let i = 0; i < 4; i++) expect(b.post({ action: 'groupLogin', group: 'СР1', groupPin: '000000' }).error).toBe('invalid_pin');
+    expect(b.post({ action: 'groupLogin', group: 'СР1', groupPin: '000000' }).error).toBe('locked');
+    const locked = b.post({ action: 'groupLogin', group: 'СР1', groupPin: groupPins['СР1'] });
+    expect(locked).toMatchObject({ ok: false, error: 'locked' });
+    expect(locked.retryAfterSec).toBeGreaterThan(0);
+    expect(b.post({ action: 'groupLogin', group: 'СР2', groupPin: groupPins['СР2'] })).toEqual({ ok: true, group: 'СР2' });
+    b.advance(11 * MIN);
+    expect(b.post({ action: 'groupLogin', group: 'СР1', groupPin: groupPins['СР1'] })).toEqual({ ok: true, group: 'СР1' });
+  });
+
+  test('вход «своей» группы не сбрасывает ошибки по чужой: перебор с собственным PIN блокируется', () => {
+    const b = loadBackend();
+    const { groupPins } = admin(b, 'setGroupPins');
+    const results = [];
+    for (let round = 0; round < 3; round++) {
+      for (let i = 0; i < 4; i++) results.push(b.post({ action: 'groupLogin', group: 'СР1', groupPin: '000000' }).error);
+      expect(b.post({ action: 'groupLogin', group: 'СР2', groupPin: groupPins['СР2'] }).ok).toBe(true);
+    }
+    expect(results).toContain('locked');
+    expect(results.filter((e) => e === 'invalid_pin')).toHaveLength(4);
   });
 
   test('PIN группы не открывает админ-действия, админский PIN не открывает groupLogin', () => {
@@ -74,8 +118,8 @@ describe('PIN', () => {
       b.post({ action: 'setStaff', groupPin: gp, staff: STAFF }),
       b.post({ action: 'setProvisional', groupPin: gp, date: '2026-11-11', group: 'СР1', count: 1 }),
       b.post({ action: 'setGroupPins', pin: gp }),
-      b.post({ action: 'groupLogin', groupPin: PIN }),
-      b.post({ action: 'groupLogin', pin: gp }),
+      b.post({ action: 'groupLogin', group: 'СР1', groupPin: PIN }),
+      b.post({ action: 'groupLogin', group: 'СР1', pin: gp }),
     ];
     for (const r of attempts) expect(r).toEqual({ ok: false, error: 'invalid_pin' });
     expect(b.get().staff).toEqual([]);
@@ -86,10 +130,10 @@ describe('PIN', () => {
     const { groupPins } = admin(b, 'setGroupPins');
     for (let i = 0; i < 5; i++) b.post({ action: 'login', pin: '000000' });
     expect(b.post({ action: 'login', pin: PIN }).error).toBe('locked');
-    expect(b.post({ action: 'groupLogin', groupPin: groupPins['СР2'] })).toEqual({ ok: true, group: 'СР2' });
+    expect(b.post({ action: 'groupLogin', group: 'СР2', groupPin: groupPins['СР2'] })).toEqual({ ok: true, group: 'СР2' });
     b.advance(11 * MIN);
-    for (let i = 0; i < 5; i++) b.post({ action: 'groupLogin', groupPin: '000000' });
-    expect(b.post({ action: 'groupLogin', groupPin: groupPins['СР2'] }).error).toBe('locked');
+    for (let i = 0; i < 5; i++) b.post({ action: 'groupLogin', group: 'СР2', groupPin: '000000' });
+    expect(b.post({ action: 'groupLogin', group: 'СР2', groupPin: groupPins['СР2'] }).error).toBe('locked');
     expect(b.post({ action: 'login', pin: PIN })).toEqual({ ok: true });
   });
 
@@ -245,7 +289,36 @@ describe('importPayments', () => {
     admin(b, 'importPayments', { from: '2026-11-05', to: '2026-11-06', rows: [pay('2026-11-05', 'СР1', 'Иванов Иван', 'OLD-1')] });
     const before = b.get();
     const preview = admin(b, 'importPayments', { from: '2026-11-05', to: '2026-11-10', rows: rows(), dryRun: true });
-    expect(preview).toEqual({ ok: true, dryRun: true, added: 3, removed: 1, removedProvisional: 7 });
+    expect(preview).toEqual({ ok: true, dryRun: true, added: 3, ignored: 0, removed: 1, removedProvisional: 7 });
+    expect(b.get()).toEqual(before);
+  });
+
+  test('строки вне периода (выгрузка «хвостом» за сегодня или с прошлого месяца) игнорируются и считаются в ignored', () => {
+    const b = loadBackend();
+    const file = [
+      pay('2026-11-08', 'СР1', 'Иванов Иван', 'OLD-1'),
+      pay('2026-11-09', 'СР1', 'Иванов Иван', 'A-1'),
+      pay('2026-11-10', 'СР2', 'Петров Пётр', 'B-1'),
+      pay('2026-11-12', 'СР1', 'Иванов Иван', 'TODAY-1'),
+    ];
+    const args = { from: '2026-11-09', to: '2026-11-10', rows: file };
+    expect(admin(b, 'importPayments', { ...args, dryRun: true })).toMatchObject({ ok: true, added: 2, ignored: 2 });
+    expect(b.get().payments).toEqual([]);
+    expect(admin(b, 'importPayments', args)).toMatchObject({ ok: true, added: 2, ignored: 2 });
+    expect(b.get().payments.map((p) => p.invoice)).toEqual(['A-1', 'B-1']);
+    expect(b.get().paymentsImportedThrough).toBe('2026-11-10');
+  });
+
+  test('строка с мусором внутри файла по-прежнему отклоняет весь файл, даже если она вне периода', () => {
+    const b = loadBackend();
+    const before = b.get();
+    const args = { from: '2026-11-09', to: '2026-11-10' };
+    const bad = [
+      [pay('2026-11-09', 'СР1', 'Иванов Иван', 'A-1'), pay('2026-02-30', 'СР1', 'Иванов Иван', 'X-1')],
+      [pay('2026-11-09', 'СР1', 'Иванов Иван', 'A-1'), pay('2026-11-12', 'СР4', 'Иванов Иван', 'X-1')],
+      [pay('2026-11-09', 'СР1', 'Иванов Иван', 'A-1'), pay('2026-11-12', 'СР1', 'Иванов Иван', '')],
+    ];
+    for (const rows of bad) expect(admin(b, 'importPayments', { ...args, rows })).toEqual({ ok: false, error: 'bad_request' });
     expect(b.get()).toEqual(before);
   });
 
@@ -263,7 +336,6 @@ describe('importPayments', () => {
       { from: '2026-11-09', to: '2026-11-10' },
       { from: '2026-11-09', to: '2026-11-10', rows: 'x' },
       { from: '2026-11-09', to: '2026-11-10', rows: [null] },
-      { from: '2026-11-09', to: '2026-11-10', rows: [pay('2026-11-11', 'СР1', 'Иванов Иван', 'A-1')] }, // вне периода
       { from: '2026-11-09', to: '2026-11-10', rows: [pay('2026-11-09', 'СР4', 'Иванов Иван', 'A-1')] }, // чужая группа
       { from: '2026-11-09', to: '2026-11-10', rows: [pay('2026-11-09', 'СР1', 'Иванов Иван', '')] },
       { from: '2026-11-09', to: '2026-11-10', rows: [pay('2026-02-30', 'СР1', 'Иванов Иван', 'A-1')] },
@@ -350,13 +422,26 @@ describe('importFunnel', () => {
     ]);
   });
 
-  test('неизвестное ФИО, день позже through, сегодняшний through и мусор — bad_request, ничего не пишется', () => {
+  test('будущие дни файла (после through, нули колонок без данных) игнорируются и считаются в ignored', () => {
+    const { b, id } = withStaff();
+    const rows = [
+      day('Иванов Иван', '2026-11-09', 4, 5),
+      day('Иванов Иван', '2026-11-11', 0, 0),
+      day('Петров Пётр', '2026-11-11', 0, 0),
+      day('Иванов Иван', '2026-11-30', 0, 0),
+    ];
+    expect(admin(b, 'importFunnel', { through: '2026-11-10', rows })).toMatchObject({ ok: true, added: 1, ignored: 3 });
+    expect(b.get().funnel).toEqual([{ employeeId: id['Иванов Иван'], date: '2026-11-09', quality: 4, long: 5 }]);
+    expect(b.get().funnelThrough).toBe('2026-11-10');
+  });
+
+  test('неизвестное ФИО, сегодняшний through и мусор — bad_request, ничего не пишется', () => {
     const { b } = withStaff();
     const before = b.get();
     const ok = day('Иванов Иван', '2026-11-09', 1, 1);
     const bad = [
       { through: '2026-11-10', rows: [ok, day('Неизвестный Человек', '2026-11-09', 1, 1)] },
-      { through: '2026-11-10', rows: [ok, day('Иванов Иван', '2026-11-11', 1, 1)] },
+      { through: '2026-11-10', rows: [ok, day('Неизвестный Человек', '2026-11-30', 0, 0)] },
       { through: '2026-11-12', rows: [ok] },
       { through: 'мусор', rows: [ok] },
       { through: '2026-11-10' },
