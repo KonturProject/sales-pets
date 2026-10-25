@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { defaultConfig as cfg } from './config';
-import { groupRanking, heroesOfDay, topOverall, type PaymentRow, type RankData } from './ranking';
+import { groupRanking, heroesOfDay, topOverall, uniqueInvoices, type PaymentRow, type RankData } from './ranking';
 import type { Employee } from './staff';
 import type { GroupCode } from './types';
 
@@ -161,5 +161,35 @@ describe('один счёт — одна оплата, независимо от
   test('дубль вне окна не засчитывается в окне', () => {
     const payments = [pay('a', '2026-11-03', 'X'), pay('a', '2026-11-11', 'X')];
     expect(groupRanking('СР1', '2026-11-10', to, data({ staff: [emp('a')], payments }))[0].value).toBe(0);
+  });
+});
+
+describe('uniqueInvoices', () => {
+  const row = (author: string, date: string, invoice: string) => ({ author, date, invoice });
+  const byAuthor = (r: { author: string }) => r.author;
+
+  test('один счёт — одна строка: ранняя дата, при равенстве меньший ключ; порядок входа не важен', () => {
+    const a = row('b', '2026-11-03', 'X');
+    const b = row('a', '2026-11-03', 'X');
+    const c = row('z', '2026-11-02', 'X');
+    expect(uniqueInvoices([a, b], byAuthor)).toEqual([b]);
+    expect(uniqueInvoices([b, a], byAuthor)).toEqual([b]);
+    expect(uniqueInvoices([a, b, c], byAuthor)).toEqual([c]);
+    expect(uniqueInvoices([c, b, a], byAuthor)).toEqual([c]);
+  });
+
+  test('разные счета не склеиваются, исходные объекты возвращаются как есть', () => {
+    const x = row('a', '2026-11-03', 'X');
+    const y = row('a', '2026-11-03', 'Y');
+    const out = uniqueInvoices([x, y], byAuthor);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toBe(x);
+    expect(out[1]).toBe(y);
+  });
+
+  test('полностью одинаковые ключи: остаётся первая строка', () => {
+    const x = row('a', '2026-11-03', 'X');
+    const y = row('a', '2026-11-03', 'X');
+    expect(uniqueInvoices([x, y], byAuthor)[0]).toBe(x);
   });
 });

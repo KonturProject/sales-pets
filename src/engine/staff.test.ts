@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { countsInRating, groupOn, isPresent, levelOn, type Absence, type Employee } from './staff';
+import { countsInRating, groupOn, isPresent, levelOn, normalizeName, type Absence, type Employee } from './staff';
 
 const emp = (o: Partial<Employee> = {}): Employee => ({
   id: 'e1', name: 'Тестов Тест Тестович', shortName: 'Тестов Т.', group: 'СР1',
@@ -61,5 +61,12 @@ describe('countsInRating / groupOn', () => {
     const e = emp({ transfers: [{ date: '2026-11-12', group: 'СР5' }, { date: '2026-11-05', group: 'СР3' }] });
     expect(groupOn(e, '2026-11-06')).toBe('СР3');
     expect(groupOn(e, '2026-11-13')).toBe('СР5');
+  });
+});
+
+describe('normalizeName', () => {
+  test('убирает края, схлопывает пробелы (в т.ч. неразрывные), приводит к нижнему регистру', () => {
+    expect(normalizeName('  Тестов  Тест   Тестович ')).toBe('тестов тест тестович');
+    expect(normalizeName('ТЕСТОВ тест')).toBe(normalizeName('Тестов Тест'));
   });
 });

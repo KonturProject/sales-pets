@@ -49,20 +49,28 @@ function rank(items: Scored[], n?: number): RankRow[] {
 }
 
 /**
+ * Один счёт — одна строка: самая ранняя дата, при равенстве — меньший `tieKey`; при полном равенстве остаётся
+ * первая. Результат не зависит от порядка входа. Возвращаются исходные объекты.
+ */
+export function uniqueInvoices<T extends { date: DateStr; invoice: string }>(rows: T[], tieKey: (r: T) => string): T[] {
+  const first = new Map<string, T>();
+  for (const p of rows) {
+    const cur = first.get(p.invoice);
+    if (!cur || p.date < cur.date || (p.date === cur.date && tieKey(p) < tieKey(cur))) first.set(p.invoice, p);
+  }
+  return [...first.values()];
+}
+
+/**
  * Засчитанные в рейтинг оплаты за период: сотрудник → группа на дату оплаты → число уникальных счетов.
- * Один счёт — одна оплата: берётся самая ранняя строка (при равенстве даты — меньший id сотрудника), и только
+ * Один счёт — одна оплата (`uniqueInvoices`: ранняя дата, при равенстве меньший id сотрудника), и только
  * потом проверяются окно и право на рейтинг. Оплата, сделанная в день отсутствия или скрытым сотрудником,
  * в рейтинг не идёт (группе она всё равно засчитана), а дубль того же счёта её не оживляет.
  */
 function countedPayments(d: RankData, from: DateStr, to: DateStr): Map<string, Map<GroupCode, number>> {
   const byId = new Map(d.staff.map((e) => [e.id, e]));
-  const first = new Map<string, PaymentRow>();
-  for (const p of d.payments) {
-    const cur = first.get(p.invoice);
-    if (!cur || p.date < cur.date || (p.date === cur.date && p.employeeId < cur.employeeId)) first.set(p.invoice, p);
-  }
   const result = new Map<string, Map<GroupCode, number>>();
-  for (const p of first.values()) {
+  for (const p of uniqueInvoices(d.payments, (r) => r.employeeId)) {
     if (p.date < from || p.date > to) continue;
     const e = byId.get(p.employeeId);
     if (!e || !countsInRating(e, p.date, d.absences)) continue;
