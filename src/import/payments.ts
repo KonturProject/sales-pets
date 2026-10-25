@@ -1,7 +1,7 @@
 import { uniqueInvoices } from '@/engine/ranking';
 import { normalizeName } from '@/engine/staff';
-import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
-import { excelDate, readGrid } from './xlsx';
+import type { DateStr, GroupCode } from '@/engine/types';
+import { excelDate, groupOf, readGrid, text } from './xlsx';
 
 /** Оплата из выгрузки «Детальные данные по оплаченным счетам»; сумма после фильтра никому не нужна и не хранится. */
 export interface ImportedPayment {
@@ -28,15 +28,8 @@ const COLUMNS = {
   amount: 'Сумма',
 } as const;
 
-const text = (v: unknown): string => (v === null || v === undefined ? '' : String(v).trim());
-
 function amountOf(v: unknown): number {
   return typeof v === 'number' ? v : Number(text(v).replace(/\s/g, '').replace(',', '.'));
-}
-
-function groupOf(v: unknown): GroupCode | null {
-  const code = /СР\d+/.exec(text(v))?.[0];
-  return GROUPS.find((g) => g === code) ?? null;
 }
 
 /** Колонки находятся по тексту заголовка, строка заголовка — первая с «№ счета»; без неё файл не наш. */

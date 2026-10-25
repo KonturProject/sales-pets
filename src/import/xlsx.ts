@@ -1,5 +1,14 @@
 import * as XLSX from 'xlsx';
-import type { DateStr } from '@/engine/types';
+import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
+
+/** Ячейка как обрезанная строка; пусто и null — пустая строка. */
+export const text = (v: unknown): string => (v === null || v === undefined ? '' : String(v).trim());
+
+/** Код группы из названия вида «АП_НП_СР_Москва_СР5_ГБ_УД»; вне шести групп — null. */
+export function groupOf(v: unknown): GroupCode | null {
+  const code = /СР\d+/.exec(text(v))?.[0];
+  return GROUPS.find((g) => g === code) ?? null;
+}
 
 /** Правдоподобное окно серийных дат Excel (2009–2064): отсекает заголовки недель вида 2026.43 и мусор. */
 const MIN_SERIAL = 40000;
