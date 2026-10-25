@@ -1,0 +1,267 @@
+{
+  "communities": {
+    "0": [
+      "claude_settings",
+      "claude_settings_advisormodel",
+      "claude_settings_autocompactwindow",
+      "claude_settings_effortlevel",
+      "claude_settings_enabledplugins",
+      "claude_settings_enabledplugins_andrej_karpathy_skills_karpathy_skills",
+      "claude_settings_enabledplugins_claude_md_management_claude_plugins_official",
+      "claude_settings_enabledplugins_code_simplifier_claude_plugins_official",
+      "claude_settings_enabledplugins_frontend_design_claude_plugins_official",
+      "claude_settings_enabledplugins_superpowers_claude_plugins_official",
+      "claude_settings_enabledplugins_typescript_lsp_claude_plugins_official",
+      "claude_settings_env",
+      "claude_settings_env_claude_code_subagent_model",
+      "claude_settings_env_claude_mem_online_optin",
+      "claude_settings_hooks",
+      "claude_settings_hooks_pretooluse",
+      "claude_settings_model",
+      "claude_settings_schema"
+    ],
+    "1": [
+      "math",
+      "mathutils",
+      "numpy",
+      "shutil",
+      "tempfile",
+      "tools_blender_common_assign_action",
+      "tools_blender_render_sprites",
+      "tools_blender_render_sprites_anim_bbox",
+      "tools_blender_render_sprites_load_pixels",
+      "tools_blender_render_sprites_main",
+      "tools_blender_render_sprites_pick_engine",
+      "tools_blender_render_sprites_rationale_1",
+      "tools_blender_render_sprites_rationale_103",
+      "tools_blender_render_sprites_rationale_126",
+      "tools_blender_render_sprites_save_sheet",
+      "tools_blender_render_sprites_setup_camera",
+      "tools_blender_render_sprites_setup_light",
+      "tools_blender_render_sprites_setup_render"
+    ],
+    "2": [
+      "argparse",
+      "bmesh",
+      "tools_blender_check_asset",
+      "tools_blender_check_asset_main",
+      "tools_blender_check_asset_rationale_1",
+      "tools_blender_common_ensure_object_mode",
+      "tools_blender_common_import_model",
+      "tools_blender_common_rationale_18",
+      "tools_blender_common_reset_scene",
+      "tools_blender_common_script_args",
+      "tools_blender_prepare_glb_main"
+    ],
+    "3": [
+      "claude_skills_webapp_testing_scripts_with_server",
+      "claude_skills_webapp_testing_scripts_with_server_is_server_ready",
+      "claude_skills_webapp_testing_scripts_with_server_main",
+      "claude_skills_webapp_testing_scripts_with_server_rationale_2",
+      "claude_skills_webapp_testing_scripts_with_server_rationale_24",
+      "socket",
+      "subprocess",
+      "sys",
+      "time"
+    ],
+    "4": [
+      "bpy",
+      "tools_blender_common_rationale_60",
+      "tools_blender_common_world_bbox",
+      "tools_blender_prepare_glb",
+      "tools_blender_prepare_glb_flatten_hierarchy",
+      "tools_blender_prepare_glb_rationale_1",
+      "tools_blender_prepare_glb_rationale_38",
+      "tools_blender_prepare_glb_rest_bbox"
+    ],
+    "5": [
+      "json",
+      "tools_blender_common",
+      "tools_blender_common_emit",
+      "tools_blender_common_mesh_objects",
+      "tools_blender_common_rationale_1",
+      "tools_blender_common_rationale_24",
+      "tools_blender_common_root_objects"
+    ],
+    "6": [
+      "claude_skills_webapp_testing_examples_console_logging",
+      "claude_skills_webapp_testing_examples_console_logging_handle_console_message",
+      "claude_skills_webapp_testing_examples_element_discovery",
+      "claude_skills_webapp_testing_examples_static_html_automation",
+      "os",
+      "playwright_sync_api"
+    ],
+    "7": [
+      "setup_assets",
+      "setup_assets_find_blender",
+      "setup_assets_need",
+      "setup_assets_run",
+      "setup_assets_sh__entry"
+    ],
+    "8": [
+      "setup",
+      "setup_need",
+      "setup_run",
+      "setup_sh__entry"
+    ],
+    "9": [
+      "tools_blender_common_action_fcurves",
+      "tools_blender_common_armature_actions",
+      "tools_blender_common_rationale_103",
+      "tools_blender_common_rationale_80"
+    ],
+    "10": [
+      "claude_hooks_filter_test_output",
+      "claude_hooks_filter_test_output_sh__entry"
+    ],
+    "11": [
+      "tools_blender_run",
+      "tools_blender_run_sh__entry"
+    ]
+  },
+  "cohesion": {
+    "0": 0.1111111111111111,
+    "1": 0.21568627450980393,
+    "2": 0.38181818181818183,
+    "3": 0.3611111111111111,
+    "4": 0.2857142857142857,
+    "5": 0.3333333333333333,
+    "6": 0.3333333333333333,
+    "7": 0.7,
+    "8": 0.8333333333333334,
+    "9": 0.5,
+    "10": 1.0,
+    "11": 1.0
+  },
+  "gods": [
+    {
+      "id": "tools_blender_render_sprites_main",
+      "label": "main()",
+      "degree": 22
+    },
+    {
+      "id": "tools_blender_prepare_glb_main",
+      "label": "main()",
+      "degree": 14
+    },
+    {
+      "id": "tools_blender_check_asset_main",
+      "label": "main()",
+      "degree": 11
+    },
+    {
+      "id": "tools_blender_common_world_bbox",
+      "label": "world_bbox()",
+      "degree": 9
+    },
+    {
+      "id": "tools_blender_common_emit",
+      "label": "emit()",
+      "degree": 9
+    },
+    {
+      "id": "tools_blender_common_armature_actions",
+      "label": "armature_actions()",
+      "degree": 9
+    },
+    {
+      "id": "tools_blender_common_script_args",
+      "label": "script_args()",
+      "degree": 8
+    },
+    {
+      "id": "tools_blender_common_import_model",
+      "label": "import_model()",
+      "degree": 7
+    },
+    {
+      "id": "tools_blender_common_reset_scene",
+      "label": "reset_scene()",
+      "degree": 7
+    },
+    {
+      "id": "tools_blender_common_mesh_objects",
+      "label": "mesh_objects()",
+      "degree": 7
+    }
+  ],
+  "surprises": [
+    {
+      "source": "anim_bbox()",
+      "target": "world_bbox()",
+      "source_files": [
+        "tools/blender/render_sprites.py",
+        "tools/blender/_common.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "main()",
+      "target": "armature_actions()",
+      "source_files": [
+        "tools/blender/render_sprites.py",
+        "tools/blender/_common.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "main()",
+      "target": "emit()",
+      "source_files": [
+        "tools/blender/render_sprites.py",
+        "tools/blender/_common.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "main()",
+      "target": "import_model()",
+      "source_files": [
+        "tools/blender/render_sprites.py",
+        "tools/blender/_common.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "main()",
+      "target": "mesh_objects()",
+      "source_files": [
+        "tools/blender/render_sprites.py",
+        "tools/blender/_common.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `main()` connect `render_sprites.py` to `check_asset.py`, `prepare_glb.py`, `_common.py`, `os`, `armature_actions`?",
+      "why": "High betweenness centrality (0.067) - this node is a cross-community bridge."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `settings.json` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.1111111111111111 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `world_bbox()` connect `prepare_glb.py` to `render_sprites.py`, `check_asset.py`, `_common.py`?",
+      "why": "High betweenness centrality (0.027) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `main()` connect `check_asset.py` to `armature_actions`, `prepare_glb.py`, `_common.py`, `os`?",
+      "why": "High betweenness centrality (0.027) - this node is a cross-community bridge."
+    }
+  ]
+}
