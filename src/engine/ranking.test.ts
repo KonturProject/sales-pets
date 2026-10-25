@@ -119,3 +119,47 @@ describe('герои дня', () => {
     expect(heroesOfDay(day, data({ staff: [emp('a')] }))).toEqual([]);
   });
 });
+
+describe('статус на конец периода: уволенный и отсутствующий не получают места', () => {
+  const d = data({
+    staff: [emp('a'), emp('f', 'СР1', { fireDate: '2026-11-10' }), emp('v')],
+    absences: [{ employeeId: 'v', kind: 'vacation', from: '2026-11-10', to: null }],
+    payments: [
+      pay('a', '2026-11-04', 'a1'),
+      pay('f', '2026-11-03', 'f1'), pay('f', '2026-11-05', 'f2'), pay('f', '2026-11-06', 'f3'),
+      pay('v', '2026-11-03', 'v1'), pay('v', '2026-11-05', 'v2'),
+    ],
+  });
+  test('группа: окно через дату увольнения и начало отпуска', () => {
+    expect(groupRanking('СР1', from, to, d).map((x) => x.employeeId)).toEqual(['a']);
+  });
+  test('общий топ: то же', () => {
+    expect(topOverall(from, to, d).map((x) => x.employeeId)).toEqual(['a']);
+  });
+  test('до даты увольнения и отпуска все на месте', () => {
+    expect(groupRanking('СР1', from, '2026-11-09', d).map((x) => x.employeeId)).toEqual(['f', 'v', 'a']);
+    expect(topOverall(from, '2026-11-09', d).map((x) => x.employeeId)).toEqual(['f', 'v', 'a']);
+  });
+});
+
+describe('один счёт — одна оплата, независимо от порядка строк и автора', () => {
+  const rows = [pay('a', '2026-11-05', 'X'), pay('a', '2026-11-06', 'X')];
+  const absent = [{ employeeId: 'a', kind: 'sick' as const, from: '2026-11-05', to: '2026-11-05' }];
+  test('дубль в день, когда автор присутствовал, не оживляет счёт, учтённый в день отсутствия', () => {
+    for (const payments of [rows, [...rows].reverse()]) {
+      const r = groupRanking('СР1', from, to, data({ staff: [emp('a')], absences: absent, payments }));
+      expect(r.map((x) => x.value)).toEqual([0]);
+    }
+  });
+  test('счёт у двух сотрудников засчитывается одному: раньше по дате, затем по id', () => {
+    const staff = [emp('a'), emp('b')];
+    for (const payments of [[pay('a', '2026-11-03', 'X'), pay('b', '2026-11-03', 'X')], [pay('b', '2026-11-03', 'X'), pay('a', '2026-11-03', 'X')]]) {
+      const r = groupRanking('СР1', from, to, data({ staff, payments }));
+      expect(r.map((x) => [x.employeeId, x.value])).toEqual([['a', 1], ['b', 0]]);
+    }
+  });
+  test('дубль вне окна не засчитывается в окне', () => {
+    const payments = [pay('a', '2026-11-03', 'X'), pay('a', '2026-11-11', 'X')];
+    expect(groupRanking('СР1', '2026-11-10', to, data({ staff: [emp('a')], payments }))[0].value).toBe(0);
+  });
+});

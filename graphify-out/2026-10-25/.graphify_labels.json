@@ -1,1 +1,7 @@
-{"0": "settings.json", "1": "render_sprites.py", "2": "check_asset.py", "3": "with_server.py", "4": "prepare_glb.py", "5": "_common.py", "6": "os", "7": "setup-assets.sh", "8": "setup.sh", "9": "armature_actions", "10": "filter-test-output.sh", "11": "run.sh"}
+{
+  "0": "settings.json",
+  "7": "setup-assets.sh",
+  "8": "setup.sh",
+  "10": "filter-test-output.sh",
+  "11": "run.sh"
+}

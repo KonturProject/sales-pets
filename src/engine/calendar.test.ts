@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { defaultConfig } from './config';
-import { isWorkingDay, prevWorkingDay, nextWorkingDay, addDays, workingDaysBetween } from './calendar';
+import { isWorkingDay, prevWorkingDay, nextWorkingDay, addDays, parseDate, workingDaysBetween } from './calendar';
 
 const cfg = defaultConfig;
 
@@ -32,5 +32,19 @@ describe('calendar', () => {
   });
   test('14 рабочих дней за игру (21 день минус 6 выходных и 4.11)', () => {
     expect(workingDaysBetween(cfg.startDate, cfg.endDate, cfg)).toHaveLength(14);
+  });
+});
+
+describe('мусорные даты не вешают расчёт', () => {
+  test('workingDaysBetween не идёт дальше конца игры, даже если `to` — не дата', () => {
+    const all = workingDaysBetween(cfg.startDate, cfg.endDate, cfg);
+    expect(workingDaysBetween(cfg.startDate, 'today', cfg)).toEqual(all);
+    expect(workingDaysBetween(cfg.startDate, '9999-12-31', cfg)).toEqual(all);
+  });
+  test('parseDate принимает только существующий день в формате yyyy-MM-dd', () => {
+    expect(parseDate('2026-11-12', '2026-11-02')).toBe('2026-11-12');
+    for (const bad of [null, '', 'today', '2026-11-1', '2026-13-01', '2026-02-30', '12.11.2026', '+010000-01-01']) {
+      expect(parseDate(bad, '2026-11-02')).toBe('2026-11-02');
+    }
   });
 });

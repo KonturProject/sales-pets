@@ -160,3 +160,30 @@ describe('сытость', () => {
     expect(simulate({ ...f, paymentsByDay: { '2026-11-02': 9 } }, '2026-11-02', cfg).satiety).toBe(1);
   });
 });
+
+describe('оплаты в день надгробия', () => {
+  // оплаты 6 в 11-02, затем тишина: 11-03, 05, 06, 09, 10 → смерть в конце 11-10, надгробие 11-11
+  const base = { '2026-11-02': 6 };
+  test('первая же оплата в день надгробия показывает новое яйцо с трещинами сразу', () => {
+    const s = simulate(facts({ paymentsByDay: { ...base, '2026-11-11': 2 } }), '2026-11-11', cfg);
+    expect(s).toMatchObject({ alive: true, generation: 1, totalPayments: 2, phase: 'egg1' });
+  });
+  test('пять оплат в день надгробия — вылупление в тот же день', () => {
+    const s = simulate(facts({ paymentsByDay: { ...base, '2026-11-11': 5 } }), '2026-11-11', cfg);
+    expect(s).toMatchObject({ alive: true, generation: 1, phase: 'pet' });
+  });
+  test('без оплат надгробие стоит весь день, яйцо — со следующего', () => {
+    const f = facts({ paymentsByDay: base });
+    expect(simulate(f, '2026-11-11', cfg)).toMatchObject({ alive: false, mood: 'dead' });
+    expect(simulate(f, '2026-11-12', cfg)).toMatchObject({ alive: true, generation: 1, phase: 'egg0' });
+  });
+  test('смерть в пятницу: оплата в субботу оживляет сразу, в понедельник состояние то же', () => {
+    // оплаты 11-02 (6) и 11-06 (1); без оплат 11-09..11-13 → смерть в конце пятницы 11-13
+    const paymentsByDay = { ...base, '2026-11-06': 1 };
+    expect(simulate(facts({ paymentsByDay }), '2026-11-14', cfg)).toMatchObject({ alive: false, mood: 'dead' });
+    const withSat = facts({ paymentsByDay: { ...paymentsByDay, '2026-11-14': 1 } });
+    const sat = simulate(withSat, '2026-11-14', cfg);
+    expect(sat).toMatchObject({ alive: true, generation: 1, totalPayments: 1, phase: 'egg1' });
+    expect(simulate(withSat, '2026-11-16', cfg)).toMatchObject({ alive: true, generation: 1, totalPayments: 1, phase: 'egg1' });
+  });
+});

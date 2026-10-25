@@ -1,5 +1,6 @@
 import './game/room.css';
 import { buildDemo, groupFacts } from '@/demo/demoFacts';
+import { parseDate } from '@/engine/calendar';
 import { defaultConfig } from '@/engine/config';
 import { simulate, type PetState } from '@/engine/pet';
 import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
@@ -15,7 +16,7 @@ const params = new URLSearchParams(location.search);
 const root = document.getElementById('app')!;
 
 function demoStates(): Record<GroupCode, PetState> {
-  const asOf = (params.get('asOf') ?? DEMO_AS_OF) as DateStr;
+  const asOf = parseDate(params.get('asOf'), DEMO_AS_OF);
   const demo = buildDemo(asOf);
   return Object.fromEntries(
     GROUPS.map((g) => [g, simulate({ ...groupFacts(demo, g, asOf), dailyNorm: DEMO_DAILY_NORM }, asOf, defaultConfig)]),

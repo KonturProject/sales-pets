@@ -65,6 +65,10 @@ try {
   const eve = (await read()).find((g) => g.group === 'СР9');
   check(eve?.mood === 'dead', `СР9 накануне: mood ${eve?.mood}, ожидалось dead`);
 
+  // мусор в ?asOf= не должен вешать вкладку: рисуется дата по умолчанию
+  await page.goto(`http://localhost:${port}/?demo=1&asOf=today`, { waitUntil: 'networkidle', timeout: 10_000 });
+  check((await read()).length === 6, 'asOf=today: ожидалось 6 групп (откат на дату по умолчанию)');
+
   failures.push(...problems);
 } finally {
   await browser.close();

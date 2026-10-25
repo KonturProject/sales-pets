@@ -30,8 +30,16 @@ export function nextWorkingDay(d: DateStr, cfg: Config): DateStr | null {
   return null;
 }
 
+/** Рабочие дни от `from` до `to` включительно; дальше конца игры не ходит, поэтому мусор в `to` не зацикливает расчёт. */
 export function workingDaysBetween(from: DateStr, to: DateStr, cfg: Config): DateStr[] {
+  const last = to < cfg.endDate ? to : cfg.endDate;
   const out: DateStr[] = [];
-  for (let x = from; x <= to; x = addDays(x, 1)) if (isWorkingDay(x, cfg)) out.push(x);
+  for (let x = from; x <= last; x = addDays(x, 1)) if (isWorkingDay(x, cfg)) out.push(x);
   return out;
+}
+
+/** Дата из внешнего ввода (адресная строка): только существующий день `yyyy-MM-dd`, иначе `fallback`. */
+export function parseDate(raw: string | null, fallback: DateStr): DateStr {
+  if (raw === null || !/^\d{4}-\d{2}-\d{2}$/.test(raw) || Number.isNaN(toMs(raw))) return fallback;
+  return addDays(raw, 0) === raw ? raw : fallback;
 }

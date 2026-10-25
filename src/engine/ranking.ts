@@ -50,17 +50,20 @@ function rank(items: Scored[], n?: number): RankRow[] {
 
 /**
  * Засчитанные в рейтинг оплаты за период: сотрудник → группа на дату оплаты → число уникальных счетов.
- * Оплата, сделанная в день отсутствия или скрытым сотрудником, в рейтинг не идёт (группе она всё равно засчитана).
+ * Один счёт — одна оплата: берётся самая ранняя строка (при равенстве даты — меньший id сотрудника), и только
+ * потом проверяются окно и право на рейтинг. Оплата, сделанная в день отсутствия или скрытым сотрудником,
+ * в рейтинг не идёт (группе она всё равно засчитана), а дубль того же счёта её не оживляет.
  */
 function countedPayments(d: RankData, from: DateStr, to: DateStr): Map<string, Map<GroupCode, number>> {
   const byId = new Map(d.staff.map((e) => [e.id, e]));
-  const seen = new Set<string>();
-  const result = new Map<string, Map<GroupCode, number>>();
+  const first = new Map<string, PaymentRow>();
   for (const p of d.payments) {
+    const cur = first.get(p.invoice);
+    if (!cur || p.date < cur.date || (p.date === cur.date && p.employeeId < cur.employeeId)) first.set(p.invoice, p);
+  }
+  const result = new Map<string, Map<GroupCode, number>>();
+  for (const p of first.values()) {
     if (p.date < from || p.date > to) continue;
-    const key = `${p.employeeId}|${p.invoice}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
     const e = byId.get(p.employeeId);
     if (!e || !countsInRating(e, p.date, d.absences)) continue;
     const g = groupOn(e, p.date);
@@ -77,8 +80,8 @@ export function groupRanking(group: GroupCode, from: DateStr, to: DateStr, d: Ra
   const items: Scored[] = [];
   for (const e of d.staff) {
     const value = counted.get(e.id)?.get(group) ?? 0;
-    const member = groupOn(e, to) === group && countsInRating(e, to, d.absences);
-    if (value > 0 || member) items.push({ e, group, value, tie: 0 });
+    if (!countsInRating(e, to, d.absences)) continue;
+    if (value > 0 || groupOn(e, to) === group) items.push({ e, group, value, tie: 0 });
   }
   return rank(items);
 }
@@ -90,7 +93,7 @@ export function topOverall(from: DateStr, to: DateStr, d: RankData, n = 10): Ran
   for (const e of d.staff) {
     const groups = counted.get(e.id);
     const value = groups ? [...groups.values()].reduce((a, b) => a + b, 0) : 0;
-    if (value > 0) items.push({ e, group: groupOn(e, to), value, tie: 0 });
+    if (value > 0 && countsInRating(e, to, d.absences)) items.push({ e, group: groupOn(e, to), value, tie: 0 });
   }
   return rank(items, n);
 }

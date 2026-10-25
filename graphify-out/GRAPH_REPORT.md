@@ -1,17 +1,17 @@
 # Graph Report - tamagochi Tver  (2026-10-25)
 
 ## Corpus Check
-- 79 files · ~86,372 words
+- 79 files · ~87,476 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 4 file(s) not represented in the graph (top: (none) 2, .graphify-bak 1, .css 1)
 
 ## Summary
-- 1201 nodes · 1518 edges · 113 communities (104 shown, 9 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 21 edges (avg confidence: 0.94)
+- 1204 nodes · 1533 edges · 108 communities (99 shown, 9 thin omitted)
+- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 26 edges (avg confidence: 0.94)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `ae6dda54`
+- Built from commit: `cde35f54`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -19,7 +19,7 @@
 - settings.json
 - render_sprites.py
 - demoFacts.ts
-- PetView.ts
+- GLSL Shaders
 - 2D Maze Game Template
 - package.json
 - Part 1: Basics
@@ -62,8 +62,8 @@
 - Step 1: Create the Canvas and Draw on It
 - Step 4: Paddle and Keyboard Controls
 - Babylon.js
-- WebXR
-- GLSL Shaders
+- Jumps
+- The Main Character Sprite
 - Mathematical / Algorithmic Concepts
 - Game Development Terminology
 - WebVR API (Deprecated)
@@ -73,8 +73,6 @@
 - Web Application Testing
 - Game kit для Claude Code
 - Архитектура игры
-- A-Frame
-- Three.js
 - Game Development Algorithms
 - Game Development Techniques
 - Web APIs for Game Development
@@ -89,8 +87,6 @@
 - Step 10: Finishing Up
 - Step 3: Bounce Off the Walls
 - Step 6: Build the Brick Field
-- 3D Web Games
-- 3D Theory and Fundamentals
 - Mathematical / Algorithmic Concepts
 - Bresenham's Line Algorithm -- Raycasting, Line of Sight, and Pathfinding
 - Collision Detection and Response Systems
@@ -121,7 +117,6 @@
 - Step 5: Game Over
 - Vector Mathematics for Game Development
 - Gravity
-- Keyboard Controls
 - CLAUDE.assets.md
 - .claude/CLAUDE.md
 - CREDITS.md
@@ -139,6 +134,8 @@
 10. `Art and Visual Terms` - 15 edges
 
 ## Surprising Connections (you probably didn't know these)
+- `Контракты для этапа 2` --references--> `parseDate()`  [INFERRED]
+  PLAN.md → src/engine/calendar.ts
 - ``src/game/Game.hx` -- Game Process` --references--> `Level`  [INFERRED]
   .claude/skills/game-engine/assets/gameBase-template-repo.md → src/engine/types.ts
 - `Task 7: Демо-данные и сценарий` --references--> `simulate()`  [INFERRED]
@@ -147,13 +144,11 @@
   docs/superpowers/plans/2026-10-25-tamagochi-plan.md → src/engine/staff.ts
 - `Task 9: Экран с питомцами (рендер)` --references--> `PowerSaver`  [INFERRED]
   docs/superpowers/plans/2026-10-25-tamagochi-plan.md → src/game/PowerSaver.ts
-- `Task 9: Экран с питомцами (рендер)` --references--> `buildDemo()`  [INFERRED]
-  docs/superpowers/plans/2026-10-25-tamagochi-plan.md → src/demo/demoFacts.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (113 total, 9 thin omitted)
+## Communities (108 total, 9 thin omitted)
 
 ### Community 0 - "settings.json"
 Cohesion: 0.11
@@ -164,12 +159,12 @@ Cohesion: 0.08
 Nodes (24): is_server_ready(), main(), main(), action_fcurves(), armature_actions(), assign_action(), emit(), ensure_object_mode() (+16 more)
 
 ### Community 2 - "demoFacts.ts"
-Cohesion: 0.08
-Nodes (58): Task 1: Каркас проекта, Task 2: Календарь и конфиг, Task 3: Штат и статусы по датам, Task 4: Нормы и оценка дня, Task 5: Симуляция питомца, Task 6: Рейтинги, Task 7: Демо-данные и сценарий, Task 8: Ассеты-заглушки (+50 more)
+Cohesion: 0.06
+Nodes (72): Task 1: Каркас проекта, Task 2: Календарь и конфиг, Task 3: Штат и статусы по датам, Task 4: Нормы и оценка дня, Task 5: Симуляция питомца, Task 6: Рейтинги, Task 7: Демо-данные и сценарий, Task 8: Ассеты-заглушки (+64 more)
 
-### Community 3 - "PetView.ts"
-Cohesion: 0.08
-Nodes (29): Loading and Displaying the Background, The Game Loop, Understanding the Frame Cycle, AABB vs. AABB, Axis-Aligned Bounding Boxes (AABB), Bounding Spheres, BoxHelper for Visual Debugging, Collision Detection (+21 more)
+### Community 3 - "GLSL Shaders"
+Cohesion: 0.05
+Nodes (38): 3D Theory and Fundamentals, 3D Web Games, AABB vs. AABB, Axis-Aligned Bounding Boxes (AABB), Bounding Spheres, BoxHelper for Visual Debugging, Camera, Collision Detection (+30 more)
 
 ### Community 4 - "2D Maze Game Template"
 Cohesion: 0.06
@@ -269,7 +264,7 @@ Nodes (12): Cross Product (3D), Dot Product, Magnitude (Length), Mathematical / 
 
 ### Community 30 - "2D Platform Game Template"
 Cohesion: 0.18
-Nodes (10): 2D Platform Game Template, Adding a Jump Sound Effect, Creating Platforms, Implementing the Jump Mechanic, Jumps, Loading Platform Assets, Loading the Hero Image, Spawning Platforms from Level Data (+2 more)
+Nodes (10): 2D Platform Game Template, Creating Platforms, Keyboard Controls, Loading and Displaying the Background, Loading Platform Assets, Reading Input in Update, Setting Up Input Keys, Spawning Platforms from Level Data (+2 more)
 
 ### Community 31 - "General Development Terms"
 Cohesion: 0.18
@@ -328,16 +323,16 @@ Cohesion: 0.25
 Nodes (8): Complete Code for Step 4, Defining Paddle Variables, Drawing the Paddle, Event Listeners for Key Presses, Key Handler Functions, Keyboard State Variables, Paddle Movement Logic (With Boundary Checking), Step 4: Paddle and Keyboard Controls
 
 ### Community 45 - "Babylon.js"
-Cohesion: 0.25
-Nodes (8): Babylon.js, Camera and Lighting, Creating Meshes, Engine, Scene, and Render Loop, Materials, Practical Tips, Setup, Transforms and Animation
+Cohesion: 0.08
+Nodes (26): A-Frame, Animation, Animation Loop, Babylon.js, Camera and Lighting, Camera and Lighting, Core Components, Creating Entities with JavaScript (+18 more)
 
-### Community 46 - "WebXR"
-Cohesion: 0.25
-Nodes (8): Core Concepts, Design Principles, Framework Support, Practical Tips, Related APIs, Supported Devices, WebXR, What WebXR Is
+### Community 46 - "Jumps"
+Cohesion: 0.67
+Nodes (3): Adding a Jump Sound Effect, Implementing the Jump Mechanic, Jumps
 
-### Community 47 - "GLSL Shaders"
-Cohesion: 0.25
-Nodes (8): Fragment Shader, GLSL Shaders, Key Concepts, Practical Tips, The Shader Pipeline, Using Shaders in HTML and Three.js, Vertex Shader, What Shaders Are
+### Community 47 - "The Main Character Sprite"
+Cohesion: 0.67
+Nodes (3): Loading the Hero Image, Spawning the Hero, The Main Character Sprite
 
 ### Community 48 - "Mathematical / Algorithmic Concepts"
 Cohesion: 0.25
@@ -375,14 +370,6 @@ Nodes (7): Game kit для Claude Code, Важно про claude-mem, Важно
 Cohesion: 0.29
 Nodes (6): Архитектура игры, Ассеты, Главный цикл и сцены, Папки, Соглашения, Стек
 
-### Community 57 - "A-Frame"
-Cohesion: 0.29
-Nodes (7): A-Frame, Animation, Camera and Lighting, Creating Entities with JavaScript, Practical Tips, Primitives and Entities, Setup
-
-### Community 58 - "Three.js"
-Cohesion: 0.29
-Nodes (7): Animation Loop, Core Components, Geometry, Material, and Mesh, Lighting, Practical Tips, Setup, Three.js
-
 ### Community 59 - "Game Development Algorithms"
 Cohesion: 0.29
 Nodes (6): Game Development Algorithms, Physics Engine Fundamentals, Practical Game Development Applications, Pseudocode -- Complete Physics Step, Quick Reference Table, What It Is
@@ -409,7 +396,7 @@ Nodes (7): Code Example, Connection Lifecycle, Key Events, Key Interfaces, WebRT
 
 ### Community 65 - "План и состояние"
 Cohesion: 0.29
-Nodes (6): Готово, Дальше, Известные баги, План и состояние, Решения, Сейчас делаем
+Nodes (6): Дальше, Известные баги, Контракты для этапа 2, План и состояние, Решения, Сейчас делаем
 
 ### Community 66 - "Ассеты для игры"
 Cohesion: 0.33
@@ -438,14 +425,6 @@ Nodes (6): Basic Wall Collision (Without Radius Adjustment), Collision Detection
 ### Community 72 - "Step 6: Build the Brick Field"
 Cohesion: 0.33
 Nodes (6): Brick Configuration Variables, Calling drawBricks() in the Game Loop, Complete Code for Step 6, Creating the Bricks 2D Array, Step 6: Build the Brick Field, The drawBricks() Function
-
-### Community 73 - "3D Web Games"
-Cohesion: 0.33
-Nodes (5): 3D Web Games, Frameworks, Key Features, PlayCanvas, Practical Tips
-
-### Community 74 - "3D Theory and Fundamentals"
-Cohesion: 0.33
-Nodes (6): 3D Theory and Fundamentals, Camera, Coordinate System, Practical Tips, The Rendering Pipeline, Vertices, Edges, Faces, and Meshes
 
 ### Community 75 - "Mathematical / Algorithmic Concepts"
 Cohesion: 0.33
@@ -567,19 +546,15 @@ Nodes (4): Practical Game Development Applications, Pseudocode -- Vector2D Class
 Cohesion: 0.67
 Nodes (3): Collision Detection Between Hero and Platforms, Gravity, Setting Global Gravity
 
-### Community 105 - "Keyboard Controls"
-Cohesion: 0.67
-Nodes (3): Keyboard Controls, Reading Input in Update, Setting Up Input Keys
-
 ## Knowledge Gaps
 - **3 isolated node(s):** `uvx`, `mcp-for-blender`, `DISABLE_TELEMETRY`
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 873 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 872 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **9 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Collision Detection` connect `PetView.ts` to `3D Web Games`?**
+- **Why does `BoxHelper for Visual Debugging` connect `GLSL Shaders` to `demoFacts.ts`?**
   _High betweenness centrality (0.031) - this node is a cross-community bridge._
 - **What connects `uvx`, `mcp-for-blender`, `DISABLE_TELEMETRY` to the rest of the system?**
   _3 weakly-connected nodes found - possible documentation gaps or missing edges._
@@ -588,8 +563,8 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `render_sprites.py` be split into smaller, more focused modules?**
   _Cohesion score 0.0819252432155658 - nodes in this community are weakly interconnected._
 - **Should `demoFacts.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.08228034087569791 - nodes in this community are weakly interconnected._
-- **Should `PetView.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.08095238095238096 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06366691560866318 - nodes in this community are weakly interconnected._
+- **Should `GLSL Shaders` be split into smaller, more focused modules?**
+  _Cohesion score 0.05128205128205128 - nodes in this community are weakly interconnected._
 - **Should `2D Maze Game Template` be split into smaller, more focused modules?**
   _Cohesion score 0.058823529411764705 - nodes in this community are weakly interconnected._

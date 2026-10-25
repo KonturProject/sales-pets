@@ -82,6 +82,12 @@ export function simulate(facts: GroupFacts, asOf: DateStr, cfg: Config): PetStat
   let deadPending = false;
   let toyToday = false;
 
+  /** Новое яйцо после смерти: история поколений сохраняется, счёт и болезни обнуляются. */
+  const revive = () => {
+    alive = true; deadPending = false;
+    generation++; total = 0; piles = 0; deathStreak = 0; sickStreak = 0;
+  };
+
   const applyOverrides = (list: Override[] | undefined) => {
     for (const o of list ?? []) {
       if (o.kind === 'piles') piles = clamp(piles + o.delta, 0, cfg.maxPiles);
@@ -102,8 +108,9 @@ export function simulate(facts: GroupFacts, asOf: DateStr, cfg: Config): PetStat
     const current = i === days.length - 1 && d === asOf;
     toyToday = false;
     if (!alive) {
-      if (deadPending) { deadPending = false; total = 0; }
-      else { alive = true; generation++; piles = 0; deathStreak = 0; sickStreak = 0; }
+      // в день надгробия первая же оплата сразу даёт новое яйцо; иначе яйцо — со следующего рабочего дня
+      if (deadPending && (payments.get(i) ?? 0) === 0) { deadPending = false; total = 0; }
+      else revive();
     }
     const prev = prevWorkingDay(d, cfg);
     const r = prev ? facts.results[prev] : undefined;
@@ -133,7 +140,10 @@ export function simulate(facts: GroupFacts, asOf: DateStr, cfg: Config): PetStat
   const tailPayments = payments.get(tailKey) ?? 0;
   if (lastDay !== undefined && lastDay !== asOf) {
     toyToday = false;
-    if (tailPayments > 0) { deathStreak = 0; sickStreak = 0; }
+    if (tailPayments > 0) {
+      if (!alive) revive();
+      deathStreak = 0; sickStreak = 0;
+    }
     total += tailPayments;
     applyOverrides(ovByDay.get(tailKey));
   } else if (lastDay === undefined) {
