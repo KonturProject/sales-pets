@@ -6,3 +6,4 @@ sales-structure.json
 *.xlsx
 *.zip
 graphify-out/cache
+assets/_raw/
