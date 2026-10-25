@@ -1,0 +1,39 @@
+.ranking {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.rank-block {
+  padding: 12px 14px 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+}
+
+.rank-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.rank-head h2 { margin: 0; font-size: 1.15rem; font-weight: 700; letter-spacing: 0.02em; }
+.rank-head select {
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 2px 6px;
+}
+
+.rank-block table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.rank-block th { text-align: left; font-size: 0.75rem; font-weight: 400; color: var(--ink-soft); padding: 0 4px 4px; }
+.rank-block td { padding: 4px; border-top: 1px solid var(--line); }
+.rank-block .place { width: 2.2em; color: var(--ink-soft); }
+.rank-block .grp { color: var(--ink-soft); white-space: nowrap; }
+.rank-block .value { text-align: right; font-weight: 700; white-space: nowrap; }
+.rank-block th:last-child { text-align: right; }
+.rank-block .empty { color: var(--ink-soft); text-align: center; padding: 12px 4px; }
+
+@media (max-width: 860px) { .ranking { grid-template-columns: 1fr; } }

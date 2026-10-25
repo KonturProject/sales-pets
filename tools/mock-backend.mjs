@@ -9,6 +9,8 @@ import { createServer as createVite } from 'vite';
 import { loadBackend } from '../apps-script/test/gas-harness.mjs';
 
 export const MOCK_ADMIN_PIN = '1234';
+/** Сотрудник демо-штата, который в моке в отпуске 11–13 ноября: в рейтингах 12.11 его быть не должно (check:render). */
+export const MOCK_VACATIONER = 'Тест СР1-6';
 const DEMO_DAY = '2026-11-12';
 /** Предыдущий рабочий день демо-дня: до него файлы «загружены», сегодняшние оплаты — предварительные. */
 const THROUGH = '2026-11-11';
@@ -27,6 +29,11 @@ function seed(backend, demo) {
       staff: demo.staff.map((e) => ({ name: e.name, shortName: e.shortName, group: e.group, baseLevel: e.baseLevel })),
     })),
     'загрузить штат',
+  );
+  const vacationer = backend.get({}).staff.find((e) => e.name === MOCK_VACATIONER);
+  must(
+    backend.post(as({ action: 'setAbsence', employeeId: vacationer.id, kind: 'vacation', from: '2026-11-11', to: '2026-11-13' })),
+    'внести отпуск',
   );
   const nameById = Object.fromEntries(demo.staff.map((e) => [e.id, e.name]));
   must(
