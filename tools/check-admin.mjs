@@ -388,6 +388,143 @@ try {
     check(await admin.locator('[data-confirm="staff"]').count() === 0, 'у плохого списка есть кнопка загрузки');
     check((await staffNow()).length === total + 1, 'плохой список изменил штат');
   });
+
+  await scenario('нормы: качественные опытных → экран', async ({ mock, newPage, check, urls }) => {
+    const screen = await newPage();
+    // отпечаток всех питомцев экрана: стадия, настроение, кучки, запасы
+    await screen.addInitScript(() => {
+      window.__sig = () => [...document.querySelectorAll('[data-group]')].map((e) => [
+        e.dataset.group, e.dataset.stage, e.dataset.mood, e.dataset.piles,
+        e.querySelector('[data-count="toys"]')?.textContent, e.querySelector('[data-count="medkits"]')?.textContent,
+      ].join('|')).join(';');
+    });
+    await screen.goto(urls.screen, { waitUntil: 'networkidle' });
+    await screen.waitForSelector('[data-group="СР6"] .sub', { timeout: 8_000 });
+    const before = await screen.evaluate(() => window.__sig());
+    const configBefore = (await publicSnapshot(mock)).config;
+
+    const admin = await newPage();
+    await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="norms"]');
+    await admin.waitForSelector('[data-field="norm-experienced-quality"]', { timeout: 8_000 });
+    const field = (name) => admin.inputValue(`[data-field="${name}"]`);
+    check(await field('norm-experienced-quality') === '5' && await field('norm-rookie1-quality') === '1', 'нормы не предзаполнены текущими значениями');
+    check(await field('maxPiles') === '5' && await field('threshold-1') === '6', 'пороги не предзаполнены текущими значениями');
+    check(await admin.locator('[data-field^="threshold-"]').count() === 15, 'порогов стадий не 15');
+
+    // факты мока ровно равны норме опытных, поэтому смену видно только при повышении нормы: игрушки перестают копиться
+    await admin.fill('[data-field="norm-experienced-quality"]', '50');
+    await admin.click('[data-save="config"]');
+    check((await waitForText(admin, '[data-status="config"]', 'Сохранено')).includes('Сохранено'), `норма не сохранена: «${await textOf(admin, '[data-alert="config"]')}»`);
+    const config = (await publicSnapshot(mock)).config;
+    check(config.norms?.experienced?.quality === 50, 'норма опытных не записана на сервер');
+    check(config.norms?.experienced?.long === configBefore.norms?.experienced?.long && config.maxPiles === configBefore.maxPiles, 'на сервер ушло неизменённое');
+    check(await field('norm-experienced-quality') === '50', 'после записи форма не перечитана');
+
+    await screen.waitForFunction((old) => window.__sig() !== old, before, { timeout: 8_000 }).catch(() => {});
+    check(await screen.evaluate(() => window.__sig()) !== before, 'экран не пересчитал питомцев после смены нормы за время опроса');
+  });
+
+  await scenario('нормы: плохие значения', async ({ mock, newPage, check, urls }) => {
+    const version = async () => (await publicSnapshot(mock)).version;
+    const v0 = await version();
+    const admin = await newPage();
+    await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="norms"]');
+    await admin.waitForSelector('[data-field="maxPiles"]', { timeout: 8_000 });
+    const alert = () => textOf(admin, '[data-alert="config"]');
+    const status = () => textOf(admin, '[data-status="config"]');
+    const save = async () => {
+      await admin.click('[data-save="config"]');
+      await admin.waitForFunction(() => document.querySelector('[data-alert="config"]')?.textContent || document.querySelector('[data-status="config"]')?.textContent, null, { timeout: 8_000 }).catch(() => {});
+    };
+
+    await save();
+    check((await alert()).includes('Ничего не изменено'), `сохранение без изменений: «${await alert()}»`);
+
+    await admin.fill('[data-field="maxPiles"]', 'abc');
+    await save();
+    check((await alert()).includes('Кучек'), `не число: «${await alert()}»`);
+
+    await admin.fill('[data-field="maxPiles"]', '5');
+    await admin.fill('[data-field="threshold-2"]', '5');
+    await save();
+    check((await alert()).includes('Порог 2'), `пороги не по возрастанию: «${await alert()}»`);
+    check(await version() === v0, 'клиентская ошибка дошла до сервера');
+
+    // диапазон проверяет сервер: его отказ показан человеческим текстом, состояние не меняется
+    await admin.fill('[data-field="threshold-2"]', '10');
+    await admin.fill('[data-field="maxPiles"]', '99');
+    await save();
+    check((await alert()).includes('Сервер отклонил запрос'), `значение вне диапазона: «${await alert()}»`);
+    check((await status()) === '', 'отказ сервера показан как успех');
+    check(await version() === v0 && (await publicSnapshot(mock)).config.maxPiles === undefined, 'значение вне диапазона принято сервером');
+  });
+
+  await scenario('ручные правки: выдать и сбросить кучки → экран', async ({ mock, newPage, check, urls }) => {
+    const screen = await newPage();
+    await screen.goto(urls.screen, { waitUntil: 'networkidle' });
+    await screen.waitForSelector('[data-group="СР6"] .sub', { timeout: 8_000 });
+    const screenPiles = () => screen.$eval('[data-group="СР6"]', (e) => e.dataset.piles).catch(() => '');
+    const onServer = async () => (await publicSnapshot(mock)).overrides.length;
+
+    const admin = await newPage();
+    await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="overrides"]');
+    await admin.waitForSelector('[data-now="piles"]', { timeout: 8_000 });
+    await admin.selectOption('[data-field="group"]', 'СР6');
+    check(await admin.inputValue('[data-field="date"]') === '2026-11-12', 'дата по умолчанию не «сегодня» сервера (12.11 в моке)');
+    const now = (kind) => textOf(admin, `[data-now="${kind}"]`);
+    const alert = () => textOf(admin, '[data-alert="overrides"]');
+    const status = () => textOf(admin, '[data-status="overrides"]');
+    const done = async (needle = 'Сохранено') => {
+      await admin.waitForFunction((t) => document.querySelector('[data-status="overrides"]')?.textContent?.includes(t) || document.querySelector('[data-alert="overrides"]')?.textContent, needle, { timeout: 8_000 }).catch(() => {});
+    };
+
+    const piles0 = Number(await now('piles'));
+    check(Number.isFinite(piles0) && String(piles0) === await screenPiles(), `кучки СР6: вкладка «${await now('piles')}», экран «${await screenPiles()}»`);
+
+    // выдать две кучки (потолок — maxPiles = 5)
+    const n0 = await onServer();
+    await admin.fill('[data-field="amount"]', '2');
+    await admin.click('[data-give="piles"]');
+    await done();
+    const piles1 = Math.min(5, piles0 + 2);
+    check(await onServer() === n0 + 1 && (await status()).includes('Сохранено'), `выдача кучек: «${await alert()}»`);
+    check(Number(await now('piles')) === piles1, `после выдачи во вкладке кучек ${await now('piles')}, ожидалось ${piles1}`);
+    check(await admin.locator('[data-table="overrides"] tr[data-override]').count() === 1, 'в таблице правок нет новой строки');
+    await screen.waitForFunction((want) => document.querySelector('[data-group="СР6"]')?.dataset.piles === want, String(piles1), { timeout: 8_000 }).catch(() => {});
+    check(await screenPiles() === String(piles1), `экран: кучек СР6 ${await screenPiles()}, ожидалось ${piles1}`);
+
+    // сбросить кучки → 0 и на вкладке, и на экране
+    await admin.click('[data-reset="piles"]');
+    await done();
+    check(await now('piles') === '0', `после сброса во вкладке кучек ${await now('piles')}`);
+    await screen.waitForFunction(() => document.querySelector('[data-group="СР6"]')?.dataset.piles === '0', null, { timeout: 8_000 }).catch(() => {});
+    check(await screenPiles() === '0', `экран: после сброса кучек СР6 ${await screenPiles()}`);
+
+    // сбрасывать нечего — ничего не пишется
+    const n1 = await onServer();
+    await admin.click('[data-reset="piles"]');
+    check((await alert()).includes('Сбрасывать нечего') && await onServer() === n1, `повторный сброс: «${await alert()}»`);
+
+    // клиентские отказы: количество, будущая дата; сервер не вызывается
+    await admin.fill('[data-field="amount"]', '21');
+    await admin.click('[data-give="toys"]');
+    check((await alert()).includes('от 1 до 20') && await onServer() === n1, `количество 21: «${await alert()}»`);
+    await admin.fill('[data-field="amount"]', '1');
+    await admin.fill('[data-field="date"]', '2026-11-13');
+    await admin.click('[data-give="toys"]');
+    check((await alert()).includes('будущее') && await onServer() === n1, `дата из будущего: «${await alert()}»`);
+    await admin.fill('[data-field="date"]', '2026-11-12');
+
+    // двойной клик по «Выдать» записывает одну правку
+    const toys0 = Number(await now('toys'));
+    await admin.dblclick('[data-give="toys"]');
+    await done();
+    check(await onServer() === n1 + 1, `двойной клик записал ${await onServer() - n1} правок вместо одной`);
+    check(Number(await now('toys')) === toys0 + 1, `игрушек после выдачи ${await now('toys')}, ожидалось ${toys0 + 1}`);
+  });
 } finally {
   await browser.close();
   await server.close();
@@ -397,4 +534,4 @@ if (failures.length) {
   console.error(`FAIL (${failures.length}):\n- ${failures.join('\n- ')}`);
   process.exit(1);
 }
-console.log('OK: админка — вход и блокировка, оплаты → экран, импорт оплат и воронки, штат и отсутствия, PIN групп не остаются в DOM, хранилище и консоли');
+console.log('OK: админка — вход и блокировка, оплаты → экран, импорт оплат и воронки, штат и отсутствия, нормы и ручные правки → экран, PIN групп не остаются в DOM, хранилище и консоли');

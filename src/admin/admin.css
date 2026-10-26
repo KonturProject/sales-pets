@@ -62,15 +62,25 @@ label {
   color: #a3281c;
 }
 
-output table {
+table {
   border-collapse: collapse;
   margin: 0.6rem 0;
   font-variant-numeric: tabular-nums;
 }
 
-output th,
-output td {
+th,
+td {
   padding: 0.2rem 0.8rem;
   border-bottom: 1px solid var(--line);
   text-align: left;
+}
+
+.thresholds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.4rem;
+}
+
+.thresholds input {
+  width: 3.5rem;
 }

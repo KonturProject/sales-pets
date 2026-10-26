@@ -3,6 +3,8 @@ import { api } from '@/data/api';
 import { h, tabs, errorText } from './dom';
 import type { AdminCtx } from './ctx';
 import { importTab } from './importTab';
+import { normsTab } from './normsTab';
+import { overridesTab } from './overridesTab';
 import { paymentsTab } from './payments';
 import { pinsTab } from './pins';
 import { createSession } from './session';
@@ -55,6 +57,8 @@ function showWork(): void {
       { id: 'payments', title: 'Оплаты', render: () => paymentsTab(ctx) },
       { id: 'import', title: 'Импорт', render: () => importTab(ctx) },
       { id: 'staff', title: 'Сотрудники', render: () => staffTab(ctx) },
+      { id: 'norms', title: 'Нормы и пороги', render: () => normsTab(ctx) },
+      { id: 'overrides', title: 'Ручные правки', render: () => overridesTab(ctx) },
       { id: 'pins', title: 'PIN-коды', render: () => pinsTab(ctx) },
     ]),
   );
