@@ -474,7 +474,7 @@ describe('setStaff', () => {
   test('upsert по нормализованному ФИО сохраняет id и не трогает поля, которых нет в запросе', () => {
     const { b, id } = withStaff();
     admin(b, 'setStaff', {
-      staff: [{ name: 'Иванов Иван', group: 'СР1', hireDate: '2026-10-01', baseLevel: 'rookie1', hiddenFromRating: true, transfers: [{ date: '2026-11-10', group: 'СР2' }] }],
+      staff: [{ name: 'Иванов Иван', group: 'СР1', hireDate: '2026-10-01', baseLevel: 'rookie1', hiddenFromRating: true, hiddenReason: 'декрет', transfers: [{ date: '2026-11-10', group: 'СР2' }] }],
     });
     admin(b, 'setStaff', { staff: [{ name: '  иванов   иван ', group: 'СР1' }, { name: 'Новикова Ольга', group: 'СР9' }] });
     const staff = b.get().staff;
@@ -516,6 +516,170 @@ describe('setStaff', () => {
     for (const staff of bad) expect(admin(b, 'setStaff', { staff }), JSON.stringify(staff)).toEqual({ ok: false, error: 'bad_request' });
     expect(admin(b, 'setStaff', {})).toEqual({ ok: false, error: 'bad_request' });
     expect(b.get()).toEqual(before);
+  });
+});
+
+describe('причина исключения из рейтинга', () => {
+  const IVANOV = 'Иванов Иван';
+  const hide = (b, extra = {}) => admin(b, 'setStaff', { staff: [{ name: IVANOV, group: 'СР1', hiddenFromRating: true, ...extra }] });
+  const unhide = (b) => admin(b, 'setStaff', { staff: [{ name: IVANOV, group: 'СР1', hiddenFromRating: false }] });
+
+  test('скрыть без причины нельзя: пустая, из пробелов, не строка и длиннее 200 — bad_request, ничего не пишется', () => {
+    const { b } = withStaff();
+    const before = b.get();
+    for (const extra of [{}, { hiddenReason: '' }, { hiddenReason: '   ' }, { hiddenReason: 5 }, { hiddenReason: null }, { hiddenReason: 'а'.repeat(201) }]) {
+      expect(hide(b, extra), JSON.stringify(extra)).toEqual({ ok: false, error: 'bad_request' });
+    }
+    expect(b.get()).toEqual(before);
+    expect(hide(b, { hiddenReason: 'а'.repeat(200) }).ok).toBe(true);
+    expect(b.get().staff.find((e) => e.name === IVANOV).hiddenFromRating).toBe(true);
+  });
+
+  test('GET причину не содержит, getPrivate отдаёт её по админ-PIN (обрезанную по краям)', () => {
+    const { b, id } = withStaff();
+    expect(hide(b, { hiddenReason: '  декрет  ' }).ok).toBe(true);
+    const snapshot = b.get();
+    expect(JSON.stringify(snapshot)).not.toContain('декрет');
+    expect(snapshot.staff.find((e) => e.name === IVANOV)).not.toHaveProperty('hiddenReason');
+    expect(admin(b, 'getPrivate')).toEqual({ ok: true, hiddenReasons: { [id[IVANOV]]: 'декрет' } });
+  });
+
+  test('getPrivate: PIN группы и неверный PIN — invalid_pin', () => {
+    const { b } = withStaff();
+    hide(b, { hiddenReason: 'декрет' });
+    const { groupPins } = admin(b, 'setGroupPins');
+    expect(b.post({ action: 'getPrivate', group: 'СР1', groupPin: groupPins['СР1'] })).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.post({ action: 'getPrivate', pin: '000000' })).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.post({ action: 'getPrivate' })).toEqual({ ok: false, error: 'invalid_pin' });
+  });
+
+  test('повторное сохранение скрытого без причины оставляет прежнюю; новая причина заменяет', () => {
+    const { b, id } = withStaff();
+    hide(b, { hiddenReason: 'декрет' });
+    expect(hide(b).ok).toBe(true);
+    expect(admin(b, 'getPrivate').hiddenReasons).toEqual({ [id[IVANOV]]: 'декрет' });
+    expect(hide(b, { hiddenReason: 'стажёр' }).ok).toBe(true);
+    expect(admin(b, 'getPrivate').hiddenReasons).toEqual({ [id[IVANOV]]: 'стажёр' });
+  });
+
+  test('снятие флага стирает причину, повторное скрытие требует новую', () => {
+    const { b } = withStaff();
+    hide(b, { hiddenReason: 'декрет' });
+    expect(unhide(b).ok).toBe(true);
+    expect(b.get().staff.find((e) => e.name === IVANOV).hiddenFromRating).toBe(false);
+    expect(admin(b, 'getPrivate')).toEqual({ ok: true, hiddenReasons: {} });
+    expect(hide(b)).toEqual({ ok: false, error: 'bad_request' });
+  });
+
+  test('причина при снятом флаге не сохраняется', () => {
+    const { b } = withStaff();
+    expect(admin(b, 'setStaff', { staff: [{ name: IVANOV, group: 'СР1', hiddenFromRating: false, hiddenReason: 'зря' }] }).ok).toBe(true);
+    expect(admin(b, 'getPrivate').hiddenReasons).toEqual({});
+  });
+});
+
+describe('setConfig', () => {
+  const setConfig = (b, config) => admin(b, 'setConfig', { config });
+  const thresholds = Array.from({ length: 15 }, (_, i) => (i + 1) * 5);
+
+  test('до первой правки GET отдаёт {}; частичные правки сливаются, соседние поля не стираются, версия растёт', () => {
+    const b = loadBackend();
+    expect(b.get().config).toEqual({});
+    const v0 = b.get().version;
+    const r1 = setConfig(b, { dailyNorm: 5, maxPiles: 3 });
+    expect(r1).toEqual({ ok: true, version: v0 + 1, config: { dailyNorm: 5, maxPiles: 3 } });
+    const r2 = setConfig(b, { maxPiles: 4, norms: { rookie1: { quality: 2 } } });
+    expect(r2.config).toEqual({ dailyNorm: 5, maxPiles: 4, norms: { rookie1: { quality: 2 } } });
+    const r3 = setConfig(b, { norms: { rookie1: { long: 1 }, experienced: { quality: 6, long: 7 } }, stageThresholds: thresholds });
+    expect(r3.config).toEqual({
+      dailyNorm: 5,
+      maxPiles: 4,
+      norms: { rookie1: { quality: 2, long: 1 }, experienced: { quality: 6, long: 7 } },
+      stageThresholds: thresholds,
+    });
+    expect(r3.version).toBe(v0 + 3);
+    const snapshot = b.get();
+    expect(snapshot.config).toEqual(r3.config);
+    expect(snapshot.version).toBe(r3.version);
+  });
+
+  test('границы диапазонов принимаются', () => {
+    const b = loadBackend();
+    const edge = {
+      dailyNorm: 1000,
+      maxPiles: 1,
+      boredomBelow: 0,
+      sickDaysNoPay: 30,
+      sickPilesAbove: 0,
+      deathDaysNoPay: 1,
+      norms: { rookie2: { quality: 0, long: 50 } },
+      stageThresholds: [...thresholds.slice(0, 14), 100000],
+    };
+    expect(setConfig(b, edge).config).toEqual(edge);
+    expect(setConfig(b, { dailyNorm: 1, maxPiles: 20, boredomBelow: 100, sickDaysNoPay: 1, sickPilesAbove: 20, deathDaysNoPay: 30 }).ok).toBe(true);
+  });
+
+  test('вне диапазона, дробные, не числа, неизвестные поля, календарь и пустая правка — bad_request, ничего не пишется', () => {
+    const b = loadBackend();
+    setConfig(b, { dailyNorm: 4 });
+    const before = b.get();
+    const bad = [
+      {},
+      { dailyNorm: 0 }, { dailyNorm: 1001 }, { dailyNorm: 4.5 }, { dailyNorm: '4' }, { dailyNorm: null },
+      { maxPiles: 0 }, { maxPiles: 21 },
+      { boredomBelow: -1 }, { boredomBelow: 101 },
+      { sickDaysNoPay: 0 }, { sickDaysNoPay: 31 },
+      { sickPilesAbove: -1 }, { sickPilesAbove: 21 },
+      { deathDaysNoPay: 0 }, { deathDaysNoPay: 31 },
+      { norms: { experienced: { quality: -1 } } },
+      { norms: { experienced: { long: 51 } } },
+      { norms: { rookie1: { quality: 1.5 } } },
+      { norms: { senior: { quality: 1 } } },
+      { norms: { rookie2: { speed: 1 } } },
+      { norms: { rookie1: 3 } },
+      { norms: [] },
+      { norms: {} },
+      { stageThresholds: thresholds.slice(1) },
+      { stageThresholds: [...thresholds, 99] },
+      { stageThresholds: [...thresholds.slice(0, 14), thresholds[13]] },
+      { stageThresholds: [0, ...thresholds.slice(1)] },
+      { stageThresholds: [...thresholds.slice(0, 14), 100001] },
+      { stageThresholds: [...thresholds.slice(0, 14), 74.5] },
+      { stageThresholds: 'x' },
+      { startDate: '2026-11-02' }, { endDate: '2026-11-30' }, { nonWorking: [] },
+      { unknown: 1 }, { dailyNorm: 5, unknown: 1 }, { __proto__: null, hasOwnProperty: 1 },
+    ];
+    for (const config of bad) expect(setConfig(b, config), JSON.stringify(config)).toEqual({ ok: false, error: 'bad_request' });
+    for (const config of [null, [], 'x', 5, undefined]) expect(setConfig(b, config), JSON.stringify(config)).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.get()).toEqual(before);
+  });
+
+  test('админ-PIN обязателен: без PIN и с PIN группы — invalid_pin', () => {
+    const b = loadBackend();
+    const { groupPins } = admin(b, 'setGroupPins');
+    expect(b.post({ action: 'setConfig', config: { dailyNorm: 5 } })).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.post({ action: 'setConfig', group: 'СР1', groupPin: groupPins['СР1'], config: { dailyNorm: 5 } })).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.get().config).toEqual({});
+  });
+
+  test('испорченная руками ячейка config читается как {}, а следующая правка её чинит', () => {
+    const b = loadBackend();
+    setConfig(b, { dailyNorm: 5 });
+    const cell = b.sheet('Settings').rows.find((r) => r[0] === 'config');
+    for (const garbage of ['не json', '[1,2]', '"x"', '5', 'null']) {
+      cell[1] = garbage;
+      expect(b.get().config, garbage).toEqual({});
+    }
+    expect(setConfig(b, { maxPiles: 3 }).config).toEqual({ maxPiles: 3 });
+    expect(b.get().config).toEqual({ maxPiles: 3 });
+  });
+
+  test('правка config не стирает версию и соседние настройки (funnelThrough, paymentsImportedThrough)', () => {
+    const { b } = withStaff();
+    admin(b, 'importFunnel', { through: '2026-11-10', rows: [] });
+    admin(b, 'importPayments', { from: '2026-11-09', to: '2026-11-10', rows: [] });
+    setConfig(b, { dailyNorm: 6 });
+    expect(b.get()).toMatchObject({ funnelThrough: '2026-11-10', paymentsImportedThrough: '2026-11-10', config: { dailyNorm: 6 } });
   });
 });
 

@@ -17,13 +17,28 @@ const PIN_BLOCK_SEC = 600;
 const MAX_IMPORT_DAYS = 62;
 const MAX_COUNT = 10000;
 const PIN_FORMAT = /^\d{4,12}$/;
+const HIDDEN_REASON_MAX = 200;
+
+/** Допустимые правки config (целые, включительно); календарь (startDate, endDate, nonWorking) не правится. */
+const CONFIG_RANGES = {
+  dailyNorm: [1, 1000],
+  maxPiles: [1, 20],
+  boredomBelow: [0, 100],
+  sickDaysNoPay: [1, 30],
+  sickPilesAbove: [0, 20],
+  deathDaysNoPay: [1, 30],
+};
+const NORM_FIELDS = ['quality', 'long'];
+const NORM_MAX = 50;
+const STAGE_COUNT = 15;
+const STAGE_THRESHOLD_MAX = 100000;
 
 /** Листы и колонки; первая строка — заголовок, данные с второй. */
 const SHEETS = {
   Payments: ['date', 'group', 'author', 'invoice'],
   Provisional: ['date', 'group', 'count'],
   Funnel: ['employeeId', 'date', 'quality', 'long'],
-  Staff: ['id', 'name', 'shortName', 'group', 'hireDate', 'fireDate', 'baseLevel', 'hiddenFromRating', 'transfers'],
+  Staff: ['id', 'name', 'shortName', 'group', 'hireDate', 'fireDate', 'baseLevel', 'hiddenFromRating', 'transfers', 'hiddenReason'],
   Absences: ['employeeId', 'kind', 'from', 'to'],
   Settings: ['key', 'value'],
 };
@@ -67,6 +82,14 @@ function isGroup_(v) {
 
 function isCount_(v) {
   return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= MAX_COUNT;
+}
+
+function isIntIn_(v, min, max) {
+  return typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
+}
+
+function isPlainObject_(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
 /** Так же, как normalizeName на странице: обрезать, схлопнуть пробелы, нижний регистр. */
@@ -179,6 +202,7 @@ function bump_(patch) {
   return version;
 }
 
+/** Сотрудники вместе с причиной исключения из рейтинга (она не публична: в GET уходит publicStaff_). */
 function readStaff_() {
   return readRows_('Staff').map(function (r) {
     let transfers = [];
@@ -198,17 +222,32 @@ function readStaff_() {
       baseLevel: r[6],
       hiddenFromRating: r[7].toLowerCase() === 'true',
       transfers: transfers,
+      hiddenReason: r[9] || '',
     };
   });
+}
+
+function publicStaff_(e) {
+  return { id: e.id, name: e.name, shortName: e.shortName, group: e.group, hireDate: e.hireDate, fireDate: e.fireDate, baseLevel: e.baseLevel, hiddenFromRating: e.hiddenFromRating, transfers: e.transfers };
 }
 
 function writeStaff_(staff) {
   writeRows_(
     'Staff',
     staff.map(function (e) {
-      return [e.id, e.name, e.shortName, e.group, e.hireDate || '', e.fireDate || '', e.baseLevel, e.hiddenFromRating ? 'true' : 'false', JSON.stringify(e.transfers)];
+      return [e.id, e.name, e.shortName, e.group, e.hireDate || '', e.fireDate || '', e.baseLevel, e.hiddenFromRating ? 'true' : 'false', JSON.stringify(e.transfers), e.hiddenReason];
     })
   );
+}
+
+/** Сохранённый config; испорченная руками ячейка (не JSON, не объект) читается как {}. */
+function parseConfig_(text) {
+  try {
+    const parsed = JSON.parse(text || '{}');
+    return isPlainObject_(parsed) ? parsed : {};
+  } catch (err) {
+    return {};
+  }
 }
 
 function readAbsences_() {
@@ -515,7 +554,7 @@ function setStaffAction_(body) {
       updated++;
     } else {
       if (!isGroup_(item.group)) fail_();
-      e = { id: 'e' + ++maxId, name: name, shortName: defaultShortName_(name), group: item.group, hireDate: null, fireDate: null, baseLevel: 'experienced', hiddenFromRating: false, transfers: [] };
+      e = { id: 'e' + ++maxId, name: name, shortName: defaultShortName_(name), group: item.group, hireDate: null, fireDate: null, baseLevel: 'experienced', hiddenFromRating: false, transfers: [], hiddenReason: '' };
       byKey[key] = e;
       staff.push(e);
       added++;
@@ -538,11 +577,76 @@ function setStaffAction_(body) {
       if (typeof item.hiddenFromRating !== 'boolean') fail_();
       e.hiddenFromRating = item.hiddenFromRating;
     }
+    if (item.hiddenReason !== undefined) {
+      if (typeof item.hiddenReason !== 'string') fail_();
+      e.hiddenReason = item.hiddenReason.trim();
+      if (e.hiddenReason.length > HIDDEN_REASON_MAX) fail_();
+    }
+    // скрытие требует причины (прежняя остаётся, если новую не прислали), снятие флага её стирает
+    if (item.hiddenFromRating !== undefined || item.hiddenReason !== undefined) {
+      if (!e.hiddenFromRating) e.hiddenReason = '';
+      else if (e.hiddenReason === '') fail_();
+    }
     if (item.transfers !== undefined) e.transfers = validTransfers_(item.transfers);
   });
   if (added + updated === 0) return { ok: true, version: currentVersion_(), added: 0, updated: 0 };
   writeStaff_(staff);
   return { ok: true, version: bump_({}), added: added, updated: updated };
+}
+
+/** Причины исключения из рейтинга: в публичный GET они не попадают, админ читает их отдельно. */
+function getPrivateAction_() {
+  const hiddenReasons = {};
+  readStaff_().forEach(function (e) {
+    if (e.hiddenFromRating && e.hiddenReason !== '') hiddenReasons[e.id] = e.hiddenReason;
+  });
+  return { ok: true, hiddenReasons: hiddenReasons };
+}
+
+function validThresholds_(v) {
+  if (!Array.isArray(v) || v.length !== STAGE_COUNT) return false;
+  for (let i = 0; i < v.length; i++) {
+    if (!isIntIn_(v[i], 1, STAGE_THRESHOLD_MAX) || (i > 0 && v[i] <= v[i - 1])) return false;
+  }
+  return true;
+}
+
+/** Сливает частичные нормы по уровням в сохранённые; пустой уровень или поле вне quality|long — bad_request. */
+function mergeNorms_(base, patch) {
+  if (!isPlainObject_(patch) || Object.keys(patch).length === 0) fail_();
+  const out = isPlainObject_(base) ? base : {};
+  Object.keys(patch).forEach(function (level) {
+    const fields = isPlainObject_(patch[level]) ? Object.keys(patch[level]) : [];
+    if (LEVELS.indexOf(level) < 0 || fields.length === 0) fail_();
+    const norm = isPlainObject_(out[level]) ? out[level] : {};
+    fields.forEach(function (f) {
+      if (NORM_FIELDS.indexOf(f) < 0 || !isIntIn_(patch[level][f], 0, NORM_MAX)) fail_();
+      norm[f] = patch[level][f];
+    });
+    out[level] = norm;
+  });
+  return out;
+}
+
+function setConfigAction_(body) {
+  const patch = body.config;
+  if (!isPlainObject_(patch) || Object.keys(patch).length === 0) fail_();
+  const config = parseConfig_(readSettings_().config);
+  Object.keys(patch).forEach(function (k) {
+    const v = patch[k];
+    if (Object.prototype.hasOwnProperty.call(CONFIG_RANGES, k)) {
+      if (!isIntIn_(v, CONFIG_RANGES[k][0], CONFIG_RANGES[k][1])) fail_();
+      config[k] = v;
+    } else if (k === 'norms') {
+      config.norms = mergeNorms_(config.norms, v);
+    } else if (k === 'stageThresholds') {
+      if (!validThresholds_(v)) fail_();
+      config.stageThresholds = v;
+    } else {
+      fail_();
+    }
+  });
+  return { ok: true, version: bump_({ config: JSON.stringify(config) }), config: config };
 }
 
 function setAbsenceAction_(body) {
@@ -589,6 +693,8 @@ const ACTIONS_ = {
   importPayments: { who: 'admin', run: importPaymentsAction_ },
   importFunnel: { who: 'admin', run: importFunnelAction_ },
   setStaff: { who: 'admin', run: setStaffAction_ },
+  getPrivate: { who: 'admin', run: getPrivateAction_ },
+  setConfig: { who: 'admin', run: setConfigAction_ },
   setAbsence: { who: 'admin', run: setAbsenceAction_ },
   removeAbsence: { who: 'admin', run: removeAbsenceAction_ },
 };
@@ -629,7 +735,7 @@ function doPost(e) {
 
 /**
  * Публичный снимок: ФИО и группы, оплаты {date, group, author, invoice}, воронка, отсутствия. Сумм, хешей и солей в нём нет.
- * `config` на этапе 2 пустой (дневная норма приедет с setConfig). `?since=<версия>` при той же версии отдаёт {unchanged}.
+ * `config` — то, что сохранил setConfig (иначе {}); причин исключения из рейтинга здесь нет (getPrivate). `?since=<версия>` при той же версии отдаёт {unchanged}.
  */
 function doGet(e) {
   try {
@@ -643,8 +749,8 @@ function doGet(e) {
       serverNow: Utilities.formatDate(new Date(), TIME_ZONE, "yyyy-MM-dd'T'HH:mm:ss'+03:00'"),
       funnelThrough: settings.funnelThrough || null,
       paymentsImportedThrough: settings.paymentsImportedThrough || null,
-      config: {},
-      staff: readStaff_(),
+      config: parseConfig_(settings.config),
+      staff: readStaff_().map(publicStaff_),
       absences: readAbsences_(),
       payments: readRows_('Payments').map(function (r) {
         return { date: r[0], group: r[1], author: r[2], invoice: r[3] };
