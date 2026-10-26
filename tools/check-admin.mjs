@@ -44,6 +44,7 @@ async function scenario(name, fn) {
   const backend = `backend=${encodeURIComponent(mock.url)}`;
   const urls = {
     admin: `${base}admin.html?${backend}`,
+    rg: `${base}rg.html?${backend}`,
     // общий экран на дату мока, опрос раз в секунду
     screen: `${base}?${backend}&asOf=2026-11-12&pollMs=1000`,
   };
@@ -525,6 +526,93 @@ try {
     check(await onServer() === n1 + 1, `двойной клик записал ${await onServer() - n1} правок вместо одной`);
     check(Number(await now('toys')) === toys0 + 1, `игрушек после выдачи ${await now('toys')}, ожидалось ${toys0 + 1}`);
   });
+
+  await scenario('РГ: вход, расход предмета → экран, PIN не остаётся', async ({ mock, newPage, check, urls, logs }) => {
+    const pinOf = (group) => mock.groupPins[group];
+    const wrongOf = (pin) => String((Number(pin) + 1) % 1_000_000).padStart(6, '0');
+    const post = async (body) => (await fetch(mock.url, {
+      method: 'POST', headers: { 'content-type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body),
+    })).json();
+    const usesOnServer = async () => (await publicSnapshot(mock)).overrides.filter((o) => o.group === 'СР1' && o.kind === 'useToy').length;
+    // запас игрушек СР1 не предполагаем: берём трёх про запас админской правкой (двойному клику нужен остаток)
+    const given = await post({ action: 'setOverride', pin: MOCK_ADMIN_PIN, date: '2026-11-12', group: 'СР1', kind: 'toys', delta: 3 });
+    check(given.ok === true, `выдать три игрушки СР1: ${given.error}`);
+
+    const screen = await newPage();
+    await screen.goto(urls.screen, { waitUntil: 'networkidle' });
+    await screen.waitForSelector('[data-group="СР1"] .sub', { timeout: 8_000 });
+
+    const rg = await newPage();
+    await rg.goto(urls.rg, { waitUntil: 'networkidle' });
+    const pin = rg.locator('form[data-login] input[type="password"]');
+    check(await pin.count() === 1, 'нет поля PIN во входе РГ');
+    check(await pin.getAttribute('name') === null, 'у поля PIN РГ есть атрибут name');
+    check(await rg.locator('form[data-login] [data-field="group"] option').count() === GROUP_CODES.length, 'в списке входа не шесть групп');
+    const alert = () => textOf(rg, '[role="alert"]');
+    const tryLogin = async (group, value) => {
+      await rg.selectOption('form[data-login] [data-field="group"]', group);
+      await pin.fill(value);
+      await rg.click('form[data-login] button[type="submit"]');
+    };
+    const loginAs = async (group) => {
+      await tryLogin(group, pinOf(group));
+      await rg.waitForSelector(`[data-group="${group}"]`, { timeout: 8_000 }).catch(() => {});
+    };
+
+    // неверный PIN и PIN чужой группы; поле после отправки пустое
+    await tryLogin('СР1', wrongOf(pinOf('СР1')));
+    check((await waitForText(rg, '[role="alert"]', 'Неверный PIN')).includes('Неверный PIN'), `неверный PIN: «${await alert()}»`);
+    check(await pin.inputValue() === '', 'после отправки в поле PIN остался текст');
+    await tryLogin('СР2', pinOf('СР1'));
+    await rg.waitForFunction(() => document.querySelector('[role="alert"]')?.textContent === 'Неверный PIN', null, { timeout: 5_000 }).catch(() => {});
+    check((await alert()).includes('Неверный PIN') && await rg.locator('[data-group]').count() === 0, `PIN СР1 при выбранной СР2: «${await alert()}»`);
+
+    await loginAs('СР1');
+    check(await rg.locator('[data-group]').count() === 1 && await rg.locator('[data-group="СР1"]').count() === 1, 'после входа видна не только СР1');
+    check(/^(стадия \d+ из 15|яйцо)/.test(await textOf(rg, '[data-stage-text]')), `подпись стадии: «${await textOf(rg, '[data-stage-text]')}»`);
+    check(await rg.locator('button[data-use="medkit"]').count() === 1, 'нет кнопки «Аптечка»');
+    const toys = () => rg.$eval('[data-count="toys"]', (e) => Number(e.textContent)).catch(() => NaN);
+    const toys0 = await toys();
+    check(Number.isFinite(toys0) && toys0 >= 3, `запас игрушек СР1 на странице РГ ${toys0}, ожидалось не меньше трёх`);
+
+    // «Игрушка» → запас −1 здесь и рука у СР1 на общем экране
+    const hand = screen.waitForSelector('[data-group="СР1"] .hand[data-item="toy"]', { state: 'attached', timeout: 8_000 }).then(() => true, () => false);
+    await rg.click('button[data-use="toy"]');
+    await rg.waitForFunction((want) => Number(document.querySelector('[data-count="toys"]')?.textContent) === want, toys0 - 1, { timeout: 8_000 }).catch(() => {});
+    check(await toys() === toys0 - 1, `после «Игрушки» запас ${await toys()}, ожидалось ${toys0 - 1}`);
+    check(await usesOnServer() === 1, `на сервере расходов игрушек ${await usesOnServer()}, ожидался один`);
+    check(await hand, 'на общем экране у СР1 не появилась рука с игрушкой за 8 с после расхода');
+
+    // быстрый двойной клик тратит один предмет
+    await rg.dblclick('button[data-use="toy"]');
+    await rg.waitForFunction((want) => Number(document.querySelector('[data-count="toys"]')?.textContent) === want, toys0 - 2, { timeout: 8_000 }).catch(() => {});
+    await rg.waitForTimeout(1_000); // если бы второй клик ушёл на сервер, запас упал бы ещё
+    check(await toys() === toys0 - 2, `после двойного клика запас ${await toys()}, ожидалось ${toys0 - 2}`);
+    check(await usesOnServer() === 2, `после двойного клика на сервере расходов ${await usesOnServer()}, ожидалось два`);
+    await screen.waitForFunction((want) => Number(document.querySelector('[data-group="СР1"] [data-count="toys"]')?.textContent) === want, toys0 - 2, { timeout: 8_000 }).catch(() => {});
+    check(Number(await textOf(screen, '[data-group="СР1"] [data-count="toys"]')) === toys0 - 2, 'общий экран показывает другой запас игрушек, чем страница РГ');
+
+    // нулевой запас: обнуляем игрушки админской правкой (не больше 20 за раз), страница вновь входит и блокирует кнопку
+    for (let left = toys0 - 2; left > 0; left -= 20) {
+      const r = await post({ action: 'setOverride', pin: MOCK_ADMIN_PIN, date: '2026-11-12', group: 'СР1', kind: 'toys', delta: -Math.min(left, 20) });
+      check(r.ok === true, `обнулить игрушки СР1: ${r.error}`);
+    }
+    await rg.reload({ waitUntil: 'networkidle' });
+    await loginAs('СР1');
+    check(await toys() === 0, `после обнуления запас игрушек ${await toys()}`);
+    check(await rg.locator('button[data-use="toy"]').isDisabled(), 'при нулевом запасе кнопка «Игрушка» не заблокирована');
+
+    // выход: PIN нигде не остаётся
+    await rg.click('button[data-logout]');
+    await rg.waitForSelector('form[data-login]', { timeout: 5_000 }).catch(() => {});
+    check(await rg.locator('form[data-login]').count() === 1 && await rg.locator('[data-group]').count() === 0, 'после выхода не показан вход или остался питомец');
+    const dump = await rg.evaluate(() => JSON.stringify({
+      html: document.documentElement.outerHTML, href: location.href,
+      local: { ...localStorage }, session: { ...sessionStorage },
+    }));
+    const seen = `${dump}\n${logs.join('\n')}`;
+    for (const group of GROUP_CODES) check(!seen.includes(pinOf(group)), `PIN группы ${group} остался в DOM, адресе, хранилище или консоли после выхода`);
+  });
 } finally {
   await browser.close();
   await server.close();
@@ -534,4 +622,4 @@ if (failures.length) {
   console.error(`FAIL (${failures.length}):\n- ${failures.join('\n- ')}`);
   process.exit(1);
 }
-console.log('OK: админка — вход и блокировка, оплаты → экран, импорт оплат и воронки, штат и отсутствия, нормы и ручные правки → экран, PIN групп не остаются в DOM, хранилище и консоли');
+console.log('OK: админка — вход и блокировка, оплаты → экран, импорт оплат и воронки, штат и отсутствия, нормы и ручные правки → экран, РГ — вход и расход предмета → экран, PIN групп не остаются в DOM, хранилище и консоли');

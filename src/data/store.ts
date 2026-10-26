@@ -5,6 +5,8 @@ export interface Store {
   start(): void;
   stop(): void;
   current(): Snapshot | null;
+  /** Прочитать снимок сейчас, не дожидаясь опроса (после записи): идущий запрос мог выйти раньше записи, поэтому читает заново. */
+  refresh(): Promise<void>;
 }
 
 const POLL_MS = 15_000;
@@ -23,11 +25,9 @@ export function createStore(opts: {
   const subscribers = new Set<(s: Snapshot) => void>();
   let snapshot: Snapshot | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
-  let busy = false;
+  let inflight: Promise<void> | null = null;
 
-  async function load(): Promise<void> {
-    if (busy) return;
-    busy = true;
+  async function fetchOnce(): Promise<void> {
     try {
       const next = await opts.fetchSnapshot(snapshot?.version);
       if (next !== 'unchanged' && next.version !== snapshot?.version) {
@@ -42,9 +42,12 @@ export function createStore(opts: {
       }
     } catch {
       // нет связи: остаётся последний снимок, следующий тик повторит запрос
-    } finally {
-      busy = false;
     }
+  }
+
+  function load(): Promise<void> {
+    inflight ??= fetchOnce().finally(() => { inflight = null; });
+    return inflight;
   }
 
   return {
@@ -62,5 +65,9 @@ export function createStore(opts: {
       timer = null;
     },
     current: () => snapshot,
+    async refresh() {
+      if (inflight) await inflight;
+      await load();
+    },
   };
 }

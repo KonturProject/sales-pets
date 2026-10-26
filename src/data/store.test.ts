@@ -113,6 +113,43 @@ describe('createStore', () => {
     expect(fetchSnapshot).toHaveBeenCalledTimes(4);
   });
 
+  test('refresh читает снимок сразу, без опроса, и будит подписчиков', async () => {
+    const fetchSnapshot = vi.fn().mockResolvedValueOnce(snap(1)).mockResolvedValueOnce(snap(2));
+    const store = createStore({ fetchSnapshot, pollMs: 1000, visible: () => true });
+    const seen: number[] = [];
+    store.subscribe((s) => seen.push(s.version));
+    await store.refresh();
+    expect(seen).toEqual([1]);
+    await store.refresh();
+    expect(fetchSnapshot).toHaveBeenNthCalledWith(2, 1);
+    expect(seen).toEqual([1, 2]);
+  });
+
+  test('refresh при идущем опросе ждёт его и читает снимок заново: ответ мог выйти до записи', async () => {
+    let finish: (v: Snapshot) => void = () => {};
+    const fetchSnapshot = vi.fn()
+      .mockImplementationOnce(() => new Promise<Snapshot>((resolve) => { finish = resolve; }))
+      .mockResolvedValueOnce(snap(2));
+    const store = createStore({ fetchSnapshot, pollMs: 1000, visible: () => true });
+    store.start();
+    const refreshed = store.refresh();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchSnapshot).toHaveBeenCalledTimes(1);
+    finish(snap(1));
+    await refreshed;
+    expect(fetchSnapshot).toHaveBeenCalledTimes(2);
+    expect(store.current()?.version).toBe(2);
+    store.stop();
+  });
+
+  test('refresh не бросает при обрыве связи: остаётся последний снимок', async () => {
+    const fetchSnapshot = vi.fn().mockResolvedValueOnce(snap(1)).mockRejectedValueOnce(new Error('network'));
+    const store = createStore({ fetchSnapshot, pollMs: 1000, visible: () => true });
+    await store.refresh();
+    await expect(store.refresh()).resolves.toBeUndefined();
+    expect(store.current()?.version).toBe(1);
+  });
+
   test('новый запрос не начинается, пока предыдущий не вернулся', async () => {
     let finish: (v: 'unchanged') => void = () => {};
     const fetchSnapshot = vi.fn(() => new Promise<'unchanged'>((resolve) => { finish = resolve; }));

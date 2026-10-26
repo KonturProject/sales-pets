@@ -9,6 +9,7 @@ export default defineConfig({
       input: {
         index: fileURLToPath(new URL('./index.html', import.meta.url)),
         admin: fileURLToPath(new URL('./admin.html', import.meta.url)),
+        rg: fileURLToPath(new URL('./rg.html', import.meta.url)),
       },
     },
   },

@@ -3,7 +3,7 @@ import type { Mood, PetState } from '@/engine/pet';
 import type { GroupCode } from '@/engine/types';
 
 const MOOD_LABEL: Record<Mood, string> = { ok: '', bored: 'скучает', sad: 'грустит', sick: 'болеет', dead: 'погиб' };
-const MAX_STAGE = 15;
+export const MAX_STAGE = 15;
 /** Длина анимации руки в `room.css`; следующая рука на том же гнезде ждёт, пока предыдущая уйдёт. */
 const HAND_MS = 1800;
 /** Рука убирается сама, даже если `animationend` не придёт (вкладка на паузе, анимации отключены). */
