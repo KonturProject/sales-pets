@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { defaultConfig } from '@/engine/config';
 import type { Absence, Employee } from '@/engine/staff';
 import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
-import type { Snapshot } from './api';
+import type { Snapshot, SnapshotOverride } from './api';
 import { buildFacts, DEFAULT_DAILY_NORM, normalizeName } from './facts';
 
 const emp = (id: string, name: string, group: GroupCode = 'СР1', extra: Partial<Employee> = {}): Employee => ({
@@ -11,8 +11,19 @@ const emp = (id: string, name: string, group: GroupCode = 'СР1', extra: Partia
 });
 const snap = (over: Partial<Snapshot> = {}): Snapshot => ({
   version: 1, serverNow: '2026-11-12T10:00:00+03:00', funnelThrough: null, paymentsImportedThrough: null,
-  config: {}, staff: [], absences: [], payments: [], provisional: [], funnel: [], ...over,
+  config: {}, staff: [], absences: [], payments: [], provisional: [], funnel: [], overrides: [], ...over,
 });
+const ov = (id: number, date: DateStr, group: GroupCode, kind: SnapshotOverride['kind'], delta = 1): SnapshotOverride => ({
+  id, date, group, kind, delta,
+});
+/** У СР1 к 3 ноября по одной аптечке и игрушке (день 2 ноября выполнен), воронка загружена по 2 ноября. */
+const withStock = (over: Partial<Snapshot> = {}) =>
+  snap({
+    staff: [emp('e1', 'Тест Иванов')],
+    funnelThrough: '2026-11-02',
+    funnel: [{ employeeId: 'e1', date: '2026-11-02', quality: 5, long: 3 }],
+    ...over,
+  });
 const pay = (date: DateStr, group: GroupCode, author: string, invoice: string) => ({ date, group, author, invoice });
 
 describe('buildFacts', () => {
@@ -154,6 +165,76 @@ describe('buildFacts', () => {
     expect(DEFAULT_DAILY_NORM).toBe(4);
     expect(buildFacts(snap({ staff, payments }), '2026-11-12').states.СР1.satiety).toBe(2 / DEFAULT_DAILY_NORM);
     expect(buildFacts(snap({ staff, payments, config: { dailyNorm: 2 } }), '2026-11-12').states.СР1.satiety).toBe(1);
+  });
+
+  test('испорченная дневная норма в config заменяется умолчанием, а не делит на ноль', () => {
+    const payments = [pay('2026-11-12', 'СР1', 'Тест Иванов', 'A-1'), pay('2026-11-12', 'СР1', 'Тест Иванов', 'A-2')];
+    const staff = [emp('e1', 'Тест Иванов')];
+    for (const dailyNorm of [0, -3, 2.5, 'x', 1001]) {
+      const config = { dailyNorm } as unknown as Snapshot['config'];
+      expect(buildFacts(snap({ staff, payments, config }), '2026-11-12').states.СР1.satiety).toBe(2 / DEFAULT_DAILY_NORM);
+    }
+  });
+
+  test('нормы и пороги снимка доходят до движка и до рейтинга', () => {
+    const { rank } = buildFacts(snap({ config: { maxPiles: 7 } }), '2026-11-12');
+    expect(rank.cfg).toMatchObject({ ...defaultConfig, maxPiles: 7 });
+  });
+
+  test('изменённые нормы из снимка меняют оценку дня', () => {
+    const base: Partial<Snapshot> = {
+      staff: [emp('e1', 'Тест Иванов')],
+      funnelThrough: '2026-11-02',
+      funnel: [{ employeeId: 'e1', date: '2026-11-02', quality: 1, long: 1 }],
+    };
+    // 1 и 1 — меньше нормы опытного (5 и 3): день не выполнен, кучка
+    expect(buildFacts(snap(base), '2026-11-03').states.СР1).toMatchObject({ piles: 1, medkits: 0, toys: 0 });
+    const lowered = snap({ ...base, config: { norms: { experienced: { quality: 1, long: 1 } } } });
+    expect(buildFacts(lowered, '2026-11-03').states.СР1).toMatchObject({ piles: 0, medkits: 1, toys: 1 });
+  });
+
+  test('пороги стадий снимка меняют стадию', () => {
+    const payments = Array.from({ length: 7 }, (_, i) => pay('2026-11-03', 'СР1', 'Тест Иванов', `A-${i}`));
+    const staff = [emp('e1', 'Тест Иванов')];
+    expect(buildFacts(snap({ staff, payments }), '2026-11-03').states.СР1.stage).toBe(1); // порог 6
+    const thresholds = Array.from({ length: 15 }, (_, i) => 5 + (i + 1) * 5);
+    expect(buildFacts(snap({ staff, payments, config: { stageThresholds: thresholds } }), '2026-11-03').states.СР1.stage).toBe(0);
+  });
+
+  test('ручная правка кучек на день попадает в состояние группы', () => {
+    const s = snap({ overrides: [ov(1, '2026-11-03', 'СР1', 'piles', 2)] });
+    expect(buildFacts(s, '2026-11-03').states.СР1.piles).toBe(2);
+    expect(buildFacts(s, '2026-11-02').states.СР1.piles).toBe(0); // правка из будущего пока не действует
+  });
+
+  test('правки применяются по возрастанию id, как бы ни лежал массив', () => {
+    const rows = [ov(5, '2026-11-03', 'СР1', 'piles', -1), ov(3, '2026-11-03', 'СР1', 'piles', 2)];
+    // +2, затем −1 → 1 (в обратном порядке: −1 упрётся в ноль, потом +2 → 2)
+    expect(buildFacts(snap({ overrides: rows }), '2026-11-03').states.СР1.piles).toBe(1);
+  });
+
+  test('правки другой группы не влияют на эту', () => {
+    const s = snap({ overrides: [ov(1, '2026-11-03', 'СР2', 'piles', 2)] });
+    const { states } = buildFacts(s, '2026-11-03');
+    expect(states.СР1.piles).toBe(0);
+    expect(states.СР2.piles).toBe(2);
+  });
+
+  test('расход аптечки и игрушки при запасе уменьшает его, даже если день позже funnelThrough', () => {
+    expect(buildFacts(withStock(), '2026-11-12').states.СР1).toMatchObject({ medkits: 1, toys: 1 });
+    const used = withStock({ overrides: [ov(1, '2026-11-12', 'СР1', 'useMedkit'), ov(2, '2026-11-12', 'СР1', 'useToy')] });
+    expect(buildFacts(used, '2026-11-12').states.СР1).toMatchObject({ medkits: 0, toys: 0 });
+  });
+
+  test('расход при нулевом запасе ничего не меняет', () => {
+    const empty = buildFacts(snap(), '2026-11-12').states;
+    const used = snap({ overrides: [ov(1, '2026-11-12', 'СР1', 'useMedkit'), ov(2, '2026-11-12', 'СР1', 'useToy')] });
+    expect(buildFacts(used, '2026-11-12').states).toEqual(empty);
+  });
+
+  test('результат считается один раз на пару «снимок и день», в том числе с config в снимке', () => {
+    const s = snap({ config: { maxPiles: 7 } });
+    expect(buildFacts(s, '2026-11-12')).toBe(buildFacts(s, '2026-11-12'));
   });
 
   test('результат считается один раз на пару «снимок и день»', () => {

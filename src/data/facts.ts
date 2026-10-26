@@ -1,11 +1,12 @@
 import { workingDaysBetween } from '@/engine/calendar';
-import { defaultConfig, type Config } from '@/engine/config';
+import type { Config } from '@/engine/config';
 import { evaluateDay } from '@/engine/evaluate';
 import { simulate, type PetState } from '@/engine/pet';
 import { uniqueInvoices, type PaymentRow, type RankData } from '@/engine/ranking';
 import { normalizeName } from '@/engine/staff';
 import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
 import type { Snapshot } from './api';
+import { configOf, dailyNormOf } from './config';
 
 export { normalizeName };
 
@@ -21,8 +22,11 @@ export interface Facts {
 
 const cache = new WeakMap<Snapshot, Map<DateStr, { cfg: Config; facts: Facts }>>();
 
-/** Состояния групп и данные рейтингов из снимка на дату `asOf`; на пару «снимок, дата» считается один раз. */
-export function buildFacts(s: Snapshot, asOf: DateStr, cfg: Config = defaultConfig): Facts {
+/**
+ * Состояния групп и данные рейтингов из снимка на дату `asOf`; на пару «снимок, дата» считается один раз.
+ * Нормы и пороги берутся из `config` снимка, если `cfg` не задан.
+ */
+export function buildFacts(s: Snapshot, asOf: DateStr, cfg: Config = configOf(s.config)): Facts {
   const hit = cache.get(s)?.get(asOf);
   if (hit && hit.cfg === cfg) return hit.facts;
   const facts = compute(s, asOf, cfg);
@@ -64,14 +68,17 @@ function compute(s: Snapshot, asOf: DateStr, cfg: Config): Facts {
   const through = s.funnelThrough;
   const funnel = through === null ? [] : s.funnel.filter((f) => f.date <= through);
   const evalDays = through === null ? [] : workingDaysBetween(cfg.startDate, through < asOf ? through : asOf, cfg);
-  const dailyNorm = s.config.dailyNorm ?? DEFAULT_DAILY_NORM;
+  const dailyNorm = dailyNormOf(s.config) ?? DEFAULT_DAILY_NORM;
+  // правки одного дня движок применяет по порядку, а порядок — это id
+  const byId = [...s.overrides].sort((a, b) => a.id - b.id);
 
   const states = Object.fromEntries(
     GROUPS.map((group) => {
       const results = Object.fromEntries(
         evalDays.map((date) => [date, evaluateDay(group, date, s.staff, s.absences, funnel, cfg)]),
       );
-      return [group, simulate({ group, paymentsByDay: paymentsByDay[group], results, overrides: [], dailyNorm }, asOf, cfg)];
+      const overrides = byId.filter((o) => o.group === group).map(({ date, kind, delta }) => ({ date, kind, delta }));
+      return [group, simulate({ group, paymentsByDay: paymentsByDay[group], results, overrides, dailyNorm }, asOf, cfg)];
     }),
   ) as Record<GroupCode, PetState>;
 

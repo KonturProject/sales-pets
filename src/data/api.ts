@@ -1,7 +1,29 @@
 import type { FunnelDay } from '@/engine/evaluate';
+import type { Override } from '@/engine/pet';
 import type { Absence, Employee } from '@/engine/staff';
-import type { DateStr, GroupCode } from '@/engine/types';
+import type { DateStr, GroupCode, Level } from '@/engine/types';
 import type { ImportedPayment } from '@/import/payments';
+
+/** Ручная правка админа или расход РГ (тот же `kind`, что у движка); без ключа повтора `ref`. */
+export interface SnapshotOverride {
+  id: number;
+  date: DateStr;
+  group: GroupCode;
+  kind: Override['kind'];
+  delta: number;
+}
+
+/** Настройки, которые админ меняет через `setConfig`; чего нет — берётся из `defaultConfig`. Календарь игры не правится. */
+export interface SnapshotConfig {
+  dailyNorm?: number;
+  maxPiles?: number;
+  boredomBelow?: number;
+  sickDaysNoPay?: number;
+  sickPilesAbove?: number;
+  deathDaysNoPay?: number;
+  norms?: Partial<Record<Level, { quality?: number; long?: number }>>;
+  stageThresholds?: number[];
+}
 
 /** Публичный снимок фактов, который отдаёт бэкенд (без сумм, хешей и PIN). */
 export interface Snapshot {
@@ -9,12 +31,18 @@ export interface Snapshot {
   serverNow: string;
   funnelThrough: DateStr | null;
   paymentsImportedThrough: DateStr | null;
-  config: { dailyNorm?: number };
+  config: SnapshotConfig;
   staff: Employee[];
   absences: Absence[];
   payments: ImportedPayment[];
   provisional: { date: DateStr; group: GroupCode; count: number }[];
   funnel: FunnelDay[];
+  overrides: SnapshotOverride[];
+}
+
+/** «Сегодня» по Москве глазами сервера (R23): от него считают границы импорта, а не от часов компьютера. */
+export function serverToday(s: Snapshot): DateStr {
+  return s.serverNow.slice(0, 10);
 }
 
 export type ApiErrorCode = 'invalid_pin' | 'locked' | 'bad_request' | 'server_error' | 'network';

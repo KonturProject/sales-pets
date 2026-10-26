@@ -1,11 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { ApiError, createApi, resolveBackend } from './api';
+import { ApiError, createApi, resolveBackend, serverToday, type Snapshot } from './api';
 
 const json = (body: unknown, init?: ResponseInit) => new Response(JSON.stringify(body), init);
 const BASE = 'https://script.example/exec';
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
+
+describe('serverToday', () => {
+  test('дата из московского времени сервера, а не из часов машины', () => {
+    const at = (serverNow: string) => serverToday({ serverNow } as Snapshot);
+    expect(at('2026-11-12T10:00:00+03:00')).toBe('2026-11-12');
+    expect(at('2026-11-12T00:05:00+03:00')).toBe('2026-11-12');
+    expect(at('2026-11-12T23:59:59+03:00')).toBe('2026-11-12');
+  });
+});
 
 describe('api.get', () => {
   test('идёт без cookie, ?since= добавляется только с версией; ответ отдаётся как есть', async () => {
