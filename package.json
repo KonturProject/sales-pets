@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "check:render": "node tools/check-render.mjs",
+    "check:admin": "node tools/check-admin.mjs",
     "mock-backend": "node tools/mock-backend.mjs"
   },
   "devDependencies": {
