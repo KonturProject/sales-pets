@@ -81,6 +81,17 @@ export function resolveBackend(search: string, o: { dev: boolean; baked: string 
   return o.dev || LOCAL_HOSTS.has(url.hostname) ? raw : o.baked;
 }
 
+/**
+ * Период опроса из `?pollMs=` (R24): только для проверок, поэтому действует там же, где `?backend=` (разработка или локальный хост).
+ * Целое от 500 до 15000; всё остальное — `undefined`, то есть обычные 15 с.
+ */
+export function resolvePollMs(search: string, o: { dev: boolean; hostname: string }): number | undefined {
+  const raw = new URLSearchParams(search).get('pollMs');
+  if (raw === null || !/^\d+$/.test(raw) || !(o.dev || LOCAL_HOSTS.has(o.hostname))) return undefined;
+  const ms = Number(raw);
+  return ms >= 500 && ms <= 15_000 ? ms : undefined;
+}
+
 export function backendUrl(): string {
   return resolveBackend(location.search, { dev: import.meta.env.DEV, baked: String(import.meta.env.VITE_BACKEND_URL ?? '') });
 }

@@ -4,6 +4,10 @@ import type { GroupCode } from '@/engine/types';
 
 const MOOD_LABEL: Record<Mood, string> = { ok: '', bored: 'скучает', sad: 'грустит', sick: 'болеет', dead: 'погиб' };
 const MAX_STAGE = 15;
+/** Длина анимации руки в `room.css`; следующая рука на том же гнезде ждёт, пока предыдущая уйдёт. */
+const HAND_MS = 1800;
+/** Рука убирается сама, даже если `animationend` не придёт (вкладка на паузе, анимации отключены). */
+const HAND_SAFETY_MS = 3000;
 
 /** Размер питомца: от 0.55 при вылуплении до 1 на последней стадии (пока одна картинка на группу). */
 export function petScale(stage: number): number {
@@ -38,6 +42,7 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: s
 /** Гнездо одной группы: питомец/яйцо/надгробие, кучки с мухами, сытость, ящики с аптечками и игрушками. */
 export class PetView {
   readonly el: HTMLElement;
+  private readonly stage: HTMLElement;
   private readonly sprite: HTMLImageElement;
   private readonly creature: HTMLElement;
   private readonly piles: HTMLElement;
@@ -47,6 +52,7 @@ export class PetView {
   private readonly medkits: HTMLElement;
   private readonly toys: HTMLElement;
   private pilesShown = -1;
+  private hands = 0;
 
   constructor(readonly group: GroupCode) {
     this.el = el('section', 'spot');
@@ -57,13 +63,13 @@ export class PetView {
     this.sub = el('span', 'sub');
     head.append(el('h2', 'label', group), this.sub);
 
-    const stage = el('div', 'stage');
+    this.stage = el('div', 'stage');
     this.sprite = img('sprite', ART.grave);
     this.creature = el('div', 'creature');
     this.creature.append(this.sprite);
     this.piles = el('div', 'piles');
     this.badge = el('span', 'badge');
-    stage.append(img('nest', ART.nest), this.creature, this.piles, this.badge);
+    this.stage.append(img('nest', ART.nest), this.creature, this.piles, this.badge);
 
     this.meter = el('i', '');
     const meter = el('div', 'meter');
@@ -85,7 +91,26 @@ export class PetView {
     const boxes = el('div', 'boxes');
     boxes.append(medkits.wrap, toys.wrap);
 
-    this.el.append(head, stage, meter, boxes);
+    this.el.append(head, this.stage, meter, boxes);
+  }
+
+  /** Рука с предметом над гнездом (R20): на состояние не влияет и сама убирается по окончании анимации. */
+  playHand(item: 'medkit' | 'toy'): void {
+    const hand = el('div', 'hand');
+    hand.dataset.item = item;
+    hand.append(img('', item === 'medkit' ? ART.medkit : ART.toy));
+    const wait = this.hands * HAND_MS;
+    hand.style.setProperty('--hand-delay', `${wait}ms`);
+    this.stage.append(hand);
+    this.hands++;
+    const remove = () => {
+      if (!hand.isConnected) return;
+      clearTimeout(timer);
+      hand.remove();
+      this.hands--;
+    };
+    const timer = setTimeout(remove, wait + HAND_SAFETY_MS);
+    hand.addEventListener('animationend', remove);
   }
 
   update(s: PetState): void {

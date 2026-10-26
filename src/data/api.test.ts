@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { ApiError, createApi, resolveBackend, serverToday, type Snapshot } from './api';
+import { ApiError, createApi, resolveBackend, resolvePollMs, serverToday, type Snapshot } from './api';
 
 const json = (body: unknown, init?: ResponseInit) => new Response(JSON.stringify(body), init);
 const BASE = 'https://script.example/exec';
@@ -113,6 +113,34 @@ describe('resolveBackend (R11)', () => {
     expect(resolveBackend(`?backend=${encodeURIComponent(other)}`, { dev: true, baked })).toBe(other);
     for (const bad of ['javascript:alert(1)', 'ftp://staging.example/exec', 'не адрес', '']) {
       expect(resolveBackend(`?backend=${encodeURIComponent(bad)}`, { dev: true, baked })).toBe(baked);
+    }
+  });
+});
+
+describe('resolvePollMs (R24)', () => {
+  const dev = { dev: true, hostname: 'localhost' };
+  const prod = { dev: false, hostname: 'sales.github.io' };
+
+  test('без параметра — умолчание хранилища', () => {
+    expect(resolvePollMs('', dev)).toBeUndefined();
+    expect(resolvePollMs('?asOf=2026-11-12', dev)).toBeUndefined();
+  });
+
+  test('целое от 500 до 15000 принимается в разработке и на локальном хосте', () => {
+    expect(resolvePollMs('?pollMs=1000', dev)).toBe(1000);
+    expect(resolvePollMs('?pollMs=500', dev)).toBe(500);
+    expect(resolvePollMs('?pollMs=15000', dev)).toBe(15000);
+    expect(resolvePollMs('?pollMs=1000', { dev: false, hostname: 'localhost' })).toBe(1000);
+    expect(resolvePollMs('?pollMs=1000', { dev: false, hostname: '127.0.0.1' })).toBe(1000);
+  });
+
+  test('на боевом хосте параметр игнорируется: опрос чаще 15 с нагрузил бы бэкенд', () => {
+    expect(resolvePollMs('?pollMs=1000', prod)).toBeUndefined();
+  });
+
+  test('вне диапазона и не целое — умолчание, а не обрезка', () => {
+    for (const bad of ['499', '15001', '0', '-1000', '1000.5', '1e3', 'abc', '']) {
+      expect(resolvePollMs(`?pollMs=${bad}`, dev), bad).toBeUndefined();
     }
   });
 });

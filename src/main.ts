@@ -1,5 +1,5 @@
 import './game/room.css';
-import { api, backendUrl } from '@/data/api';
+import { api, backendUrl, resolvePollMs } from '@/data/api';
 import { buildFacts } from '@/data/facts';
 import { createStore } from '@/data/store';
 import { buildDemo, groupFacts } from '@/demo/demoFacts';
@@ -10,6 +10,7 @@ import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
 import { PowerSaver } from '@/game/PowerSaver';
 import { mountRanking } from '@/game/RankingPanel';
 import { mount } from '@/game/render';
+import { newUses } from '@/game/uses';
 
 /** Дата витрины по умолчанию: середина игры, видны все состояния. */
 const DEMO_AS_OF: DateStr = '2026-11-12';
@@ -51,17 +52,22 @@ function startLive(): void {
         throw e;
       }
     },
+    pollMs: resolvePollMs(location.search, { dev: import.meta.env.DEV, hostname: location.hostname }),
   });
   // панели создаются по первому снимку; store.current() после этого уже не пуст
   const facts = () => buildFacts(store.current()!, asOf());
-  let view: { update(): void } | undefined;
+  let view: ReturnType<typeof mount> | undefined;
   let ranking: { update(): void } | undefined;
+  let maxSeen: number | null = null; // наибольший id расхода РГ, уже показанный рукой (R20)
   store.subscribe((snapshot) => {
     const { unmatchedAuthors } = buildFacts(snapshot, asOf());
     if (unmatchedAuthors.length) console.warn(`Авторы оплат не найдены в штате (${unmatchedAuthors.length}):`, unmatchedAuthors);
+    const { uses, max } = newUses(maxSeen, snapshot.overrides);
+    maxSeen = max;
     if (view && ranking) {
       view.update();
       ranking.update();
+      for (const u of uses) view.playHand(u.group, u.kind === 'useMedkit' ? 'medkit' : 'toy');
     } else {
       view = mount(roomRoot, () => facts().states);
       ranking = mountRanking(rankingRoot, () => facts().rank, { asOf });

@@ -4,7 +4,10 @@ import { GROUPS, type GroupCode } from '@/engine/types';
 import { PetView } from './PetView';
 
 /** Рисует комнату с шестью гнёздами; `update()` перечитывает состояния и обновляет DOM точечно. */
-export function mount(root: HTMLElement, getStates: () => Record<GroupCode, PetState>): { update(): void } {
+export function mount(
+  root: HTMLElement,
+  getStates: () => Record<GroupCode, PetState>,
+): { update(): void; playHand(group: GroupCode, item: 'medkit' | 'toy'): void } {
   const views = GROUPS.map((g) => new PetView(g));
   views.forEach((v, i) => v.el.style.setProperty('--delay', `${-i * 1.7}s`));
 
@@ -23,5 +26,5 @@ export function mount(root: HTMLElement, getStates: () => Record<GroupCode, PetS
     views.forEach((v) => v.update(states[v.group]));
   };
   update();
-  return { update };
+  return { update, playHand: (group, item) => views.find((v) => v.group === group)?.playHand(item) };
 }

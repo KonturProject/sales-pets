@@ -5,7 +5,7 @@
 import { existsSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 import { createServer } from 'vite';
-import { MOCK_VACATIONER, startMockBackend } from './mock-backend.mjs';
+import { MOCK_ADMIN_PIN, MOCK_VACATIONER, startMockBackend } from './mock-backend.mjs';
 
 const browserPath = [
   process.env.CHROME_PATH,
@@ -131,6 +131,40 @@ try {
   check(await valueOf('select[data-pick="group"]', (s) => s.value) === 'СР2', 'выбор группы сбросился после тика обновления');
   check(await valueOf('select[data-pick="day"]', (s) => s.value) === '2026-11-10', 'выбор дня сбросился после тика обновления');
 
+  // --- рука РГ (R20, R24): расход предмета подхватывает опрос; первый снимок после загрузки молчит.
+  // Запасы читаются из DOM, абсолютные числа не предполагаются; PIN группы в вывод не попадает.
+  const post = async (body) => (await fetch(mock.url, {
+    method: 'POST', headers: { 'content-type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body),
+  })).json();
+  const sr1 = (what) => `[data-group="СР1"] ${what}`;
+  const toysOfSr1 = async () => Number((await valueOf(sr1('[data-count="toys"]'), (e) => e.textContent))?.match(/\d+/)?.[0]);
+  const live1s = `${live}&pollMs=1000`;
+  await page.goto(live1s, { waitUntil: 'networkidle' });
+  await page.waitForSelector('[data-group]', { timeout: 8_000 }).catch(() => {});
+  check(await page.$$eval('.hand', (h) => h.length) === 0, 'рука: до расхода на экране уже есть .hand');
+  let toysBefore = await toysOfSr1();
+  if (toysBefore === 0) {
+    // у СР1 на 12.11 игрушек нет: выдаём одну админской правкой, чтобы расход не был холостым
+    const given = await post({ action: 'setOverride', pin: MOCK_ADMIN_PIN, date: '2026-11-12', group: 'СР1', kind: 'toys', delta: 1 });
+    check(given.ok === true, `рука: выдать игрушку СР1: ${given.error}`);
+    await page.waitForFunction((s) => /\b1\b/.test(document.querySelector(s)?.textContent ?? ''), sr1('[data-count="toys"]'), { timeout: 5_000 }).catch(() => {});
+    toysBefore = await toysOfSr1();
+  }
+  check(Number.isFinite(toysBefore) && toysBefore > 0, `рука: запас игрушек СР1 не прочитан или нулевой (${toysBefore})`);
+  const used = await post({ action: 'useItem', group: 'СР1', groupPin: mock.groupPins['СР1'], item: 'toy', ref: `check-render-${Date.now()}` });
+  check(used.ok === true, `рука: useItem: ${used.error}`);
+  const hand = await page.waitForSelector(sr1('.hand[data-item="toy"]'), { state: 'attached', timeout: 5_000 }).catch(() => null);
+  check(hand !== null, 'рука: .hand[data-item="toy"] у СР1 не появилась за 5 с после расхода');
+  check(await toysOfSr1() === toysBefore - 1, `рука: игрушек СР1 ${await toysOfSr1()}, ожидалось ${toysBefore - 1}`);
+  check(await page.waitForSelector(sr1('.hand'), { state: 'detached', timeout: 6_000 }).then(() => true, () => false), 'рука: .hand не убралась за 6 с');
+  check(await page.$$eval('.hand', (h) => h.length) === 0, 'рука: после ухода остались .hand');
+
+  // после перезагрузки уже совершённый расход не проигрывается (первый снимок молчит)
+  await page.goto(live1s, { waitUntil: 'networkidle' });
+  await page.waitForSelector('[data-group]', { timeout: 8_000 }).catch(() => {});
+  await page.waitForTimeout(2_500);
+  check(await page.$$eval('.hand', (h) => h.length) === 0, 'рука: при перезагрузке показан прошлый расход');
+
   failures.push(...problems);
 
   // --- бэкенд недоступен: сообщение вместо белого экрана, без необработанных ошибок
@@ -153,4 +187,4 @@ if (failures.length) {
   console.error(`FAIL (${failures.length}):\n- ${failures.join('\n- ')}`);
   process.exit(1);
 }
-console.log('OK: демо и живой экран — 6 групп, состояния, кучки, счётчики; рейтинги, «Нет связи», консоль и картинки в порядке');
+console.log('OK: демо и живой экран — 6 групп, состояния, кучки, счётчики; рейтинги, рука РГ, «Нет связи», консоль и картинки в порядке');
