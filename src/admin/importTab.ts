@@ -16,7 +16,7 @@ const importError = (e: unknown): string =>
  * Блок «выбрать файл → разобрать → показать счётчики → подтвердить». `onFile` получает содержимое файла и
  * говорит `show(строки, действие)`; действие — кнопка подтверждения, её подпись и вызов. ФИО на экран не выводятся.
  */
-function fileBlock(id: string, title: string, accept: string, onFile: (buf: ArrayBuffer, show: Show) => Promise<void>): HTMLElement {
+export function fileBlock(id: string, title: string, accept: string, onFile: (buf: ArrayBuffer, show: Show) => Promise<void>): HTMLElement {
   const report = h('div', { 'data-report': id, role: 'status' });
   const alert = h('p', { role: 'alert', 'data-alert': id });
   const input = h('input', {
@@ -72,7 +72,7 @@ function fileBlock(id: string, title: string, accept: string, onFile: (buf: Arra
   return h('section', {}, h('h2', {}, title), h('label', {}, input), report, alert);
 }
 
-type Show = (lines: string[], action?: { label: string; run: () => Promise<string[]> }) => void;
+export type Show = (lines: string[], action?: { label: string; run: () => Promise<string[]> }) => void;
 
 /** Вкладка «Импорт»: выгрузка оплат и отчёт воронки из xlsx. Разбор файла — в браузере, на сервер уходят только факты. */
 export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {

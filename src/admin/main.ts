@@ -6,6 +6,7 @@ import { importTab } from './importTab';
 import { paymentsTab } from './payments';
 import { pinsTab } from './pins';
 import { createSession } from './session';
+import { staffTab } from './staffTab';
 
 const root = document.getElementById('app')!;
 
@@ -53,6 +54,7 @@ function showWork(): void {
     tabs([
       { id: 'payments', title: 'Оплаты', render: () => paymentsTab(ctx) },
       { id: 'import', title: 'Импорт', render: () => importTab(ctx) },
+      { id: 'staff', title: 'Сотрудники', render: () => staffTab(ctx) },
       { id: 'pins', title: 'PIN-коды', render: () => pinsTab(ctx) },
     ]),
   );

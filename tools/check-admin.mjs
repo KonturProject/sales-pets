@@ -4,7 +4,7 @@
 import { existsSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 import { createServer } from 'vite';
-import { MOCK_ADMIN_PIN, startMockBackend } from './mock-backend.mjs';
+import { MOCK_ADMIN_PIN, MOCK_VACATIONER, startMockBackend } from './mock-backend.mjs';
 
 const browserPath = [
   process.env.CHROME_PATH,
@@ -236,6 +236,158 @@ try {
     check(b.includes('Не тот файл'), `оплаты в «Воронке»: «${b}»`);
     check(await admin.locator('[data-confirm]').count() === 0, 'оплаты в «Воронке»: есть кнопка загрузки');
   });
+
+  await scenario('сотрудники: отпуск задним числом', async ({ mock, newPage, check, urls }) => {
+    // кто из СР1 (не отпускник мока) платил и в какой день: берём самый поздний такой день до 10.11
+    const snap = await publicSnapshot(mock);
+    const byName = new Map(snap.staff.map((e) => [e.name, e]));
+    const hit = snap.payments
+      .filter((p) => p.group === 'СР1' && p.author !== MOCK_VACATIONER && byName.has(p.author) && p.date > '2026-11-02' && p.date <= '2026-11-10')
+      .sort((a, b) => b.date.localeCompare(a.date))[0];
+    check(Boolean(hit), 'в моке нет оплат СР1 для сценария');
+    if (!hit) return;
+    const worker = byName.get(hit.author);
+    const day = hit.date;
+    const paidThatDay = snap.payments.filter((p) => p.group === 'СР1' && p.author === hit.author && p.date === day).length;
+    const dayBefore = new Date(Date.parse(`${day}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+    const dates = { before: dayBefore, day, today: '2026-11-12' };
+
+    // панель «Группа» (СР1 по умолчанию, накопительно) на дату: сотрудник → число оплат
+    const screen = await newPage();
+    const groupAt = async (asOf) => {
+      const url = new URL(urls.screen);
+      url.searchParams.set('asOf', asOf);
+      await screen.goto(url.href, { waitUntil: 'networkidle' });
+      await screen.waitForSelector('[data-block="group"] tbody tr[data-employee]', { timeout: 8_000 });
+      return screen.$$eval('[data-block="group"] tbody tr[data-employee]', (trs) =>
+        Object.fromEntries(trs.map((tr) => [tr.dataset.employee, parseInt(tr.querySelector('.value')?.textContent ?? '', 10)])));
+    };
+    const read = async () => ({ before: await groupAt(dates.before), day: await groupAt(dates.day), today: await groupAt(dates.today) });
+    const was = await read();
+    check(was.today[worker.id] >= paidThatDay && paidThatDay > 0, 'контроль: у сотрудника нет оплат в выбранный день');
+    check(worker.id in was.day, 'контроль: сотрудник не виден в рейтинге в день отпуска до отпуска');
+
+    const admin = await newPage();
+    await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="staff"]');
+    await admin.waitForSelector(`button[data-employee="${worker.id}"]`, { timeout: 8_000 });
+    await admin.click(`button[data-employee="${worker.id}"]`);
+    await admin.selectOption('[data-field="absenceKind"]', 'vacation');
+    await admin.fill('[data-field="absenceFrom"]', day);
+    await admin.fill('[data-field="absenceTo"]', day);
+    await admin.click('[data-add="absence"]');
+    const saved = await waitForText(admin, '[data-status="staff-form"]', 'Сохранено');
+    check(saved.includes('Сохранено'), `отпуск не сохранён: «${saved}» / «${await textOf(admin, '[data-alert="staff-form"]')}»`);
+    check((await textOf(admin, '[data-absences]')).includes(`${day.slice(8)}.${day.slice(5, 7)}.${day.slice(0, 4)}`), 'в карточке не видно добавленного отпуска');
+    check((await publicSnapshot(mock)).absences.some((a) => a.employeeId === worker.id && a.kind === 'vacation' && a.from === day && a.to === day), 'отпуск не записан на сервер');
+
+    const now = await read();
+    check(JSON.stringify(now.before) === JSON.stringify(was.before), `день до отпуска изменился: ${JSON.stringify(now.before)} ≠ ${JSON.stringify(was.before)}`);
+    check(!(worker.id in now.day), 'в день отпуска сотрудник остался в рейтинге группы');
+    const { [worker.id]: removed, ...restWas } = was.day;
+    check(JSON.stringify(now.day) === JSON.stringify(restWas) && removed !== undefined, 'в день отпуска изменились очки других сотрудников');
+    check(now.today[worker.id] === was.today[worker.id] - paidThatDay, `накопительно к 12.11: ${now.today[worker.id]}, ожидалось ${was.today[worker.id] - paidThatDay}`);
+    for (const [id, value] of Object.entries(was.today)) {
+      if (id !== worker.id) check(now.today[id] === value, 'к 12.11 изменились очки другого сотрудника');
+    }
+  });
+
+  await scenario('сотрудники: карточка, отсутствия, JSON', async ({ mock, newPage, check, urls }) => {
+    const snap0 = await publicSnapshot(mock);
+    const total = snap0.staff.length;
+    const staffNow = async () => (await publicSnapshot(mock)).staff;
+    const person = async (id) => (await staffNow()).find((e) => e.id === id);
+    const target = snap0.staff.find((e) => e.group === 'СР2');
+    const reason = 'декрет-проба';
+
+    const admin = await newPage();
+    await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="staff"]');
+    check((await waitForText(admin, '[data-staff-count]', 'Найдено')).includes(`Найдено: ${total} из ${total}`), 'без запроса в списке не весь штат');
+
+    // поиск без регистра
+    await admin.fill('[data-staff-search]', target.name.toLowerCase());
+    const found = Number((await textOf(admin, '[data-staff-count]')).match(/Найдено: (\d+)/)?.[1]);
+    check(found >= 1 && found < total, `поиск: найдено ${found} из ${total}`);
+    check(await admin.locator(`button[data-employee="${target.id}"]`).count() === 1, 'поиск не нашёл сотрудника по ФИО в нижнем регистре');
+    await admin.click(`button[data-employee="${target.id}"]`);
+    const status = () => textOf(admin, '[data-status="staff-form"]');
+    const alert = () => textOf(admin, '[data-alert="staff-form"]');
+    const save = async () => {
+      await admin.click('[data-save="staff"]');
+      await admin.waitForFunction(() => document.querySelector('[data-status="staff-form"]')?.textContent?.includes('Сохранено') || document.querySelector('[data-alert="staff-form"]')?.textContent, null, { timeout: 8_000 }).catch(() => {});
+    };
+
+    // исключение из рейтинга: без причины сервер не вызывается, с причиной — флаг на сервере, причина только у админа
+    await admin.check('[data-field="hiddenFromRating"]');
+    await save();
+    check((await alert()).includes('причин'), `скрытие без причины: «${await alert()}»`);
+    check((await person(target.id)).hiddenFromRating === false, 'скрытие без причины дошло до сервера');
+    await admin.fill('[data-field="hiddenReason"]', reason);
+    await save();
+    check((await status()).includes('Сохранено'), `скрытие с причиной: «${await alert()}»`);
+    check((await person(target.id)).hiddenFromRating === true, 'флаг исключения из рейтинга не записан');
+    check(!JSON.stringify(await publicSnapshot(mock)).includes(reason), 'причина исключения попала в публичный снимок');
+    check(await admin.inputValue('[data-field="hiddenReason"]') === reason, 'после записи причина не подгрузилась из getPrivate');
+
+    // увольнение и его отмена
+    await admin.fill('[data-field="fireDate"]', '2026-11-13');
+    await save();
+    check((await person(target.id)).fireDate === '2026-11-13', 'увольнение не записано');
+    await admin.fill('[data-field="fireDate"]', '');
+    await save();
+    check((await person(target.id)).fireDate === null, 'отмена увольнения не записана');
+
+    // перевод с будущей даты: сегодня сотрудник ещё в прежней группе
+    await admin.fill('[data-field="transferDate"]', '2026-11-16');
+    await admin.selectOption('[data-field="transferGroup"]', 'СР3');
+    await save();
+    check(JSON.stringify((await person(target.id)).transfers) === JSON.stringify([{ date: '2026-11-16', group: 'СР3' }]), 'перевод не записан');
+    check((await textOf(admin, '[data-staff-card]')).includes('16.11.2026'), 'в карточке не виден перевод');
+    check((await textOf(admin, `button[data-employee="${target.id}"]`)).endsWith('СР2'), 'до даты перевода сотрудник должен числиться в прежней группе');
+
+    // без изменений — сообщение, а не пустая запись
+    await save();
+    check((await alert()).includes('Ничего не изменено'), `повторное сохранение без изменений: «${await alert()}»`);
+
+    // снять отпуск отпускника мока
+    await admin.fill('[data-staff-search]', '');
+    const vacationer = snap0.staff.find((e) => e.name === MOCK_VACATIONER);
+    await admin.click(`button[data-employee="${vacationer.id}"]`);
+    check(await admin.locator('[data-absences] li').count() === 1, 'у отпускника мока в карточке не одно отсутствие');
+    await admin.click('[data-remove="2026-11-11"]');
+    await admin.waitForFunction(() => document.querySelectorAll('[data-absences] li').length === 0, null, { timeout: 8_000 }).catch(() => {});
+    check(!(await publicSnapshot(mock)).absences.some((a) => a.employeeId === vacationer.id), 'отпуск не снят на сервере');
+
+    // загрузка списка из JSON: превью без записи, потом подтверждение
+    const existing = snap0.staff.find((e) => e.group === 'СР5');
+    const jsonFile = (items) => ({ name: 'staff.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(items)) });
+    await admin.setInputFiles('[data-file="staff"]', jsonFile([
+      { name: 'Тест Json Новый', group: 'СР2', hireDate: '2026-11-09' },
+      { name: existing.name, group: 'СР5', baseLevel: 'rookie1' },
+    ]));
+    const preview = await waitForText(admin, '[data-report="staff"]', 'Записей: 2');
+    check(preview.includes('новых: 1; обновится: 1'), `превью списка: «${preview}»`);
+    check(!preview.includes('Тест'), 'в превью списка есть ФИО');
+    check((await staffNow()).length === total, 'превью записало штат до подтверждения');
+    await admin.click('[data-confirm="staff"]');
+    const done = await waitForText(admin, '[data-report="staff"]', 'Добавлено');
+    check(done.includes('Добавлено: 1; обновлено: 1.'), `итог загрузки списка: «${done}»`);
+    const after = await staffNow();
+    check(after.length === total + 1 && after.some((e) => e.name === 'Тест Json Новый' && e.group === 'СР2' && e.hireDate === '2026-11-09'), 'новый сотрудник из списка не добавлен');
+    check(after.find((e) => e.id === existing.id)?.baseLevel === 'rookie1', 'уровень существующего сотрудника не обновлён');
+    check((await textOf(admin, '[data-staff-count]')).includes(`Найдено: ${total + 1} из ${total + 1}`), 'после загрузки список штата не обновился');
+
+    // плохой список: ошибка с номером записи, без ФИО, без кнопки
+    await admin.setInputFiles('[data-file="staff"]', jsonFile([
+      { name: 'Тест Дубль', group: 'СР1' },
+      { name: 'тест  дубль', group: 'СР2' },
+    ]));
+    const bad = await waitForText(admin, '[data-report="staff"]', 'Запись 2');
+    check(bad.includes('Запись 2') && !bad.includes('Тест') && !bad.includes('тест'), `ошибка списка: «${bad}»`);
+    check(await admin.locator('[data-confirm="staff"]').count() === 0, 'у плохого списка есть кнопка загрузки');
+    check((await staffNow()).length === total + 1, 'плохой список изменил штат');
+  });
 } finally {
   await browser.close();
   await server.close();
@@ -245,4 +397,4 @@ if (failures.length) {
   console.error(`FAIL (${failures.length}):\n- ${failures.join('\n- ')}`);
   process.exit(1);
 }
-console.log('OK: админка — вход и блокировка, оплаты → экран, импорт оплат и воронки, PIN групп не остаются в DOM, хранилище и консоли');
+console.log('OK: админка — вход и блокировка, оплаты → экран, импорт оплат и воронки, штат и отсутствия, PIN групп не остаются в DOM, хранилище и консоли');
