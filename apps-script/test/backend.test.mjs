@@ -177,6 +177,7 @@ describe('GET', () => {
       payments: [],
       provisional: [],
       funnel: [],
+      overrides: [],
     });
   });
 
@@ -680,6 +681,131 @@ describe('setConfig', () => {
     admin(b, 'importPayments', { from: '2026-11-09', to: '2026-11-10', rows: [] });
     setConfig(b, { dailyNorm: 6 });
     expect(b.get()).toMatchObject({ funnelThrough: '2026-11-10', paymentsImportedThrough: '2026-11-10', config: { dailyNorm: 6 } });
+  });
+});
+
+describe('ручные правки и расходы РГ', () => {
+  const TODAY = '2026-11-12';
+  const setOverride = (b, extra = {}) => admin(b, 'setOverride', { date: TODAY, group: 'СР1', kind: 'piles', delta: 2, ...extra });
+  function withGroups() {
+    const b = loadBackend();
+    const { groupPins } = admin(b, 'setGroupPins');
+    const use = (group, item, ref, extra = {}) => b.post({ action: 'useItem', group, groupPin: groupPins[group], item, ref, ...extra });
+    return { b, groupPins, use };
+  }
+
+  test('setOverride: правка видна в GET по возрастанию id, версия растёт, служебных полей нет', () => {
+    const b = loadBackend();
+    expect(b.get().overrides).toEqual([]);
+    const v0 = b.get().version;
+    expect(setOverride(b)).toEqual({ ok: true, version: v0 + 1, id: 1 });
+    expect(setOverride(b, { date: '2026-11-09', group: 'СР6', kind: 'toys', delta: -3 })).toEqual({ ok: true, version: v0 + 2, id: 2 });
+    expect(b.get().overrides).toEqual([
+      { id: 1, date: TODAY, group: 'СР1', kind: 'piles', delta: 2 },
+      { id: 2, date: '2026-11-09', group: 'СР6', kind: 'toys', delta: -3 },
+    ]);
+    expect(setOverride(b, { kind: 'medkits', delta: 20 }).ok).toBe(true);
+    expect(setOverride(b, { kind: 'medkits', delta: -20 }).ok).toBe(true);
+  });
+
+  test('setOverride: без PIN, с неверным и с PIN группы — invalid_pin, ничего не пишется', () => {
+    const b = loadBackend();
+    const { groupPins } = admin(b, 'setGroupPins');
+    const before = b.get();
+    const body = { action: 'setOverride', date: TODAY, group: 'СР1', kind: 'piles', delta: 2 };
+    expect(b.post(body)).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.post({ ...body, pin: '000000' })).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.post({ ...body, group: 'СР1', groupPin: groupPins['СР1'] })).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.get()).toEqual(before);
+  });
+
+  test('setOverride: будущая дата, мусор, чужая группа и вид, delta 0/дробная/вне ±20 — bad_request, ничего не пишется', () => {
+    const b = loadBackend();
+    expect(setOverride(b).ok).toBe(true);
+    const before = b.get();
+    const bad = [
+      { date: '2026-11-13' }, { date: '2026-02-30' }, { date: 'x' }, { date: undefined },
+      { group: 'СР4' }, { group: undefined },
+      { kind: 'useMedkit' }, { kind: 'useToy' }, { kind: 'candies' }, { kind: undefined },
+      { delta: 0 }, { delta: 1.5 }, { delta: '2' }, { delta: null }, { delta: undefined }, { delta: 21 }, { delta: -21 },
+    ];
+    for (const extra of bad) expect(setOverride(b, extra), JSON.stringify(extra)).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.get()).toEqual(before);
+  });
+
+  test('useItem: расход пишется группе из PIN на сегодняшнюю дату сервера (дата из тела игнорируется), ref в GET не попадает', () => {
+    const { b, use } = withGroups();
+    const v0 = b.get().version;
+    expect(use('СР2', 'medkit', 'ref-abc-1', { date: '2026-11-01', delta: 99, kind: 'piles' })).toEqual({ ok: true, version: v0 + 1, id: 1 });
+    expect(use('СР5', 'toy', 'ref-abc-2')).toEqual({ ok: true, version: v0 + 2, id: 2 });
+    const snapshot = b.get();
+    expect(snapshot.overrides).toEqual([
+      { id: 1, date: TODAY, group: 'СР2', kind: 'useMedkit', delta: 1 },
+      { id: 2, date: TODAY, group: 'СР5', kind: 'useToy', delta: 1 },
+    ]);
+    expect(JSON.stringify(snapshot)).not.toContain('ref-abc');
+  });
+
+  test('useItem: PIN одной группы за другую, админ-PIN и отсутствие PIN — invalid_pin; без группы — bad_request', () => {
+    const { b, groupPins } = withGroups();
+    const before = b.get();
+    const body = { action: 'useItem', item: 'toy', ref: 'r1' };
+    expect(b.post({ ...body, group: 'СР2', groupPin: groupPins['СР1'] })).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.post({ ...body, group: 'СР1', pin: PIN })).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.post({ ...body, group: 'СР1' })).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.post({ ...body, groupPin: groupPins['СР1'] })).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.get()).toEqual(before);
+  });
+
+  test('useItem: повтор с тем же ref не плодит строку и не поднимает версию; тот же ref у другой группы — отдельный расход', () => {
+    const { b, use } = withGroups();
+    const first = use('СР1', 'toy', 'same-ref');
+    const v1 = b.get().version;
+    expect(use('СР1', 'toy', 'same-ref')).toEqual({ ok: true, version: v1, id: first.id, duplicate: true });
+    expect(b.get().version).toBe(v1);
+    expect(b.get().overrides).toHaveLength(1);
+    expect(use('СР3', 'toy', 'same-ref')).toMatchObject({ ok: true, id: 2 });
+    expect(use('СР3', 'toy', 'same-ref').duplicate).toBe(true);
+    expect(b.get().overrides).toHaveLength(2);
+  });
+
+  test('useItem: не больше 20 расходов группы в день; повтор уже записанного ref допустим; на следующий день лимит снова свободен', () => {
+    const { b, use } = withGroups();
+    for (let i = 1; i <= 20; i++) expect(use('СР1', i % 2 ? 'toy' : 'medkit', `r${i}`).ok, `r${i}`).toBe(true);
+    const before = b.get();
+    expect(use('СР1', 'toy', 'r21')).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.get()).toEqual(before);
+    expect(use('СР1', 'toy', 'r5').duplicate).toBe(true);
+    expect(use('СР2', 'toy', 'r21').ok).toBe(true);
+    b.advance(24 * 60 * MIN);
+    expect(use('СР1', 'toy', 'r21')).toMatchObject({ ok: true, id: 22 });
+    expect(b.get().overrides.at(-1)).toMatchObject({ date: '2026-11-13', group: 'СР1', kind: 'useToy' });
+  });
+
+  test('useItem: ручные правки админа лимит расходов не съедают', () => {
+    const { b, use } = withGroups();
+    for (let i = 0; i < 25; i++) setOverride(b, { kind: 'toys', delta: 1 });
+    for (let i = 1; i <= 20; i++) expect(use('СР1', 'toy', `r${i}`).ok).toBe(true);
+  });
+
+  test('useItem: предмет и ref обязательны (ref — непустая строка до 64 символов) — иначе bad_request', () => {
+    const { b, use } = withGroups();
+    const before = b.get();
+    for (const item of ['potion', 'medkits', 'useToy', undefined, null, 5]) expect(use('СР1', item, 'r1'), String(item)).toEqual({ ok: false, error: 'bad_request' });
+    for (const ref of ['', undefined, null, 5, {}, 'x'.repeat(65)]) expect(use('СР1', 'toy', ref), JSON.stringify(ref)).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.get()).toEqual(before);
+    expect(use('СР1', 'toy', 'x'.repeat(64)).ok).toBe(true);
+  });
+
+  test('useItem: блокировка после 5 неверных PIN работает и здесь; верный PIN другой группы не блокируется', () => {
+    const { b, groupPins, use } = withGroups();
+    const wrong = () => b.post({ action: 'useItem', group: 'СР1', groupPin: '000000', item: 'toy', ref: 'x' });
+    for (let i = 0; i < 4; i++) expect(wrong().error).toBe('invalid_pin');
+    expect(wrong().error).toBe('locked');
+    expect(use('СР1', 'toy', 'r1')).toMatchObject({ ok: false, error: 'locked' });
+    expect(use('СР2', 'toy', 'r1').ok).toBe(true);
+    expect(groupPins['СР1']).toMatch(/^\d{6}$/);
+    expect(b.get().overrides).toHaveLength(1);
   });
 });
 

@@ -70,7 +70,7 @@ function readBody(req) {
   });
 }
 
-/** Поднимает мок на 127.0.0.1; `port: 0` — свободный порт. Возвращает адрес `/exec` и `close()`. */
+/** Поднимает мок на 127.0.0.1; `port: 0` — свободный порт. Возвращает адрес `/exec`, PIN шести групп `groupPins` и `close()`. */
 export async function startMockBackend({ port = 8787 } = {}) {
   const vite = await createVite({ logLevel: 'error', appType: 'custom', server: { middlewareMode: true } });
   let demo;
@@ -81,6 +81,8 @@ export async function startMockBackend({ port = 8787 } = {}) {
   }
   const backend = loadBackend({ adminPin: MOCK_ADMIN_PIN });
   seed(backend, demo);
+  // PIN групп случайные на каждый запуск мока и нигде не хранятся: проверки и разработчик берут их из возвращаемого значения
+  const { groupPins } = must(backend.post({ action: 'setGroupPins', pin: MOCK_ADMIN_PIN }), 'выпустить PIN групп');
 
   const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -97,6 +99,7 @@ export async function startMockBackend({ port = 8787 } = {}) {
   });
   return {
     url: `http://127.0.0.1:${server.address().port}/exec`,
+    groupPins,
     close: () => new Promise((resolve) => server.close(resolve)),
   };
 }

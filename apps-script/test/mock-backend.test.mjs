@@ -54,6 +54,12 @@ describe('мок-бэкенд', () => {
     expect(await post({ action: 'login', pin: '9999' })).toEqual({ ok: false, error: 'invalid_pin' });
   });
 
+  test('выдаёт PIN шести групп: groupLogin с выданным PIN проходит, с чужим — нет', async () => {
+    expect(Object.keys(mock.groupPins).sort()).toEqual(['СР1', 'СР2', 'СР3', 'СР5', 'СР6', 'СР9']);
+    expect(await post({ action: 'groupLogin', group: 'СР1', groupPin: mock.groupPins['СР1'] })).toMatchObject({ ok: true, group: 'СР1' });
+    expect(await post({ action: 'groupLogin', group: 'СР2', groupPin: mock.groupPins['СР1'] })).toEqual({ ok: false, error: 'invalid_pin' });
+  });
+
   test('отвечает странице с другого адреса (CORS) и на предзапрос', async () => {
     const res = await fetch(mock.url);
     expect(res.headers.get('access-control-allow-origin')).toBe('*');

@@ -32,6 +32,12 @@ const NORM_FIELDS = ['quality', 'long'];
 const NORM_MAX = 50;
 const STAGE_COUNT = 15;
 const STAGE_THRESHOLD_MAX = 100000;
+const OVERRIDE_KINDS = ['piles', 'medkits', 'toys'];
+const OVERRIDE_DELTA_MAX = 20;
+/** Предмет, который тратит РГ → вид строки в Overrides (тот же `kind`, что у движка). */
+const ITEM_KINDS = { medkit: 'useMedkit', toy: 'useToy' };
+const MAX_USES_PER_DAY = 20;
+const REF_MAX = 64;
 
 /** Листы и колонки; первая строка — заголовок, данные с второй. */
 const SHEETS = {
@@ -40,6 +46,7 @@ const SHEETS = {
   Funnel: ['employeeId', 'date', 'quality', 'long'],
   Staff: ['id', 'name', 'shortName', 'group', 'hireDate', 'fireDate', 'baseLevel', 'hiddenFromRating', 'transfers', 'hiddenReason'],
   Absences: ['employeeId', 'kind', 'from', 'to'],
+  Overrides: ['id', 'date', 'group', 'kind', 'delta', 'ref'],
   Settings: ['key', 'value'],
 };
 
@@ -254,6 +261,27 @@ function readAbsences_() {
   return readRows_('Absences').map(function (r) {
     return { employeeId: r[0], kind: r[1], from: r[2], to: r[3] || null };
   });
+}
+
+/** Ручные правки админа и расходы РГ по возрастанию id; `ref` (ключ повтора расхода) остаётся только здесь, в GET не уходит. */
+function readOverrides_() {
+  return readRows_('Overrides')
+    .map(function (r) {
+      return { id: Number(r[0]) || 0, date: r[1], group: r[2], kind: r[3], delta: Number(r[4]), ref: r[5] };
+    })
+    .sort(function (a, b) {
+      return a.id - b.id;
+    });
+}
+
+function appendOverride_(rows, date, group, kind, delta, ref) {
+  const id =
+    rows.reduce(function (max, r) {
+      return Math.max(max, Number(r[0]) || 0);
+    }, 0) + 1;
+  rows.push([String(id), date, group, kind, String(delta), ref]);
+  writeRows_('Overrides', rows);
+  return id;
 }
 
 // ---------------------------------------------------------------- PIN
@@ -649,6 +677,40 @@ function setConfigAction_(body) {
   return { ok: true, version: bump_({ config: JSON.stringify(config) }), config: config };
 }
 
+/** Ручная правка админа: дельта к кучкам, аптечкам или игрушкам группы на дату (не позже сегодня). Исправляется компенсирующей правкой. */
+function setOverrideAction_(body) {
+  if (!isDate_(body.date) || body.date > today_() || !isGroup_(body.group)) fail_();
+  if (OVERRIDE_KINDS.indexOf(body.kind) < 0 || body.delta === 0 || !isIntIn_(body.delta, -OVERRIDE_DELTA_MAX, OVERRIDE_DELTA_MAX)) fail_();
+  const rows = readRows_('Overrides');
+  const id = appendOverride_(rows, body.date, body.group, body.kind, body.delta, '');
+  return { ok: true, version: bump_({}), id: id };
+}
+
+/**
+ * Расход предмета РГ. Группа — из проверенного PIN, дата — сегодня на сервере, остаток сервер не знает (его считает движок).
+ * `ref` — случайная строка клиента: повтор того же запроса той же группы ничего не пишет и версию не двигает.
+ */
+function useItemAction_(body, auth) {
+  const item = body.item;
+  const ref = body.ref;
+  if (typeof item !== 'string' || !Object.prototype.hasOwnProperty.call(ITEM_KINDS, item)) fail_();
+  if (typeof ref !== 'string' || ref === '' || ref.length > REF_MAX) fail_();
+  const group = auth.group;
+  const kind = ITEM_KINDS[item];
+  const rows = readRows_('Overrides');
+  const same = rows.filter(function (r) {
+    return r[2] === group && r[5] === ref;
+  })[0];
+  if (same) return { ok: true, version: currentVersion_(), id: Number(same[0]), duplicate: true };
+  const date = today_();
+  const usedToday = rows.filter(function (r) {
+    return r[1] === date && r[2] === group && (r[3] === 'useMedkit' || r[3] === 'useToy');
+  }).length;
+  if (usedToday >= MAX_USES_PER_DAY) fail_();
+  const id = appendOverride_(rows, date, group, kind, 1, ref);
+  return { ok: true, version: bump_({}), id: id };
+}
+
 function setAbsenceAction_(body) {
   const employeeId = body.employeeId;
   const known = typeof employeeId === 'string' && readStaff_().some(function (e) {
@@ -695,6 +757,8 @@ const ACTIONS_ = {
   setStaff: { who: 'admin', run: setStaffAction_ },
   getPrivate: { who: 'admin', run: getPrivateAction_ },
   setConfig: { who: 'admin', run: setConfigAction_ },
+  setOverride: { who: 'admin', run: setOverrideAction_ },
+  useItem: { who: 'group', run: useItemAction_ },
   setAbsence: { who: 'admin', run: setAbsenceAction_ },
   removeAbsence: { who: 'admin', run: removeAbsenceAction_ },
 };
@@ -734,8 +798,9 @@ function doPost(e) {
 }
 
 /**
- * Публичный снимок: ФИО и группы, оплаты {date, group, author, invoice}, воронка, отсутствия. Сумм, хешей и солей в нём нет.
- * `config` — то, что сохранил setConfig (иначе {}); причин исключения из рейтинга здесь нет (getPrivate). `?since=<версия>` при той же версии отдаёт {unchanged}.
+ * Публичный снимок: ФИО и группы, оплаты {date, group, author, invoice}, воронка, отсутствия, правки и расходы {id, date, group, kind, delta}.
+ * Сумм, хешей, солей и `ref` расходов в нём нет. `config` — то, что сохранил setConfig (иначе {}); причин исключения из рейтинга здесь нет (getPrivate).
+ * `?since=<версия>` при той же версии отдаёт {unchanged}.
  */
 function doGet(e) {
   try {
@@ -760,6 +825,9 @@ function doGet(e) {
       }),
       funnel: readRows_('Funnel').map(function (r) {
         return { employeeId: r[0], date: r[1], quality: Number(r[2]), long: Number(r[3]) };
+      }),
+      overrides: readOverrides_().map(function (o) {
+        return { id: o.id, date: o.date, group: o.group, kind: o.kind, delta: o.delta };
       }),
     });
   } catch (err) {
