@@ -64,6 +64,17 @@ async function loginAdmin(page, url, pin = MOCK_ADMIN_PIN) {
   await page.click('form[data-login] button[type="submit"]');
 }
 
+// Фикстуры xlsx живут в src/import/fixtures.ts (вымышленные имена); vite собирает их на лету
+const fx = await server.ssrLoadModule('/src/import/fixtures.ts');
+const xlsxFile = (name, buffer) => ({ name, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from(buffer) });
+const publicSnapshot = async (mock) => (await fetch(mock.url)).json();
+const textOf = (page, selector) => page.$eval(selector, (e) => e.textContent ?? '').catch(() => '');
+/** Ждёт, пока текст элемента не будет содержать подстроку; возвращает итоговый текст. */
+async function waitForText(page, selector, needle, timeout = 8_000) {
+  await page.waitForFunction(([sel, text]) => document.querySelector(sel)?.textContent?.includes(text), [selector, needle], { timeout }).catch(() => {});
+  return textOf(page, selector);
+}
+
 const subOfSr1 = (page) => page.$eval('[data-group="СР1"] .sub', (e) => e.textContent ?? '').catch(() => '');
 const paymentsOf = (text) => Number(text.match(/оплат (\d+)/)?.[1]);
 
@@ -147,6 +158,84 @@ try {
     check(!logs.some((l) => l.includes(MOCK_ADMIN_PIN)), 'PIN администратора в консоли');
     check(!html.includes(`value="${MOCK_ADMIN_PIN}"`), 'PIN администратора в значении поля');
   });
+
+  await scenario('импорт оплат → экран', async ({ mock, newPage, check, urls }) => {
+    const screen = await newPage();
+    await screen.goto(urls.screen, { waitUntil: 'networkidle' });
+    await screen.waitForSelector('[data-group="СР1"] .sub', { timeout: 8_000 });
+    const before = paymentsOf(await subOfSr1(screen));
+    const sr1Day = (s) => s.payments.filter((p) => p.group === 'СР1' && p.date === '2026-11-11').length;
+    const dayBefore = sr1Day(await publicSnapshot(mock));
+
+    const admin = await newPage();
+    await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="import"]');
+    const file = xlsxFile('pay.xlsx', fx.paymentsXlsx(['FX-1', 'FX-2', 'FX-3', 'FX-4'].map((invoice) => ({ date: '2026-11-11', group: 'СР1', author: 'Тест Один', invoice }))));
+    await admin.setInputFiles('[data-file="payments"]', file);
+    const preview = await waitForText(admin, '[data-report="payments"]', 'Оплат к загрузке: 4');
+    check(preview.includes('Оплат к загрузке: 4'), `превью оплат: «${preview}»`);
+    check(preview.includes('11.11.2026'), 'превью оплат: не указан период');
+    check(sr1Day(await publicSnapshot(mock)) === dayBefore, 'превью записало оплаты до подтверждения');
+
+    await admin.click('[data-confirm="payments"]');
+    check((await waitForText(admin, '[data-report="payments"]', 'Загружено оплат: 4')).includes('Загружено оплат: 4'), 'нет подтверждения загрузки оплат');
+    const want = before - dayBefore + 4;
+    await screen.waitForFunction((n) => Number(document.querySelector('[data-group="СР1"] .sub')?.textContent?.match(/оплат (\d+)/)?.[1]) === n, want, { timeout: 8_000 }).catch(() => {});
+    check(paymentsOf(await subOfSr1(screen)) === want, `экран: оплат СР1 ${paymentsOf(await subOfSr1(screen))}, ожидалось ${want}`);
+
+    // тот же файл ещё раз: оплаты периода заменяются, а не складываются
+    await admin.setInputFiles('[data-file="payments"]', file);
+    check((await waitForText(admin, '[data-report="payments"]', 'заменится прежних')).includes('заменится прежних: 4'), 'повтор файла: превью не видит прежние оплаты периода');
+    await admin.click('[data-confirm="payments"]');
+    await waitForText(admin, '[data-report="payments"]', 'Загружено оплат');
+    await screen.waitForTimeout(2_500); // два опроса экрана
+    check(paymentsOf(await subOfSr1(screen)) === want, `повтор файла изменил число оплат СР1: ${paymentsOf(await subOfSr1(screen))}, ожидалось ${want}`);
+  });
+
+  await scenario('импорт воронки: новый сотрудник', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="import"]');
+    const staffBefore = (await publicSnapshot(mock)).staff.length;
+    const days = ['2026-11-09', '2026-11-10', '2026-11-11'];
+    const file = xlsxFile('funnel.xlsx', fx.funnelXlsx(days, [{ group: 'СР1', people: [{ name: 'Тест Новый', quality: 4, long: 2 }] }]));
+    await admin.setInputFiles('[data-file="funnel"]', file);
+    const preview = await waitForText(admin, '[data-report="funnel"]', 'Новых сотрудников: 1');
+    check(preview.includes('Новых сотрудников: 1'), `превью воронки: «${preview}»`);
+    check(preview.includes('11.11.2026'), 'превью воронки: не указана дата «по»');
+    const button = await textOf(admin, '[data-confirm="funnel"]');
+    check(button.includes('Добавить новых (1)'), `подпись кнопки: «${button}»`);
+    check((await publicSnapshot(mock)).staff.length === staffBefore, 'штат пополнился до подтверждения');
+
+    await admin.click('[data-confirm="funnel"]');
+    const done = await waitForText(admin, '[data-report="funnel"]', 'Загружено строк воронки');
+    check(done.includes('Загружено строк воронки: 3') && done.includes('добавлено сотрудников: 1'), `итог воронки: «${done}»`);
+    const after = await publicSnapshot(mock);
+    check(after.staff.length === staffBefore + 1 && after.staff.some((e) => e.name === 'Тест Новый' && e.group === 'СР1'), 'сотрудник не добавлен в штат в группе из файла');
+    check(after.funnel.some((r) => r.date === '2026-11-11' && r.quality === 4 && r.long === 2), 'строки воронки не загружены');
+
+    // тот же файл снова: сотрудник уже в штате, предлагается просто «Загрузить»
+    await admin.setInputFiles('[data-file="funnel"]', file);
+    await waitForText(admin, '[data-report="funnel"]', 'Данные по');
+    check(await textOf(admin, '[data-confirm="funnel"]') === 'Загрузить', 'повтор файла: сотрудник снова считается новым');
+    check(!(await textOf(admin, '[data-report="funnel"]')).includes('Новых сотрудников'), 'повтор файла: в превью снова «Новых сотрудников»');
+  });
+
+  await scenario('импорт: не тот файл', async ({ newPage, check, urls }) => {
+    const admin = await newPage();
+    await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="import"]');
+    const funnel = xlsxFile('funnel.xlsx', fx.funnelXlsx(['2026-11-10', '2026-11-11'], [{ group: 'СР1', people: [{ name: 'Тест Один', quality: 1, long: 1 }] }]));
+    const payments = xlsxFile('pay.xlsx', fx.paymentsXlsx([{ date: '2026-11-11', group: 'СР1', author: 'Тест Один', invoice: 'FX-1' }]));
+    await admin.setInputFiles('[data-file="payments"]', funnel);
+    const a = await waitForText(admin, '[data-alert="payments"]', 'Не тот файл');
+    check(a.includes('Не тот файл') && a.includes('№ счета'), `воронка в «Оплатах»: «${a}»`);
+    check(await admin.locator('[data-confirm]').count() === 0, 'воронка в «Оплатах»: есть кнопка загрузки');
+    await admin.setInputFiles('[data-file="funnel"]', payments);
+    const b = await waitForText(admin, '[data-alert="funnel"]', 'Не тот файл');
+    check(b.includes('Не тот файл'), `оплаты в «Воронке»: «${b}»`);
+    check(await admin.locator('[data-confirm]').count() === 0, 'оплаты в «Воронке»: есть кнопка загрузки');
+  });
 } finally {
   await browser.close();
   await server.close();
@@ -156,4 +245,4 @@ if (failures.length) {
   console.error(`FAIL (${failures.length}):\n- ${failures.join('\n- ')}`);
   process.exit(1);
 }
-console.log('OK: админка — вход и блокировка, оплаты → экран, PIN групп не остаются в DOM, хранилище и консоли');
+console.log('OK: админка — вход и блокировка, оплаты → экран, импорт оплат и воронки, PIN групп не остаются в DOM, хранилище и консоли');

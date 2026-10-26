@@ -1,25 +1,12 @@
 import * as XLSX from 'xlsx';
 import { describe, expect, test } from 'vitest';
+import { paymentLine as line, paymentsGrid as grid } from './fixtures';
 import { parsePaymentsGrid, parsePaymentsXlsx } from './payments';
 
-const HEADER = ['Сумма заказа', '', '№ счета', 'Дата оплаты', 'Группа', 'Автор', ...Array(10).fill(''), 'Сумма'];
 const SR5 = 'АП_НП_СР_Москва_СР5_ГБ_УД';
 /** Серийные даты Excel: 46296 = 2026-10-01, 46297 = 2026-10-02 */
 const D1 = 46296;
 const D2 = 46297;
-
-/** Строка файла: 17 колонок, как в выгрузке. */
-const line = (invoice: unknown, date: unknown, group: unknown, author: unknown, amount: unknown): unknown[] => {
-  const r: unknown[] = Array(17).fill('');
-  r[2] = invoice; r[3] = date; r[4] = group; r[5] = author; r[16] = amount;
-  return r;
-};
-/** Выгрузка с заголовком на заданной строке (индекс с нуля) и строками данных после него. */
-const grid = (rows: unknown[][], headerAt = 2): unknown[][] => [
-  ...Array.from({ length: headerAt }, (_, i) => [`шапка ${i}`]),
-  HEADER,
-  ...rows,
-];
 
 describe('parsePaymentsGrid', () => {
   test('заголовок ищется по тексту: на 3-й и на 7-й строке результат одинаков', () => {

@@ -84,6 +84,14 @@ describe('parseFunnelGrid', () => {
     expect(p.rows.some((r) => r.name === 'Без Группы' || r.name === 'Чужой Человек')).toBe(false);
   });
 
+  test('сотрудники вне шести групп и до первой группы считаются в outside', () => {
+    const g = sample();
+    g.splice(6, 0, person('Без Группы', [9, 9, 9], [9, 9, 9]));
+    g.push(group('СР4 Чужой отдел'), person('Чужой Человек', [1, 1, 2], [1, 1, 2]));
+    expect(parseFunnelGrid(g).outside).toBe(2);
+    expect(parseFunnelGrid(sample()).outside).toBe(0);
+  });
+
   test('пустая и нечисловая ячейка — ноль; строки без флагов игнорируются', () => {
     const g = sample();
     g[7] = person('Иванов Иван', ['', 'x', ''], [null, undefined, '']);

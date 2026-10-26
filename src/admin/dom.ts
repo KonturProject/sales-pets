@@ -50,6 +50,12 @@ export function tabs(items: TabItem[]): HTMLElement {
   return h('div', { class: 'tabs' }, nav, panel);
 }
 
+/** `2026-11-12` → `12.11.2026`. */
+export function ruDate(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  return `${d}.${m}.${y}`;
+}
+
 /** Человеческий текст ошибки; коды сервера пользователю не показываются. */
 export function errorText(e: unknown): string {
   if (!(e instanceof ApiError)) return 'Ошибка сервера, повторите позже';

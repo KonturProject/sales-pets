@@ -2,6 +2,7 @@ import './admin.css';
 import { api } from '@/data/api';
 import { h, tabs, errorText } from './dom';
 import type { AdminCtx } from './ctx';
+import { importTab } from './importTab';
 import { paymentsTab } from './payments';
 import { pinsTab } from './pins';
 import { createSession } from './session';
@@ -51,6 +52,7 @@ function showWork(): void {
     h('header', {}, h('h1', {}, 'Админка'), logout),
     tabs([
       { id: 'payments', title: 'Оплаты', render: () => paymentsTab(ctx) },
+      { id: 'import', title: 'Импорт', render: () => importTab(ctx) },
       { id: 'pins', title: 'PIN-коды', render: () => pinsTab(ctx) },
     ]),
   );

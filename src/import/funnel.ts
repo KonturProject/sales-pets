@@ -23,6 +23,8 @@ export interface ParsedFunnel {
   /** границы дат в колонках метрик (в том числе ещё пустых) */
   firstDate: DateStr | null;
   lastDate: DateStr | null;
+  /** сотрудники вне шести групп (и до первой группы): в `employees` и `rows` не попадают, только считаются */
+  outside: number;
 }
 
 /**
@@ -91,19 +93,24 @@ export function parseFunnelGrid(grid: unknown[][]): ParsedFunnel {
   const employees: FunnelEmployee[] = [];
   const rows: FunnelRow[] = [];
   let group: GroupCode | null = null;
+  let outside = 0;
   for (const r of grid.slice(headerRow + 2)) {
     if (isFlag(r[groupFlag])) {
       group = groupOf(labelOf(r));
     } else if (isFlag(r[employeeFlag])) {
       const name = labelOf(r);
-      if (group === null || name === '') continue;
+      if (name === '') continue;
+      if (group === null) {
+        outside++;
+        continue;
+      }
       employees.push({ name, group });
       for (const date of dates) {
         rows.push({ name, date, quality: countOf(r[qualityCols.get(date) ?? -1]), long: countOf(r[longCols.get(date) ?? -1]) });
       }
     }
   }
-  return { employees, rows, firstDate: dates[0] ?? null, lastDate: dates.at(-1) ?? null };
+  return { employees, rows, firstDate: dates[0] ?? null, lastDate: dates.at(-1) ?? null, outside };
 }
 
 export function parseFunnelXlsx(buf: ArrayBuffer): ParsedFunnel {

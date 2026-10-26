@@ -1,7 +1,7 @@
 import { serverToday, type Snapshot } from '@/data/api';
 import { GROUPS, type GroupCode } from '@/engine/types';
 import type { AdminCtx } from './ctx';
-import { errorText, h } from './dom';
+import { errorText, h, ruDate } from './dom';
 
 /** Верхняя граница `setProvisional` на сервере (`MAX_COUNT` в Code.gs). */
 const MAX_COUNT = 10_000;
@@ -27,11 +27,6 @@ export function provisionalChanges(
     if (count !== current[group]) changes.push({ group, count });
   }
   return { changes };
-}
-
-function ruDate(iso: string): string {
-  const [y, m, d] = iso.split('-');
-  return `${d}.${m}.${y}`;
 }
 
 /** Вкладка «Оплаты»: числа оплат групп за сегодня (предварительные, до загрузки отчёта). */
