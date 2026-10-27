@@ -1,12 +1,11 @@
 import { workingDaysBetween } from '@/engine/calendar';
-import type { Config } from '@/engine/config';
 import { evaluateDay } from '@/engine/evaluate';
 import { simulate, type PetState } from '@/engine/pet';
 import { uniqueInvoices, type PaymentRow, type RankData } from '@/engine/ranking';
 import { normalizeName } from '@/engine/staff';
 import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
 import type { Snapshot } from './api';
-import { configOf, dailyNormOf } from './config';
+import { timelineOf } from './config';
 
 export { normalizeName };
 
@@ -20,23 +19,25 @@ export interface Facts {
   unmatchedAuthors: string[];
 }
 
-const cache = new WeakMap<Snapshot, Map<DateStr, { cfg: Config; facts: Facts }>>();
+const cache = new WeakMap<Snapshot, Map<DateStr, Facts>>();
 
 /**
  * Состояния групп и данные рейтингов из снимка на дату `asOf`; на пару «снимок, дата» считается один раз.
- * Нормы и пороги берутся из `config` снимка, если `cfg` не задан.
+ * Нормы и пороги берутся из `config` снимка и его правок по датам (`configChanges`): день оценивается настройками своего дня.
  */
-export function buildFacts(s: Snapshot, asOf: DateStr, cfg: Config = configOf(s.config)): Facts {
+export function buildFacts(s: Snapshot, asOf: DateStr): Facts {
   const hit = cache.get(s)?.get(asOf);
-  if (hit && hit.cfg === cfg) return hit.facts;
-  const facts = compute(s, asOf, cfg);
+  if (hit) return hit;
+  const facts = compute(s, asOf);
   let byDate = cache.get(s);
   if (!byDate) cache.set(s, (byDate = new Map()));
-  byDate.set(asOf, { cfg, facts });
+  byDate.set(asOf, facts);
   return facts;
 }
 
-function compute(s: Snapshot, asOf: DateStr, cfg: Config): Facts {
+function compute(s: Snapshot, asOf: DateStr): Facts {
+  const timeline = timelineOf(s);
+  const cfg = timeline.at(asOf);
   const idByName = new Map<string, string>();
   for (const e of s.staff) {
     const key = normalizeName(e.name);
@@ -68,23 +69,23 @@ function compute(s: Snapshot, asOf: DateStr, cfg: Config): Facts {
   const through = s.funnelThrough;
   const funnel = through === null ? [] : s.funnel.filter((f) => f.date <= through);
   const evalDays = through === null ? [] : workingDaysBetween(cfg.startDate, through < asOf ? through : asOf, cfg);
-  const dailyNorm = dailyNormOf(s.config) ?? DEFAULT_DAILY_NORM;
+  const dailyNorm = timeline.dailyNormAt(asOf) ?? DEFAULT_DAILY_NORM;
   // правки одного дня движок применяет по порядку, а порядок — это id
   const byId = [...s.overrides].sort((a, b) => a.id - b.id);
 
   const states = Object.fromEntries(
     GROUPS.map((group) => {
       const results = Object.fromEntries(
-        evalDays.map((date) => [date, evaluateDay(group, date, s.staff, s.absences, funnel, cfg)]),
+        evalDays.map((date) => [date, evaluateDay(group, date, s.staff, s.absences, funnel, timeline.at(date))]),
       );
       const overrides = byId.filter((o) => o.group === group).map(({ date, kind, delta }) => ({ date, kind, delta }));
-      return [group, simulate({ group, paymentsByDay: paymentsByDay[group], results, overrides, dailyNorm }, asOf, cfg)];
+      return [group, simulate({ group, paymentsByDay: paymentsByDay[group], results, overrides, dailyNorm }, asOf, cfg, timeline.at)];
     }),
   ) as Record<GroupCode, PetState>;
 
   return {
     states,
-    rank: { staff: s.staff, absences: s.absences, payments: rankPayments, funnel, cfg },
+    rank: { staff: s.staff, absences: s.absences, payments: rankPayments, funnel, cfg, cfgOn: timeline.at },
     unmatchedAuthors: [...unmatched.values()].sort(),
   };
 }

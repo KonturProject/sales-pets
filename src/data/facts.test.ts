@@ -11,7 +11,7 @@ const emp = (id: string, name: string, group: GroupCode = 'СР1', extra: Partia
 });
 const snap = (over: Partial<Snapshot> = {}): Snapshot => ({
   version: 1, serverNow: '2026-11-12T10:00:00+03:00', funnelThrough: null, paymentsImportedThrough: null,
-  config: {}, staff: [], absences: [], payments: [], provisional: [], funnel: [], overrides: [], ...over,
+  config: {}, configChanges: [], staff: [], absences: [], payments: [], provisional: [], funnel: [], overrides: [], ...over,
 });
 const ov = (id: number, date: DateStr, group: GroupCode, kind: SnapshotOverride['kind'], delta = 1): SnapshotOverride => ({
   id, date, group, kind, delta,
@@ -247,6 +247,60 @@ describe('buildFacts', () => {
 
   test('normalizeName: без краёв, двойных пробелов и регистра', () => {
     expect(normalizeName('  Иван   ПЕТРОВ ')).toBe('иван петров');
+  });
+
+  describe('нормы и пороги с даты', () => {
+    const lowerFrom = (from: DateStr) => [{ from, config: { norms: { experienced: { quality: 1, long: 1 } } } }];
+    const base: Partial<Snapshot> = {
+      staff: [emp('e1', 'Тест Иванов')],
+      funnelThrough: '2026-11-03',
+      funnel: [
+        { employeeId: 'e1', date: '2026-11-02', quality: 1, long: 1 },
+        { employeeId: 'e1', date: '2026-11-03', quality: 1, long: 1 },
+      ],
+    };
+
+    test('день судится нормой своего дня: 02.11 по старой (кучка), 03.11 по новой (аптечка и игрушка)', () => {
+      const s = snap({ ...base, configChanges: lowerFrom('2026-11-03') });
+      // 11-04 — праздник, 05.11: кучка за 02.11 и награда за 03.11 (+1 аптечка, +1 игрушка, −1 кучка)
+      expect(buildFacts(s, '2026-11-05').states.СР1).toMatchObject({ piles: 0, medkits: 1, toys: 1 });
+      // для сравнения: новая норма на всю игру выдала бы награды за оба дня, старая — две кучки
+      expect(buildFacts(snap({ ...base, config: { norms: { experienced: { quality: 1, long: 1 } } } }), '2026-11-05').states.СР1)
+        .toMatchObject({ piles: 0, medkits: 2, toys: 2 });
+      expect(buildFacts(snap(base), '2026-11-05').states.СР1).toMatchObject({ piles: 2, medkits: 0, toys: 0 });
+    });
+
+    test('состояние на дату до смены совпадает с неизменённым снимком', () => {
+      const changed = snap({ ...base, configChanges: lowerFrom('2026-11-03') });
+      expect(buildFacts(changed, '2026-11-03').states).toEqual(buildFacts(snap(base), '2026-11-03').states);
+    });
+
+    test('from в выходной действует с ближайшего рабочего дня', () => {
+      const weekend = snap({ ...base, funnelThrough: '2026-11-09', funnel: [{ employeeId: 'e1', date: '2026-11-06', quality: 1, long: 1 }, { employeeId: 'e1', date: '2026-11-09', quality: 1, long: 1 }], configChanges: lowerFrom('2026-11-07') });
+      const monday = snap({ ...weekend, configChanges: lowerFrom('2026-11-09') });
+      expect(buildFacts(weekend, '2026-11-10').states).toEqual(buildFacts(monday, '2026-11-10').states);
+    });
+
+    test('дневная норма для сытости берётся на дату asOf', () => {
+      const staff = [emp('e1', 'Тест Иванов')];
+      const payments = ['2026-11-09', '2026-11-12'].flatMap((d) => [pay(d, 'СР1', 'Тест Иванов', `${d}-1`), pay(d, 'СР1', 'Тест Иванов', `${d}-2`)]);
+      const s = snap({ staff, payments, configChanges: [{ from: '2026-11-10', config: { dailyNorm: 2 } }] });
+      expect(buildFacts(s, '2026-11-09').states.СР1.satiety).toBe(2 / DEFAULT_DAILY_NORM);
+      expect(buildFacts(s, '2026-11-12').states.СР1.satiety).toBe(1);
+    });
+
+    test('rank получает cfg на asOf и cfgOn по датам', () => {
+      const s = snap({ configChanges: [{ from: '2026-11-05', config: { maxPiles: 2 } }] });
+      const { rank } = buildFacts(s, '2026-11-12');
+      expect(rank.cfg.maxPiles).toBe(2);
+      expect(rank.cfgOn?.('2026-11-03').maxPiles).toBe(defaultConfig.maxPiles);
+      expect(rank.cfgOn?.('2026-11-05').maxPiles).toBe(2);
+    });
+
+    test('результат по-прежнему считается один раз на пару «снимок и день»', () => {
+      const s = snap({ configChanges: lowerFrom('2026-11-03') });
+      expect(buildFacts(s, '2026-11-12')).toBe(buildFacts(s, '2026-11-12'));
+    });
   });
 
   test('rank получает штат, отсутствия и конфиг снимка', () => {

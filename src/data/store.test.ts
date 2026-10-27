@@ -4,7 +4,7 @@ import { createStore } from './store';
 
 const snap = (version: number): Snapshot => ({
   version, serverNow: '2026-11-12T10:00:00+03:00', funnelThrough: null, paymentsImportedThrough: null,
-  config: {}, staff: [], absences: [], payments: [], provisional: [], funnel: [], overrides: [],
+  config: {}, configChanges: [], staff: [], absences: [], payments: [], provisional: [], funnel: [], overrides: [],
 });
 
 const unchanged = (serverNow = '2026-11-12T10:00:00+03:00') => ({ unchanged: true as const, version: 1, serverNow });

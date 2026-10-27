@@ -54,8 +54,10 @@ function phaseOf(total: number): Phase {
  * Идёт по рабочим дням: в начале дня применяются награды за предыдущий рабочий день,
  * затем оплаты и ручные правки дня. Данные на выходные относятся к следующему рабочему дню;
  * то, что пришло после последнего рабочего дня до asOf, добавляется в конце.
+ * `cfgOn` отдаёт настройки на дату: награды, пределы кучек и порог смерти берутся по дню события;
+ * пороги стадий, болезнь, скука и сытость на asOf — из `cfg` (настройки на asOf).
  */
-export function simulate(facts: GroupFacts, asOf: DateStr, cfg: Config): PetState {
+export function simulate(facts: GroupFacts, asOf: DateStr, cfg: Config, cfgOn: (d: DateStr) => Config = () => cfg): PetState {
   const days = workingDaysBetween(cfg.startDate, asOf, cfg);
   const dayIndex = (date: DateStr): number => days.findIndex((d) => d >= date); // -1: «хвост» после последнего рабочего дня
 
@@ -88,15 +90,15 @@ export function simulate(facts: GroupFacts, asOf: DateStr, cfg: Config): PetStat
     generation++; total = 0; piles = 0; deathStreak = 0; sickStreak = 0;
   };
 
-  const applyOverrides = (list: Override[] | undefined) => {
+  const applyOverrides = (list: Override[] | undefined, c: Config) => {
     for (const o of list ?? []) {
-      if (o.kind === 'piles') piles = clamp(piles + o.delta, 0, cfg.maxPiles);
+      if (o.kind === 'piles') piles = clamp(piles + o.delta, 0, c.maxPiles);
       else if (o.kind === 'medkits') medkits = Math.max(0, medkits + o.delta);
       else if (o.kind === 'toys') toys = Math.max(0, toys + o.delta);
       else if (o.kind === 'useMedkit' && alive && medkits > 0) {
         medkits--;
         sickStreak = 0;
-        piles = Math.min(piles, cfg.sickPilesAbove);
+        piles = Math.min(piles, c.sickPilesAbove);
       } else if (o.kind === 'useToy' && alive && toys > 0) {
         toys--;
         toyToday = true;
@@ -106,24 +108,26 @@ export function simulate(facts: GroupFacts, asOf: DateStr, cfg: Config): PetStat
 
   days.forEach((d, i) => {
     const current = i === days.length - 1 && d === asOf;
+    const c = cfgOn(d);
     toyToday = false;
     if (!alive) {
       // в день надгробия первая же оплата сразу даёт новое яйцо; иначе яйцо — со следующего рабочего дня
       if (deadPending && (payments.get(i) ?? 0) === 0) { deadPending = false; total = 0; }
       else revive();
     }
+    piles = Math.min(piles, c.maxPiles); // предел мог снизиться с этого дня: кучки срезаются, задним числом не пересчитываются
     const prev = prevWorkingDay(d, cfg);
     const r = prev ? facts.results[prev] : undefined;
     if (r) {
       if (r.longRequired) {
         if (r.longMet) { medkits++; piles = Math.max(0, piles - 1); }
-        else piles = Math.min(cfg.maxPiles, piles + 1);
+        else piles = Math.min(c.maxPiles, piles + 1);
       }
       if (r.qualityMet) toys++;
     }
     const p = payments.get(i) ?? 0;
     total += p;
-    applyOverrides(ovByDay.get(i));
+    applyOverrides(ovByDay.get(i), c);
 
     if (current) {
       if (p > 0) { deathStreak = 0; sickStreak = 0; }
@@ -131,7 +135,7 @@ export function simulate(facts: GroupFacts, asOf: DateStr, cfg: Config): PetStat
       deathStreak = 0; sickStreak = 0;
     } else {
       deathStreak++; sickStreak++;
-      if (alive && total >= HATCH_AT && deathStreak >= cfg.deathDaysNoPay) { alive = false; deadPending = true; }
+      if (alive && total >= HATCH_AT && deathStreak >= c.deathDaysNoPay) { alive = false; deadPending = true; }
     }
   });
 
@@ -145,7 +149,8 @@ export function simulate(facts: GroupFacts, asOf: DateStr, cfg: Config): PetStat
       deathStreak = 0; sickStreak = 0;
     }
     total += tailPayments;
-    applyOverrides(ovByDay.get(tailKey));
+    piles = Math.min(piles, cfg.maxPiles);
+    applyOverrides(ovByDay.get(tailKey), cfg);
   } else if (lastDay === undefined) {
     total += tailPayments;
   }

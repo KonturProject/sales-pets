@@ -25,6 +25,12 @@ export interface SnapshotConfig {
   stageThresholds?: number[];
 }
 
+/** Правка норм и порогов, действующая с даты `from` (пороги стадий в ней не бывают); уникальна по `from`. */
+export interface ConfigChange {
+  from: DateStr;
+  config: SnapshotConfig;
+}
+
 /** Публичный снимок фактов, который отдаёт бэкенд (без сумм, хешей и PIN). */
 export interface Snapshot {
   version: number;
@@ -32,6 +38,8 @@ export interface Snapshot {
   funnelThrough: DateStr | null;
   paymentsImportedThrough: DateStr | null;
   config: SnapshotConfig;
+  /** Правки по датам поверх `config`; у бэкенда без этой возможности поля нет (читать через `timelineOf`). */
+  configChanges: ConfigChange[];
   staff: Employee[];
   absences: Absence[];
   payments: ImportedPayment[];

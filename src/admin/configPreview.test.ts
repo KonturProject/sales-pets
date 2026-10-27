@@ -4,7 +4,7 @@ import { configPreview, describeChange, mergeConfig } from './configPreview';
 
 const snap = (over: Partial<Snapshot> = {}): Snapshot => ({
   version: 1, serverNow: '2026-11-12T10:00:00+03:00', funnelThrough: null, paymentsImportedThrough: null,
-  config: {}, staff: [], absences: [], payments: [], provisional: [], funnel: [], overrides: [], ...over,
+  config: {}, configChanges: [], staff: [], absences: [], payments: [], provisional: [], funnel: [], overrides: [], ...over,
 });
 /** У СР1 12 оплат на сегодня (по умолчанию это стадия 2: пороги 6 и 10), у остальных групп пусто. */
 const withTwelve = (over: Partial<Snapshot> = {}) =>

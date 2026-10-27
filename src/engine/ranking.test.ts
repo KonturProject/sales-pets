@@ -13,6 +13,26 @@ const data = (o: Partial<RankData> = {}): RankData => ({ staff: [], absences: []
 const from = '2026-11-02';
 const to = '2026-11-12';
 
+describe('герои дня: нормы по датам', () => {
+  const lowered = { ...cfg, norms: { ...cfg.norms, experienced: { quality: 2, long: 0 } } };
+  const funnelOn = (date: string) => ({ employeeId: 'a', date, quality: 2, long: 0 });
+
+  test('оценивается нормой дня: со смены нормы тот же факт даёт 100%', () => {
+    const d = data({
+      staff: [emp('a')],
+      funnel: [funnelOn('2026-11-09'), funnelOn('2026-11-10')],
+      cfgOn: (date) => (date >= '2026-11-10' ? lowered : cfg),
+    });
+    expect(heroesOfDay('2026-11-09', d)[0].value).toBe(25); // 2 из 5+3
+    expect(heroesOfDay('2026-11-10', d)[0].value).toBe(100); // 2 из 2+0
+  });
+
+  test('без cfgOn нормы берутся из cfg, как раньше', () => {
+    const d = data({ staff: [emp('a')], funnel: [funnelOn('2026-11-10')], cfg: lowered });
+    expect(heroesOfDay('2026-11-10', d)[0].value).toBe(100);
+  });
+});
+
 describe('рейтинг группы', () => {
   test('сортировка по числу оплат, ничья делит место', () => {
     const d = data({

@@ -168,6 +168,88 @@ describe('сытость', () => {
   });
 });
 
+describe('настройки по датам (cfgOn)', () => {
+  /** Настройки `before` до даты `date` и `after` с неё; симуляция на asOf берёт настройки этой даты, как делает buildFacts. */
+  const timeline = (date: DateStr, before: Partial<typeof cfg>, after: Partial<typeof cfg>) => {
+    const a = { ...cfg, ...before };
+    const b = { ...cfg, ...after };
+    const cfgOn = (d: DateStr) => (d >= date ? b : a);
+    return (f: GroupFacts, asOf: DateStr) => simulate(f, asOf, cfgOn(asOf), cfgOn);
+  };
+  const alive6 = { '2026-11-02': 6 };
+
+  test('постоянный cfgOn не меняет поведения', () => {
+    const f = facts({ paymentsByDay: alive6, results: { '2026-11-02': res('2026-11-02', false, true) }, overrides: [ov('2026-11-03', 'piles', 3)] });
+    for (const asOf of ['2026-11-03', '2026-11-07', '2026-11-11']) {
+      expect(simulate(f, asOf, cfg, () => cfg)).toEqual(simulate(f, asOf, cfg));
+    }
+  });
+
+  test('maxPiles снижен с дня X: кучки срезаются до нового предела в начале X', () => {
+    const run = timeline('2026-11-05', {}, { maxPiles: 2 });
+    const f = facts({ paymentsByDay: alive6, overrides: [ov('2026-11-03', 'piles', 4)] });
+    expect(run(f, '2026-11-03').piles).toBe(4);
+    expect(run(f, '2026-11-05').piles).toBe(2);
+  });
+
+  test('maxPiles снижен: срез виден и в выходные до asOf («хвост»)', () => {
+    const run = timeline('2026-11-07', {}, { maxPiles: 2 });
+    const f = facts({ paymentsByDay: alive6, overrides: [ov('2026-11-03', 'piles', 4)] });
+    expect(run(f, '2026-11-06').piles).toBe(4);
+    expect(run(f, '2026-11-07').piles).toBe(2);
+  });
+
+  test('maxPiles поднят с дня X: прошлые дни остаются под старым пределом, задним числом не пересчитываются', () => {
+    const run = timeline('2026-11-05', { maxPiles: 2 }, { maxPiles: 5 });
+    const f = facts({ paymentsByDay: alive6, overrides: [ov('2026-11-03', 'piles', 4)] });
+    expect(run(f, '2026-11-03').piles).toBe(2);
+    expect(run(f, '2026-11-05').piles).toBe(2);
+  });
+
+  test('правка кучек в день X ограничена пределом дня X', () => {
+    const run = timeline('2026-11-05', { maxPiles: 2 }, { maxPiles: 5 });
+    const f = facts({ paymentsByDay: alive6, overrides: [ov('2026-11-05', 'piles', 4)] });
+    expect(run(f, '2026-11-05').piles).toBe(4);
+  });
+
+  test('кучка-награда ограничена пределом того дня, в котором начисляется', () => {
+    const run = timeline('2026-11-06', { maxPiles: 1 }, { maxPiles: 5 });
+    const results = Object.fromEntries(['2026-11-02', '2026-11-03', '2026-11-05'].map((d) => [d, res(d, false, false)]));
+    const f = facts({ paymentsByDay: alive6, results });
+    expect(run(f, '2026-11-05').piles).toBe(1); // вторая кучка упёрлась в старый предел 1
+    expect(run(f, '2026-11-06').piles).toBe(2); // с 06.11 предел 5
+  });
+
+  test('deathDaysNoPay снижен с дня X: серия, достигшая нового порога, убивает в первый же день по новому правилу', () => {
+    const f = facts({ paymentsByDay: alive6 }); // без оплат 11-03, 05, 06, 09, 10: по умолчанию смерть в конце 11-10
+    // порог 2 с 11-05: серия к концу 11-05 равна 2 → смерть в конце 11-05, в 11-06 надгробие
+    const early = timeline('2026-11-05', {}, { deathDaysNoPay: 2 });
+    expect(early(f, '2026-11-05').alive).toBe(true); // текущий день серию не растит
+    expect(early(f, '2026-11-06').alive).toBe(false);
+    // порог 2 с 11-06: к концу 11-05 серия 2 при старом пороге 5 — жив; к концу 11-06 серия 3 ≥ 2 → смерть
+    const late = timeline('2026-11-06', {}, { deathDaysNoPay: 2 });
+    expect(late(f, '2026-11-06').alive).toBe(true);
+    expect(late(f, '2026-11-09').alive).toBe(false);
+    expect(simulate(f, '2026-11-09', cfg).alive).toBe(true);
+  });
+
+  test('useMedkit срезает кучки до порога sickPilesAbove того дня, когда использована', () => {
+    const run = timeline('2026-11-05', { sickPilesAbove: 4 }, { sickPilesAbove: 1 });
+    const stock = [ov('2026-11-03', 'piles', 4), ov('2026-11-03', 'medkits')];
+    const before = facts({ paymentsByDay: alive6, overrides: [...stock, ov('2026-11-03', 'useMedkit')] });
+    const after = facts({ paymentsByDay: alive6, overrides: [...stock, ov('2026-11-05', 'useMedkit')] });
+    expect(run(before, '2026-11-05').piles).toBe(4); // использована до смены: порог 4
+    expect(run(after, '2026-11-05').piles).toBe(1); // использована в день смены: порог 1
+  });
+
+  test('настроение на asOf берёт настройки asOf (cfg), а не прошлых дат', () => {
+    const f = facts({ paymentsByDay: alive6 }); // к 11-06 серия без оплат 2
+    const strict = { ...cfg, sickDaysNoPay: 3 };
+    expect(simulate(f, '2026-11-06', cfg).mood).toBe('sick');
+    expect(simulate(f, '2026-11-06', strict, () => cfg).mood).toBe('bored');
+  });
+});
+
 describe('оплаты в день надгробия', () => {
   // оплаты 6 в 11-02, затем тишина: 11-03, 05, 06, 09, 10 → смерть в конце 11-10, надгробие 11-11
   const base = { '2026-11-02': 6 };

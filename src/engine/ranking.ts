@@ -24,7 +24,10 @@ export interface RankData {
   absences: Absence[];
   payments: PaymentRow[];
   funnel: FunnelDay[];
+  /** настройки на «сегодня» расчёта */
   cfg: Config;
+  /** настройки на дату (нормы меняются с даты); без неё везде действует `cfg` */
+  cfgOn?: (date: DateStr) => Config;
 }
 
 interface Scored {
@@ -123,7 +126,7 @@ export function heroesOfDay(date: DateStr, d: RankData, n = 10): RankRow[] {
   const items: Scored[] = [];
   for (const e of d.staff) {
     if (!countsInRating(e, date, d.absences)) continue;
-    const norm = d.cfg.norms[levelOn(e, date)];
+    const norm = (d.cfgOn?.(date) ?? d.cfg).norms[levelOn(e, date)];
     const total = norm.quality + norm.long;
     const fact = funnel.get(e.id);
     if (total === 0 || !fact) continue;
