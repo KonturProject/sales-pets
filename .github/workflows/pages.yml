@@ -31,7 +31,7 @@ jobs:
       - run: npx vitest run
       - name: Предупредить, если адрес бэкенда не задан
         if: ${{ vars.BACKEND_URL == '' }}
-        run: echo "::warning::Переменная BACKEND_URL пуста: сайт соберётся, но покажет «Игра ещё не запущена»"
+        run: 'echo "::warning::Переменная BACKEND_URL пуста, сайт соберётся, но покажет «Игра ещё не запущена»"'
       - run: npm run build
         env:
           VITE_BACKEND_URL: ${{ vars.BACKEND_URL }}
