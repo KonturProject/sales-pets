@@ -1,0 +1,51 @@
+# Публикация сайта на GitHub Pages при каждом пуше в master.
+# Адрес бэкенда (Apps Script, …/exec) берётся из переменной репозитория BACKEND_URL (Settings → Secrets and variables → Actions → Variables).
+# Это не секрет: он всё равно виден в JS страницы. PIN сюда не попадает никогда.
+name: Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx vitest run
+      - name: Предупредить, если адрес бэкенда не задан
+        if: ${{ vars.BACKEND_URL == '' }}
+        run: echo "::warning::Переменная BACKEND_URL пуста: сайт соберётся, но покажет «Игра ещё не запущена»"
+      - run: npm run build
+        env:
+          VITE_BACKEND_URL: ${{ vars.BACKEND_URL }}
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
