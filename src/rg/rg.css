@@ -23,7 +23,60 @@ button:disabled { opacity: 0.45; }
 
 [data-stage-text] { margin: 12px 0 4px; text-align: center; font-weight: 600; }
 
-.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
-.actions button { padding: 16px; font-size: 1.05rem; }
+/* «предмет — питомец — предмет»: аптечка слева, игрушка справа; перенос на питомца тратит предмет */
+.arena { display: grid; grid-template-columns: 5rem minmax(0, 1fr) 5rem; gap: 8px; align-items: center; }
+.arena .boxes { display: none; } /* остаток показывают бейджи предметов; [data-count] остаётся в DOM */
+
+.item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  font-size: 0.85rem;
+  cursor: grab;
+  touch-action: none; /* палец тащит предмет, а не прокручивает страницу */
+  user-select: none;
+  -webkit-user-select: none;
+}
+.item:disabled { cursor: default; }
+.item[data-dragging] { opacity: 0.45; }
+.item-pic { display: block; width: 3rem; height: 3rem; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
+.item b {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0 0.3rem;
+  display: grid;
+  place-items: center;
+  border-radius: 0.7rem;
+  font-size: 0.8rem;
+  color: #fff;
+  background: var(--ink);
+}
+
+.arena .stage.drop-ready { border-radius: 14px; box-shadow: inset 0 0 0 3px var(--meter); background: rgba(143, 176, 138, 0.18); }
+
+.drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 20;
+  width: 3rem;
+  height: 3rem;
+  pointer-events: none;
+  will-change: transform;
+}
+.drag-ghost img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.25)); }
+
+[data-hint] { margin: 10px 0 0; text-align: center; font-size: 0.9rem; color: var(--ink-soft); transition: color 0.2s; }
+[data-hint].flash { color: var(--ink); font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  .drag-ghost { transition: none !important; }
+}
 
 [role='alert'] { min-height: 1.4em; color: #a3281c; }

@@ -673,29 +673,96 @@ try {
     await loginAs('СР1');
     check(await rg.locator('[data-group]').count() === 1 && await rg.locator('[data-group="СР1"]').count() === 1, 'после входа видна не только СР1');
     check(/^(стадия \d+ из 15|яйцо)/.test(await textOf(rg, '[data-stage-text]')), `подпись стадии: «${await textOf(rg, '[data-stage-text]')}»`);
-    check(await rg.locator('button[data-use="medkit"]').count() === 1, 'нет кнопки «Аптечка»');
-    const toys = () => rg.$eval('[data-count="toys"]', (e) => Number(e.textContent)).catch(() => NaN);
+    check(await rg.locator('button[data-use="medkit"]').count() === 1, 'нет предмета «Аптечка»');
+    // остаток читаем с бейджа предмета; скрытый `[data-count]` питомца остаётся в DOM для сверки
+    const stock = (kind) => rg.$eval(`[data-stock="${kind}"]`, (e) => Number(e.textContent)).catch(() => NaN);
+    const toys = () => stock('toy');
     const toys0 = await toys();
     check(Number.isFinite(toys0) && toys0 >= 3, `запас игрушек СР1 на странице РГ ${toys0}, ожидалось не меньше трёх`);
+    check(await rg.$eval('[data-count="toys"]', (e) => Number(e.textContent)) === toys0, 'бейдж игрушек и скрытый счётчик питомца расходятся');
+    check(await rg.locator('.boxes').isHidden(), 'ящики питомца не скрыты на странице РГ');
 
-    // «Игрушка» → запас −1 здесь и рука у СР1 на общем экране
+    // раскладка «аптечка — питомец — игрушка»
+    const box = (selector) => rg.locator(selector).first().boundingBox();
+    const [medkitBox, stageBox, toyBox] = [await box('button[data-use="medkit"]'), await box('.stage'), await box('button[data-use="toy"]')];
+    check(medkitBox.x + medkitBox.width <= stageBox.x && toyBox.x >= stageBox.x + stageBox.width, 'предметы не по краям от питомца: слева аптечка, справа игрушка');
+
+    const center = async (selector) => { const b = await box(selector); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+    const useRequests = [];
+    rg.on('request', (r) => { if (r.method() === 'POST' && (r.postData() ?? '').includes('"useItem"')) useRequests.push(Date.now()); });
+    const drag = async (from, to, { release = true } = {}) => {
+      const a = await center(from);
+      const b = await center(to);
+      await rg.mouse.move(a.x, a.y);
+      await rg.mouse.down();
+      await rg.mouse.move(b.x, b.y, { steps: 8 });
+      if (release) await rg.mouse.up();
+    };
+    const hintFlashes = () => rg.locator('[data-hint].flash').count();
+    const ghostGone = () => rg.waitForSelector('.drag-ghost', { state: 'detached', timeout: 2_000 }).then(() => true, () => false);
+
+    // во время переноса виден призрак и подсвечена зона, на сервер пока ничего не уходит
+    await drag('button[data-use="toy"]', '.stage', { release: false });
+    check(await rg.locator('.drag-ghost').count() === 1, 'во время переноса нет призрака предмета');
+    check(await rg.locator('.stage.drop-ready').count() === 1, 'над питомцем зона не подсвечена');
+    check(useRequests.length === 0, 'расход ушёл на сервер до отпускания');
+
+    // отпустили над питомцем → запас −1 здесь, одна запись на сервере и рука у СР1 на общем экране
     const hand = screen.waitForSelector('[data-group="СР1"] .hand[data-item="toy"]', { state: 'attached', timeout: 8_000 }).then(() => true, () => false);
-    await rg.click('button[data-use="toy"]');
-    await rg.waitForFunction((want) => Number(document.querySelector('[data-count="toys"]')?.textContent) === want, toys0 - 1, { timeout: 8_000 }).catch(() => {});
-    check(await toys() === toys0 - 1, `после «Игрушки» запас ${await toys()}, ожидалось ${toys0 - 1}`);
-    check(await usesOnServer() === 1, `на сервере расходов игрушек ${await usesOnServer()}, ожидался один`);
+    await rg.mouse.up();
+    check(await hintFlashes() === 0, 'после переноса мигнула подсказка: клик после переноса не погашен');
+    check(await ghostGone(), 'призрак остался в DOM после переноса');
+    await rg.waitForFunction((want) => Number(document.querySelector('[data-stock="toy"]')?.textContent) === want, toys0 - 1, { timeout: 8_000 }).catch(() => {});
+
+    // сразу второй перенос (идёт пауза после расхода, 600 мс): предмет заблокирован, призрака нет, расхода нет
+    await drag('button[data-use="toy"]', '.stage', { release: false });
+    check(await rg.locator('.drag-ghost').count() === 0, 'во время паузы после расхода предмет можно тащить');
+    await rg.mouse.up();
+
+    check(await toys() === toys0 - 1, `после переноса игрушки запас ${await toys()}, ожидалось ${toys0 - 1}`);
+    await rg.waitForTimeout(1_000); // если бы второй перенос ушёл на сервер, запас упал бы ещё
+    check(await toys() === toys0 - 1 && useRequests.length === 1 && await usesOnServer() === 1, `расходов: запас ${await toys()}, запросов ${useRequests.length}, на сервере ${await usesOnServer()}; ожидался один расход`);
+    check(await rg.$eval('[data-count="toys"]', (e) => Number(e.textContent)) === toys0 - 1, 'после переноса бейдж и счётчик питомца расходятся');
     check(await hand, 'на общем экране у СР1 не появилась рука с игрушкой за 8 с после расхода');
+    await screen.waitForFunction((want) => Number(document.querySelector('[data-group="СР1"] [data-count="toys"]')?.textContent) === want, toys0 - 1, { timeout: 8_000 }).catch(() => {});
+    check(Number(await textOf(screen, '[data-group="СР1"] [data-count="toys"]')) === toys0 - 1, 'общий экран показывает другой запас игрушек, чем страница РГ');
 
-    // быстрый двойной клик тратит один предмет
-    await rg.dblclick('button[data-use="toy"]');
-    await rg.waitForFunction((want) => Number(document.querySelector('[data-count="toys"]')?.textContent) === want, toys0 - 2, { timeout: 8_000 }).catch(() => {});
-    await rg.waitForTimeout(1_000); // если бы второй клик ушёл на сервер, запас упал бы ещё
-    check(await toys() === toys0 - 2, `после двойного клика запас ${await toys()}, ожидалось ${toys0 - 2}`);
-    check(await usesOnServer() === 2, `после двойного клика на сервере расходов ${await usesOnServer()}, ожидалось два`);
-    await screen.waitForFunction((want) => Number(document.querySelector('[data-group="СР1"] [data-count="toys"]')?.textContent) === want, toys0 - 2, { timeout: 8_000 }).catch(() => {});
-    check(Number(await textOf(screen, '[data-group="СР1"] [data-count="toys"]')) === toys0 - 2, 'общий экран показывает другой запас игрушек, чем страница РГ');
+    // мимо питомца: ни расхода, ни призрака
+    await drag('button[data-use="toy"]', '[data-hint]');
+    check(await ghostGone(), 'после отпускания мимо питомца призрак остался');
+    await rg.waitForTimeout(500);
+    check(await toys() === toys0 - 1 && useRequests.length === 1, `перенос мимо питомца потратил предмет: запас ${await toys()}, запросов ${useRequests.length}`);
 
-    // нулевой запас: обнуляем игрушки админской правкой (не больше 20 за раз), страница вновь входит и блокирует кнопку
+    // унесли и вернули на сам предмет: перенос был, поэтому браузерный клик гасится — ни расхода, ни подсказки
+    const home = await center('button[data-use="toy"]');
+    await rg.mouse.move(home.x, home.y);
+    await rg.mouse.down();
+    await rg.mouse.move(home.x + 40, home.y + 30, { steps: 4 });
+    await rg.mouse.move(home.x, home.y, { steps: 4 });
+    await rg.mouse.up();
+    check(await hintFlashes() === 0 && useRequests.length === 1, `перенос обратно на предмет: подсказок ${await hintFlashes()}, запросов ${useRequests.length}`);
+
+    // отпустили рядом с предметом (меньше порога переноса): расхода нет, это обычный клик
+    const toyAt = await center('button[data-use="toy"]');
+    await rg.mouse.move(toyAt.x, toyAt.y);
+    await rg.mouse.down();
+    await rg.mouse.move(toyAt.x + 3, toyAt.y + 2);
+    await rg.mouse.up();
+    check(useRequests.length === 1 && await toys() === toys0 - 1, 'отпускание у самого предмета потратило его');
+
+    // обычный клик: подсказка мигает, расхода нет
+    await rg.click('button[data-use="toy"]');
+    check(await rg.waitForSelector('[data-hint].flash', { timeout: 2_000 }).then(() => true, () => false), 'клик по предмету не показал подсказку');
+    check(useRequests.length === 1, 'обычный клик по предмету потратил его');
+
+    // клавиатура: Enter на предмете тратит его (доступность)
+    await rg.waitForFunction(() => !document.querySelector('button[data-use="toy"]')?.disabled, null, { timeout: 5_000 }).catch(() => {});
+    await rg.focus('button[data-use="toy"]');
+    await rg.keyboard.press('Enter');
+    await rg.waitForFunction((want) => Number(document.querySelector('[data-stock="toy"]')?.textContent) === want, toys0 - 2, { timeout: 8_000 }).catch(() => {});
+    check(await toys() === toys0 - 2 && useRequests.length === 2 && await usesOnServer() === 2, `Enter на предмете: запас ${await toys()}, запросов ${useRequests.length}, ожидалось ${toys0 - 2} и два`);
+
+    // нулевой запас: обнуляем игрушки админской правкой (не больше 20 за раз), страница вновь входит и блокирует предмет
     for (let left = toys0 - 2; left > 0; left -= 20) {
       const r = await post({ action: 'setOverride', pin: MOCK_ADMIN_PIN, date: '2026-11-12', group: 'СР1', kind: 'toys', delta: -Math.min(left, 20) });
       check(r.ok === true, `обнулить игрушки СР1: ${r.error}`);
@@ -703,7 +770,10 @@ try {
     await rg.reload({ waitUntil: 'networkidle' });
     await loginAs('СР1');
     check(await toys() === 0, `после обнуления запас игрушек ${await toys()}`);
-    check(await rg.locator('button[data-use="toy"]').isDisabled(), 'при нулевом запасе кнопка «Игрушка» не заблокирована');
+    check(await rg.locator('button[data-use="toy"]').isDisabled(), 'при нулевом запасе предмет «Игрушка» не заблокирован');
+    const before = useRequests.length;
+    await drag('button[data-use="toy"]', '.stage');
+    check(await rg.locator('.drag-ghost').count() === 0 && useRequests.length === before, 'при нулевом запасе перенос что-то сделал');
 
     // выход: PIN нигде не остаётся
     await rg.click('button[data-logout]');
