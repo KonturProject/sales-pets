@@ -480,6 +480,91 @@ try {
     check(await version() === v0 && (await publicSnapshot(mock)).config.maxPiles === undefined, 'значение вне диапазона принято сервером');
   });
 
+  await scenario('нормы с даты: запись, будущая дата, «вся игра» стирает, «Убрать»', async ({ mock, newPage, check, urls }) => {
+    const snapshot = () => publicSnapshot(mock);
+    const admin = await newPage();
+    await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="norms"]');
+    await admin.waitForSelector('[data-field="norm-experienced-quality"]', { timeout: 8_000 });
+    const field = (name) => admin.inputValue(`[data-field="${name}"]`);
+    const alert = () => textOf(admin, '[data-alert="config"]');
+    const setDate = (date) => admin.fill('[data-field="from"]', date);
+    const preview = async (needle) => {
+      await admin.click('[data-save="config"]');
+      return waitForText(admin, '[data-preview="config"]', needle);
+    };
+    const apply = async () => {
+      await admin.click('[data-confirm="config"]');
+      return waitForText(admin, '[data-status="config"]', 'Сохранено');
+    };
+
+    check(await admin.locator('[data-change]').count() === 0, 'список правок по датам не пуст на свежем моке');
+    check(!(await admin.locator('[data-field="threshold-1"]').isDisabled()), 'пороги отключены без даты');
+
+    // правка с 10.11: дни 10 и 11 ноября (воронка мока по 11.11) получают новую норму, сервер пишет запись, а не config
+    await setDate('2026-11-10');
+    check(await admin.locator('[data-field="threshold-1"]').isDisabled(), 'пороги стадий не отключены при выбранной дате');
+    check(await field('norm-experienced-quality') === '5', 'форма с датой не предзаполнена значением на дату');
+    await admin.fill('[data-field="norm-experienced-quality"]', '50');
+    const v0 = (await snapshot()).version;
+    const text = await preview('рабочих дней');
+    check(text.includes('рабочих дней: 2'), `превью с даты не назвало 2 рабочих дня: «${text}»`);
+    check(!text.includes('всю историю'), `превью с даты говорит про всю историю: «${text}»`);
+    check((await snapshot()).version === v0, 'правка с даты записана до подтверждения');
+    check((await apply()).includes('Сохранено'), `правка с даты не сохранена: «${await alert()}»`);
+    let snap = await snapshot();
+    check(snap.configChanges.length === 1 && snap.configChanges[0].from === '2026-11-10', `на сервере не одна запись с 10.11: ${JSON.stringify(snap.configChanges)}`);
+    check(snap.configChanges[0].config.norms?.experienced?.quality === 50, 'в записи нет новой нормы');
+    check(snap.config.norms === undefined, 'правка с даты изменила настройки на всю игру');
+    const row = await textOf(admin, '[data-change="2026-11-10"]');
+    check(row.includes('10.11.2026') && row.includes('50'), `в списке нет записи с 10.11: «${row}»`);
+    check(await field('norm-experienced-quality') === '50', 'после записи форма на дату не показывает новое значение');
+
+    await setDate('');
+    check(await field('norm-experienced-quality') === '5', 'без даты форма не вернулась к значениям на всю игру');
+    check(!(await admin.locator('[data-field="threshold-1"]').isDisabled()), 'пороги не включились после очистки даты');
+
+    // дата вне игры: ошибка, запросов нет
+    await setDate('2026-12-01');
+    await admin.fill('[data-field="maxPiles"]', '3');
+    await admin.click('[data-save="config"]');
+    check((await alert()).includes('Дата'), `дата вне игры принята: «${await alert()}»`);
+    check(await admin.locator('[data-preview="config"]').count() === 0, 'для даты вне игры показан предпросмотр');
+
+    // будущая дата: ничего не меняется сегодня, но запись сохраняется
+    await setDate('2026-11-20');
+    await admin.fill('[data-field="maxPiles"]', '3');
+    const future = await preview('сегодня ничего не изменится');
+    check(future.includes('сегодня ничего не изменится'), `будущая дата без пояснения: «${future}»`);
+    await admin.click('[data-cancel="config"]');
+    check((await snapshot()).configChanges.length === 1, 'отмена будущей правки что-то записала');
+
+    // «вся игра» по тому же полю называет и стирает запись с 10.11
+    await setDate('');
+    await admin.fill('[data-field="norm-experienced-quality"]', '40');
+    const whole = await preview('истори');
+    check(whole.includes('10.11.2026'), `превью «на всю игру» не назвало стираемую запись: «${whole}»`);
+    check((await apply()).includes('Сохранено'), `правка на всю игру не сохранена: «${await alert()}»`);
+    snap = await snapshot();
+    check(snap.configChanges.length === 0, `запись с 10.11 не стёрта: ${JSON.stringify(snap.configChanges)}`);
+    check(snap.config.norms?.experienced?.quality === 40, 'норма на всю игру не записана');
+    check(await admin.locator('[data-change]').count() === 0, 'стёртая запись осталась в списке');
+
+    // «Убрать»: превью → применить → записи нет
+    await setDate('2026-11-09');
+    await admin.fill('[data-field="maxPiles"]', '3');
+    await preview('рабочих дней');
+    await apply();
+    check((await snapshot()).configChanges.length === 1, 'запись с 9.11 не создана');
+    await admin.click('[data-remove-change="2026-11-09"]');
+    const removal = await waitForText(admin, '[data-preview="config"]', 'будет убрана');
+    check(removal.includes('09.11.2026'), `превью удаления не назвало дату: «${removal}»`);
+    check((await snapshot()).configChanges.length === 1, 'запись убрана до подтверждения');
+    await apply();
+    check((await snapshot()).configChanges.length === 0, 'запись не убрана после подтверждения');
+    check(await admin.locator('[data-change]').count() === 0, 'убранная запись осталась в списке');
+  });
+
   await scenario('ручные правки: выдать и сбросить кучки → экран', async ({ mock, newPage, check, urls }) => {
     const screen = await newPage();
     await screen.goto(urls.screen, { waitUntil: 'networkidle' });
