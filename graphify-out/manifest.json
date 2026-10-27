@@ -42,10 +42,10 @@
     "semantic_hash": "6d2fc392f24190b156351aca35e4f774"
   },
   "setup.sh": {
-    "mtime": 1792922885.866125,
-    "seen": 1792922944.0264173,
-    "ast_hash": "34106dae632e64658cde601b82896f91",
-    "semantic_hash": "34106dae632e64658cde601b82896f91"
+    "mtime": 1793125547.3850694,
+    "seen": 1793128367.5482025,
+    "ast_hash": "f40dbb47e4a9b99f464a9217edcf73db",
+    "semantic_hash": ""
   },
   "skills-lock.json": {
     "mtime": 1792922934.846203,
@@ -97,9 +97,9 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1793038280.5545805,
-    "seen": 1793038386.6737874,
-    "ast_hash": "961a86d107c2660f0463f418ba2f81c6",
+    "mtime": 1793125746.3931925,
+    "seen": 1793128367.5481994,
+    "ast_hash": "916e2825fc976d8666fe4f039c22f866",
     "semantic_hash": ""
   },
   "src/art/manifest.test.ts": {
@@ -253,8 +253,8 @@
     "semantic_hash": ""
   },
   "vite.config.ts": {
-    "mtime": 1793041041.15102,
-    "seen": 1793041196.0661185,
+    "mtime": 1793125947.5488951,
+    "seen": 1793128367.5483043,
     "ast_hash": "3016f348cde5a1c3855afe0cc716610d",
     "semantic_hash": ""
   },
@@ -439,9 +439,9 @@
     "semantic_hash": ""
   },
   "PLAN.md": {
-    "mtime": 1793122656.1751497,
-    "seen": 1793122682.4345503,
-    "ast_hash": "0f021ec6c6e32bdff6d55c128421b670",
+    "mtime": 1793128356.3158555,
+    "seen": 1793128367.5483391,
+    "ast_hash": "12e67f5dc1391fbd00db56f5290e44ba",
     "semantic_hash": ""
   },
   "README.assets.md": {
@@ -451,27 +451,27 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1792922885.8651283,
-    "seen": 1792938930.7047365,
-    "ast_hash": "424fc4c776d916c9ab849e1779500ba4",
+    "mtime": 1793125547.4276972,
+    "seen": 1793128367.5483413,
+    "ast_hash": "9273affe7f1df26e616ff20f56b31e4a",
     "semantic_hash": ""
   },
   "docs/superpowers/plans/2026-10-25-tamagochi-plan.md": {
-    "mtime": 1792937925.1775305,
-    "seen": 1792938930.7047374,
-    "ast_hash": "f816dd540e22733d9ab7ec5d9963b928",
+    "mtime": 1793126497.6909528,
+    "seen": 1793128367.5483465,
+    "ast_hash": "931a388605ab0f86dd4a2d49fa1cab4b",
     "semantic_hash": ""
   },
   "docs/superpowers/specs/2026-10-25-tamagochi-design.md": {
-    "mtime": 1793122633.1991675,
-    "seen": 1793122682.434558,
-    "ast_hash": "d4b3e29369fa1037432a22705b1fe72c",
+    "mtime": 1793126497.692945,
+    "seen": 1793128367.548348,
+    "ast_hash": "58b8f099900fe7daacbb1ee138da1dbc",
     "semantic_hash": ""
   },
   "index.html": {
-    "mtime": 1792938842.1667972,
-    "seen": 1792938930.7047393,
-    "ast_hash": "dadb112861688052755335083a1e5180",
+    "mtime": 1793125536.4197726,
+    "seen": 1793128367.548349,
+    "ast_hash": "8eabfc045acd8d49721b0e09f9cf56aa",
     "semantic_hash": ""
   },
   "public/assets/pets/LICENSE-kenney-animal-pack.txt": {
@@ -889,9 +889,9 @@
     "semantic_hash": ""
   },
   "tools/check-admin.mjs": {
-    "mtime": 1793122463.6242836,
-    "seen": 1793122682.4344995,
-    "ast_hash": "e05fdbb9fb180a2c1100cf66eed48a13",
+    "mtime": 1793122797.8421228,
+    "seen": 1793128367.5482934,
+    "ast_hash": "b19a849304e93d8c98e2059878d19089",
     "semantic_hash": ""
   },
   "admin.html": {
@@ -1038,10 +1038,58 @@
     "ast_hash": "58945c59b0b88815e671c7a489dca0b2",
     "semantic_hash": ""
   },
-  "tools/shot-rg.mjs": {
-    "mtime": 1793122584.0834937,
-    "seen": 1793122682.4345074,
-    "ast_hash": "c6cfd6e8732a04e066e8a04b17eeae62",
+  ".github/workflows/pages.yml": {
+    "mtime": 1793126933.3198726,
+    "seen": 1793128367.548187,
+    "ast_hash": "595211e3ac89f9faa056472de30d4cc0",
+    "semantic_hash": ""
+  },
+  "apps-script/test/smoke-live.test.mjs": {
+    "mtime": 1793126067.7775862,
+    "seen": 1793128367.548198,
+    "ast_hash": "a09faa040492e5a4b74d437f93ebd2bf",
+    "semantic_hash": ""
+  },
+  "tools/audit-publish.mjs": {
+    "mtime": 1793126439.7341895,
+    "seen": 1793128367.5482857,
+    "ast_hash": "37bc746da59b9e1207982a703c9a5c27",
+    "semantic_hash": ""
+  },
+  "tools/check-dist.mjs": {
+    "mtime": 1793125877.873523,
+    "seen": 1793128367.5482943,
+    "ast_hash": "423825e55e3de46fc5fc16807639a322",
+    "semantic_hash": ""
+  },
+  "tools/check-live.mjs": {
+    "mtime": 1793127033.6026366,
+    "seen": 1793128367.5482955,
+    "ast_hash": "b3f62807a46c21858be277d83153252b",
+    "semantic_hash": ""
+  },
+  "tools/smoke-live.mjs": {
+    "mtime": 1793126085.0100942,
+    "seen": 1793128367.5483022,
+    "ast_hash": "5b22b5ef34f73f68fd1cd9cf2f7bed43",
+    "semantic_hash": ""
+  },
+  "docs/deploy.md": {
+    "mtime": 1793126149.5744123,
+    "seen": 1793128367.5483446,
+    "ast_hash": "25cf614eb4176a47cfdab5f01b1b850d",
+    "semantic_hash": ""
+  },
+  "docs/game-kit-setup.md": {
+    "mtime": 1792922885.8651283,
+    "seen": 1793128367.5483453,
+    "ast_hash": "424fc4c776d916c9ab849e1779500ba4",
+    "semantic_hash": ""
+  },
+  "public/robots.txt": {
+    "mtime": 1793125536.4197726,
+    "seen": 1793128367.548351,
+    "ast_hash": "f71d20196d4caf35b6a670db8c70b03d",
     "semantic_hash": ""
   }
 }
