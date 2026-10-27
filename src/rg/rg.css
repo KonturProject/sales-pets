@@ -24,8 +24,15 @@ button:disabled { opacity: 0.45; }
 [data-stage-text] { margin: 12px 0 4px; text-align: center; font-weight: 600; }
 
 /* «предмет — питомец — предмет»: аптечка слева, игрушка справа; перенос на питомца тратит предмет */
-.arena { display: grid; grid-template-columns: 5rem minmax(0, 1fr) 5rem; gap: 8px; align-items: center; }
+.arena { display: grid; grid-template-columns: 4rem minmax(0, 1fr) 4rem; gap: 6px; align-items: center; }
 .arena .boxes { display: none; } /* остаток показывают бейджи предметов; [data-count] остаётся в DOM */
+/* карточка питомца и её части общие с экраном (room.css), поэтому правки только под .arena */
+.arena .spot { padding: 10px; }
+.arena .stage { height: 210px; }
+.arena .creature { left: 4%; right: 4%; }
+.arena .label { display: none; } /* «СР1» уже в заголовке страницы */
+.arena .head { justify-content: center; }
+.arena .sub { white-space: nowrap; }
 
 .item {
   position: relative;
@@ -33,47 +40,70 @@ button:disabled { opacity: 0.45; }
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 8px 4px;
-  font-size: 0.85rem;
+  padding: 8px 2px;
+  font-size: 0.78rem;
   cursor: grab;
   touch-action: none; /* палец тащит предмет, а не прокручивает страницу */
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
-.item:disabled { cursor: default; }
-.item[data-dragging] { opacity: 0.45; }
+/* недоступный (кончился, пауза после расхода, питомец погиб): серый, но не «пустой» */
+.item:disabled { cursor: default; opacity: 1; color: var(--ink-soft); }
+.item:disabled .item-pic { filter: grayscale(1); opacity: 0.4; }
+.item:disabled b { background: var(--ink-soft); }
+/* предмет унесли: на его месте остаётся пустое гнездо, остаток виден */
+.item[data-dragging] { background: transparent; border-style: dashed; border-color: var(--meter); }
+.item[data-dragging] .item-pic { opacity: 0.2; }
 .item-pic { display: block; width: 3rem; height: 3rem; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
 .item b {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: -6px;
+  right: -6px;
   min-width: 1.4rem;
   height: 1.4rem;
   padding: 0 0.3rem;
   display: grid;
   place-items: center;
+  border: 2px solid var(--paper);
   border-radius: 0.7rem;
   font-size: 0.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   color: #fff;
   background: var(--ink);
 }
 
-.arena .stage.drop-ready { border-radius: 14px; box-shadow: inset 0 0 0 3px var(--meter); background: rgba(143, 176, 138, 0.18); }
+/* пока несут предмет, зона сброса обведена пунктиром, над ней — сплошной рамкой */
+.arena:has(.item[data-dragging]) .stage { outline: 2px dashed var(--meter); outline-offset: -4px; border-radius: 14px; }
+.arena .stage.drop-ready,
+.arena:has(.item[data-dragging]) .stage.drop-ready { outline: 3px solid var(--meter); background: rgba(143, 176, 138, 0.12); }
 
 .drag-ghost {
   position: fixed;
   left: 0;
   top: 0;
   z-index: 20;
-  width: 3rem;
-  height: 3rem;
+  width: 4rem;
+  height: 4rem;
   pointer-events: none;
   will-change: transform;
 }
 .drag-ghost img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.25)); }
+@media (pointer: coarse) { .drag-ghost img { transform: translateY(-45%); } } /* палец не закрывает предмет */
 
-[data-hint] { margin: 10px 0 0; text-align: center; font-size: 0.9rem; color: var(--ink-soft); transition: color 0.2s; }
-[data-hint].flash { color: var(--ink); font-weight: 600; }
+[data-hint] {
+  width: fit-content;
+  margin: 12px auto 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--meter-bg);
+  font-size: 0.95rem;
+  color: var(--ink);
+  transition: background 0.2s;
+}
+[data-hint].flash { background: rgba(143, 176, 138, 0.35); font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) {
   .drag-ghost { transition: none !important; }
