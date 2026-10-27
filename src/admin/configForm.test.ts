@@ -17,6 +17,32 @@ describe('configFormOf', () => {
   });
 });
 
+describe('configPatch с датой', () => {
+  const at = (from: string, over: Partial<ConfigForm> = {}) => configPatch({ ...configFormOf(current), ...over }, current, from);
+
+  test('в пределах дат игры уходит то же, что и без даты', () => {
+    expect(at('2026-11-09', { maxPiles: '3' })).toEqual({ maxPiles: 3 });
+    expect(at(defaultConfig.startDate, { maxPiles: '3' })).toEqual({ maxPiles: 3 });
+    expect(at(defaultConfig.endDate, { maxPiles: '3' })).toEqual({ maxPiles: 3 });
+  });
+
+  test('дата не в формате yyyy-MM-dd или вне дат игры — ошибка', () => {
+    for (const from of ['', '9.11.2026', '2026-11-9', 'x', '2026-11-01', '2026-11-23']) {
+      expect(at(from, { maxPiles: '3' }), from).toMatchObject({ error: expect.stringContaining('Дата') });
+    }
+  });
+
+  test('пороги стадий с датой не меняются: ошибка про всю игру', () => {
+    const thresholds = configFormOf(current).stageThresholds.slice();
+    thresholds[14] = '160';
+    expect(at('2026-11-09', { stageThresholds: thresholds })).toMatchObject({ error: expect.stringContaining('всю игру') });
+  });
+
+  test('ничего не изменилось относительно значений на дату — ошибка, а не пустой запрос', () => {
+    expect(at('2026-11-09')).toEqual({ error: 'Ничего не изменено' });
+  });
+});
+
 describe('configPatch', () => {
   test('ничего не менялось — ошибка, а не пустой запрос', () => {
     expect(patch()).toEqual({ error: 'Ничего не изменено' });

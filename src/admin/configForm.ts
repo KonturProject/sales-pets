@@ -1,6 +1,7 @@
 import type { SnapshotConfig } from '@/data/api';
 import type { Config } from '@/engine/config';
 import type { Level } from '@/engine/types';
+import { ruDate } from './dom';
 
 /** Настройки игры вместе с дневной нормой оплат: в `Config` её нет, она живёт в снимке отдельно. */
 export type ConfigCurrent = Config & { dailyNorm: number };
@@ -54,7 +55,10 @@ const whole = (text: string): number | null => (/^-?\d+$/.test(text.trim()) ? Nu
  * Что отправить в `setConfig`: только изменённое. Что это целое число, проверяется здесь, а диапазоны —
  * на сервере (его сообщение админ увидит как есть); порядок порогов стадий проверяется здесь, он нужен для всех 15.
  */
-export function configPatch(form: ConfigForm, current: ConfigCurrent): SnapshotConfig | { error: string } {
+export function configPatch(form: ConfigForm, current: ConfigCurrent, from?: string): SnapshotConfig | { error: string } {
+  if (from !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(from) || from < current.startDate || from > current.endDate)) {
+    return { error: `Дата правки: выберите день игры, с ${ruDate(current.startDate)} по ${ruDate(current.endDate)}` };
+  }
   const out: SnapshotConfig = {};
 
   for (const key of SCALAR_KEYS) {
@@ -80,7 +84,10 @@ export function configPatch(form: ConfigForm, current: ConfigCurrent): SnapshotC
     if (i > 0 && n <= thresholds[i - 1]!) return { error: `Порог ${i + 1} должен быть больше порога ${i}` };
     thresholds.push(n);
   }
-  if (thresholds.some((n, i) => n !== current.stageThresholds[i])) out.stageThresholds = thresholds;
+  if (thresholds.some((n, i) => n !== current.stageThresholds[i])) {
+    if (from !== undefined) return { error: 'Пороги стадий меняются только на всю игру: очистите дату' };
+    out.stageThresholds = thresholds;
+  }
 
   return Object.keys(out).length ? out : { error: 'Ничего не изменено' };
 }
