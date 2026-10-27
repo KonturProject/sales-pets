@@ -28,6 +28,8 @@ const CONFIG_RANGES = {
   sickPilesAbove: [0, 20],
   deathDaysNoPay: [1, 30],
 };
+/** Правок «с даты» (configChanges) не больше: ячейка листа не безразмерна. */
+const CONFIG_CHANGES_MAX = 30;
 const NORM_FIELDS = ['quality', 'long'];
 const NORM_MAX = 50;
 const STAGE_COUNT = 15;
@@ -255,6 +257,24 @@ function parseConfig_(text) {
   } catch (err) {
     return {};
   }
+}
+
+/** Правки config по датам: [{from, config}] по возрастанию from; не-JSON, не массив и негодные записи (ячейку могли испортить руками) отбрасываются. */
+function parseConfigChanges_(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text || '[]');
+  } catch (err) {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter(function (e) {
+      return isPlainObject_(e) && isDate_(e.from) && isPlainObject_(e.config);
+    })
+    .sort(function (a, b) {
+      return compare_(a.from, b.from);
+    });
 }
 
 function readAbsences_() {
@@ -656,25 +676,89 @@ function mergeNorms_(base, patch) {
   return out;
 }
 
-function setConfigAction_(body) {
-  const patch = body.config;
-  if (!isPlainObject_(patch) || Object.keys(patch).length === 0) fail_();
-  const config = parseConfig_(readSettings_().config);
+/** Проверяет и вносит патч в `target`; пороги стадий — только когда они разрешены (на всю игру, не с даты). Негодное — bad_request. */
+function applyConfigPatch_(target, patch, allowThresholds) {
   Object.keys(patch).forEach(function (k) {
     const v = patch[k];
     if (Object.prototype.hasOwnProperty.call(CONFIG_RANGES, k)) {
       if (!isIntIn_(v, CONFIG_RANGES[k][0], CONFIG_RANGES[k][1])) fail_();
-      config[k] = v;
+      target[k] = v;
     } else if (k === 'norms') {
-      config.norms = mergeNorms_(config.norms, v);
-    } else if (k === 'stageThresholds') {
+      target.norms = mergeNorms_(target.norms, v);
+    } else if (k === 'stageThresholds' && allowThresholds) {
       if (!validThresholds_(v)) fail_();
-      config.stageThresholds = v;
+      target.stageThresholds = v;
     } else {
       fail_();
     }
   });
-  return { ok: true, version: bump_({ config: JSON.stringify(config) }), config: config };
+}
+
+/** Правка на всю игру отменяет записи по датам для тех же полей (нормы — по уровню и полю); опустевшие записи удаляются. */
+function stripConfigFields_(changes, patch) {
+  changes.forEach(function (e) {
+    Object.keys(patch).forEach(function (k) {
+      if (k === 'norms') {
+        Object.keys(patch.norms).forEach(function (level) {
+          if (!isPlainObject_(e.config.norms) || !isPlainObject_(e.config.norms[level])) return;
+          Object.keys(patch.norms[level]).forEach(function (f) {
+            delete e.config.norms[level][f];
+          });
+          if (Object.keys(e.config.norms[level]).length === 0) delete e.config.norms[level];
+        });
+        if (isPlainObject_(e.config.norms) && Object.keys(e.config.norms).length === 0) delete e.config.norms;
+      } else if (k !== 'stageThresholds') {
+        delete e.config[k];
+      }
+    });
+  });
+  return changes.filter(function (e) {
+    return Object.keys(e.config).length > 0;
+  });
+}
+
+/** setConfig: без `from` (нет или null) — на всю игру; с `from` — правка, действующая с этой даты (без порогов стадий). */
+function setConfigAction_(body) {
+  const patch = body.config;
+  if (!isPlainObject_(patch) || Object.keys(patch).length === 0) fail_();
+  const settings = readSettings_();
+  const config = parseConfig_(settings.config);
+  let changes = parseConfigChanges_(settings.configChanges);
+  if (body.from === undefined || body.from === null) {
+    applyConfigPatch_(config, patch, true);
+    changes = stripConfigFields_(changes, patch);
+  } else {
+    if (!isDate_(body.from)) fail_();
+    let entry = null;
+    changes.forEach(function (e) {
+      if (entry === null && e.from === body.from) entry = e;
+    });
+    if (entry === null) {
+      if (changes.length >= CONFIG_CHANGES_MAX) fail_();
+      entry = { from: body.from, config: {} };
+      changes.push(entry);
+      changes.sort(function (a, b) {
+        return compare_(a.from, b.from);
+      });
+    }
+    applyConfigPatch_(entry.config, patch, false);
+  }
+  return {
+    ok: true,
+    version: bump_({ config: JSON.stringify(config), configChanges: JSON.stringify(changes) }),
+    config: config,
+    configChanges: changes,
+  };
+}
+
+function removeConfigChangeAction_(body) {
+  if (!isDate_(body.from)) fail_();
+  const changes = parseConfigChanges_(readSettings_().configChanges);
+  const kept = changes.filter(function (e) {
+    return e.from !== body.from;
+  });
+  if (kept.length === changes.length) fail_();
+  return { ok: true, version: bump_({ configChanges: JSON.stringify(kept) }), configChanges: kept };
 }
 
 /** Ручная правка админа: дельта к кучкам, аптечкам или игрушкам группы на дату (не позже сегодня). Исправляется компенсирующей правкой. */
@@ -757,6 +841,7 @@ const ACTIONS_ = {
   setStaff: { who: 'admin', run: setStaffAction_ },
   getPrivate: { who: 'admin', run: getPrivateAction_ },
   setConfig: { who: 'admin', run: setConfigAction_ },
+  removeConfigChange: { who: 'admin', run: removeConfigChangeAction_ },
   setOverride: { who: 'admin', run: setOverrideAction_ },
   useItem: { who: 'group', run: useItemAction_ },
   setAbsence: { who: 'admin', run: setAbsenceAction_ },
@@ -799,7 +884,7 @@ function doPost(e) {
 
 /**
  * Публичный снимок: ФИО и группы, оплаты {date, group, author, invoice}, воронка, отсутствия, правки и расходы {id, date, group, kind, delta}.
- * Сумм, хешей, солей и `ref` расходов в нём нет. `config` — то, что сохранил setConfig (иначе {}); причин исключения из рейтинга здесь нет (getPrivate).
+ * Сумм, хешей, солей и `ref` расходов в нём нет. `config` — то, что сохранил setConfig (иначе {}), `configChanges` — его правки «с даты» [{from, config}] (иначе []); причин исключения из рейтинга здесь нет (getPrivate).
  * `?since=<версия>` при той же версии отдаёт {unchanged, version, serverNow}: «сейчас» нужно клиенту, чтобы заметить смену суток без новой версии.
  */
 function doGet(e) {
@@ -816,6 +901,7 @@ function doGet(e) {
       funnelThrough: settings.funnelThrough || null,
       paymentsImportedThrough: settings.paymentsImportedThrough || null,
       config: parseConfig_(settings.config),
+      configChanges: parseConfigChanges_(settings.configChanges),
       staff: readStaff_().map(publicStaff_),
       absences: readAbsences_(),
       payments: readRows_('Payments').map(function (r) {

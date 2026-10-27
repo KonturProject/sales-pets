@@ -172,6 +172,7 @@ describe('GET', () => {
       funnelThrough: null,
       paymentsImportedThrough: null,
       config: {},
+      configChanges: [],
       staff: [],
       absences: [],
       payments: [],
@@ -598,7 +599,7 @@ describe('setConfig', () => {
     expect(b.get().config).toEqual({});
     const v0 = b.get().version;
     const r1 = setConfig(b, { dailyNorm: 5, maxPiles: 3 });
-    expect(r1).toEqual({ ok: true, version: v0 + 1, config: { dailyNorm: 5, maxPiles: 3 } });
+    expect(r1).toEqual({ ok: true, version: v0 + 1, config: { dailyNorm: 5, maxPiles: 3 }, configChanges: [] });
     const r2 = setConfig(b, { maxPiles: 4, norms: { rookie1: { quality: 2 } } });
     expect(r2.config).toEqual({ dailyNorm: 5, maxPiles: 4, norms: { rookie1: { quality: 2 } } });
     const r3 = setConfig(b, { norms: { rookie1: { long: 1 }, experienced: { quality: 6, long: 7 } }, stageThresholds: thresholds });
@@ -691,6 +692,140 @@ describe('setConfig', () => {
     admin(b, 'importPayments', { from: '2026-11-09', to: '2026-11-10', rows: [] });
     setConfig(b, { dailyNorm: 6 });
     expect(b.get()).toMatchObject({ funnelThrough: '2026-11-10', paymentsImportedThrough: '2026-11-10', config: { dailyNorm: 6 } });
+  });
+});
+
+describe('настройки по датам (setConfig с from, removeConfigChange)', () => {
+  const setAt = (b, from, config) => admin(b, 'setConfig', { config, from });
+  const setAll = (b, config) => admin(b, 'setConfig', { config });
+  const remove = (b, from) => admin(b, 'removeConfigChange', { from });
+  const thresholds = Array.from({ length: 15 }, (_, i) => (i + 1) * 5);
+
+  test('правка с датой не трогает config, пишется в configChanges; повтор той же даты сливает', () => {
+    const b = loadBackend();
+    setAll(b, { maxPiles: 4 });
+    const v0 = b.get().version;
+    const r1 = setAt(b, '2026-11-09', { norms: { experienced: { quality: 2 } } });
+    expect(r1).toEqual({
+      ok: true,
+      version: v0 + 1,
+      config: { maxPiles: 4 },
+      configChanges: [{ from: '2026-11-09', config: { norms: { experienced: { quality: 2 } } } }],
+    });
+    const r2 = setAt(b, '2026-11-09', { norms: { experienced: { long: 1 } }, dailyNorm: 6 });
+    expect(r2.configChanges).toEqual([{ from: '2026-11-09', config: { norms: { experienced: { quality: 2, long: 1 } }, dailyNorm: 6 } }]);
+    expect(b.get().config).toEqual({ maxPiles: 4 });
+    expect(b.get().configChanges).toEqual(r2.configChanges);
+  });
+
+  test('записи отдаются по возрастанию даты, в каком бы порядке их ни добавляли', () => {
+    const b = loadBackend();
+    setAt(b, '2026-11-12', { maxPiles: 3 });
+    setAt(b, '2026-11-09', { maxPiles: 2 });
+    expect(b.get().configChanges.map((e) => e.from)).toEqual(['2026-11-09', '2026-11-12']);
+  });
+
+  test('from: null — это правка на всю игру', () => {
+    const b = loadBackend();
+    expect(admin(b, 'setConfig', { config: { maxPiles: 3 }, from: null })).toMatchObject({ config: { maxPiles: 3 }, configChanges: [] });
+  });
+
+  test('пороги стадий с датой и негодная дата — bad_request, ничего не пишется', () => {
+    const b = loadBackend();
+    setAt(b, '2026-11-09', { maxPiles: 2 });
+    const before = b.get();
+    for (const from of ['2026-02-30', '09.11.2026', '2026-11-9', '', 5, true, {}, []]) {
+      expect(setAt(b, from, { maxPiles: 3 }), JSON.stringify(from)).toEqual({ ok: false, error: 'bad_request' });
+    }
+    expect(setAt(b, '2026-11-12', { stageThresholds: thresholds })).toEqual({ ok: false, error: 'bad_request' });
+    expect(setAt(b, '2026-11-12', { maxPiles: 3, stageThresholds: thresholds })).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.get()).toEqual(before);
+  });
+
+  test('значение вне диапазона, неизвестное поле и пустая правка в записи с датой — bad_request, версия не растёт', () => {
+    const b = loadBackend();
+    setAt(b, '2026-11-09', { maxPiles: 2 });
+    const before = b.get();
+    for (const config of [{}, { maxPiles: 0 }, { dailyNorm: 1001 }, { norms: { experienced: { quality: 51 } } }, { norms: {} }, { unknown: 1 }, { startDate: '2026-11-02' }]) {
+      expect(setAt(b, '2026-11-12', config), JSON.stringify(config)).toEqual({ ok: false, error: 'bad_request' });
+    }
+    expect(b.get()).toEqual(before);
+  });
+
+  test('записей не больше 30: тридцать первая отвергается, повтор существующей даты проходит', () => {
+    const b = loadBackend();
+    const day = (i) => `2026-11-${String(i).padStart(2, '0')}`;
+    for (let i = 1; i <= 30; i++) expect(setAt(b, day(i), { maxPiles: 1 + (i % 20) }).ok, day(i)).toBe(true);
+    expect(setAt(b, '2026-12-01', { maxPiles: 3 })).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.get().configChanges).toHaveLength(30);
+    expect(setAt(b, day(5), { boredomBelow: 2 }).ok).toBe(true);
+  });
+
+  test('правка на всю игру вычёркивает свои поля из записей; опустевшие записи исчезают', () => {
+    const b = loadBackend();
+    setAt(b, '2026-11-09', { maxPiles: 2, norms: { experienced: { quality: 1 } } });
+    setAt(b, '2026-11-12', { sickDaysNoPay: 3 });
+    expect(setAll(b, { maxPiles: 6 })).toMatchObject({
+      config: { maxPiles: 6 },
+      configChanges: [
+        { from: '2026-11-09', config: { norms: { experienced: { quality: 1 } } } },
+        { from: '2026-11-12', config: { sickDaysNoPay: 3 } },
+      ],
+    });
+    // другое поле той же нормы запись не трогает
+    expect(setAll(b, { norms: { experienced: { long: 2 } } }).configChanges.map((e) => e.from)).toEqual(['2026-11-09', '2026-11-12']);
+    // то же поле убирает запись целиком
+    expect(setAll(b, { norms: { experienced: { quality: 3 } } }).configChanges).toEqual([{ from: '2026-11-12', config: { sickDaysNoPay: 3 } }]);
+    expect(setAll(b, { sickDaysNoPay: 2 }).configChanges).toEqual([]);
+    expect(b.get().configChanges).toEqual([]);
+    expect(b.get().config).toEqual({ maxPiles: 6, norms: { experienced: { long: 2, quality: 3 } }, sickDaysNoPay: 2 });
+  });
+
+  test('правка порогов стадий на всю игру записи по датам не трогает', () => {
+    const b = loadBackend();
+    setAt(b, '2026-11-09', { maxPiles: 2 });
+    expect(setAll(b, { stageThresholds: thresholds }).configChanges).toEqual([{ from: '2026-11-09', config: { maxPiles: 2 } }]);
+  });
+
+  test('removeConfigChange убирает запись и поднимает версию; нет такой даты или негодная — bad_request', () => {
+    const b = loadBackend();
+    setAt(b, '2026-11-09', { maxPiles: 2 });
+    setAt(b, '2026-11-12', { maxPiles: 3 });
+    const v = b.get().version;
+    expect(remove(b, '2026-11-09')).toEqual({ ok: true, version: v + 1, configChanges: [{ from: '2026-11-12', config: { maxPiles: 3 } }] });
+    expect(b.get().configChanges).toEqual([{ from: '2026-11-12', config: { maxPiles: 3 } }]);
+    const before = b.get();
+    for (const from of ['2026-11-09', '2026-11-10', 'x', '', 5, undefined, null]) {
+      expect(remove(b, from), JSON.stringify(from)).toEqual({ ok: false, error: 'bad_request' });
+    }
+    expect(b.get()).toEqual(before);
+  });
+
+  test('испорченная ячейка и мусорные записи отбрасываются; следующая правка чинит', () => {
+    const b = loadBackend();
+    setAt(b, '2026-11-09', { maxPiles: 2 });
+    const cell = b.sheet('Settings').rows.find((r) => r[0] === 'configChanges');
+    for (const garbage of ['не json', '{"a":1}', '"x"', '5', 'null']) {
+      cell[1] = garbage;
+      expect(b.get().configChanges, garbage).toEqual([]);
+    }
+    cell[1] = JSON.stringify([{ from: '2026-11-12', config: { maxPiles: 3 } }, { from: 'x', config: {} }, 5, null, { from: '2026-11-10', config: [] }, { from: '2026-11-09', config: { maxPiles: 2 } }]);
+    expect(b.get().configChanges).toEqual([{ from: '2026-11-09', config: { maxPiles: 2 } }, { from: '2026-11-12', config: { maxPiles: 3 } }]);
+    cell[1] = 'не json';
+    expect(setAt(b, '2026-11-10', { maxPiles: 4 }).configChanges).toEqual([{ from: '2026-11-10', config: { maxPiles: 4 } }]);
+  });
+
+  test('админ-PIN обязателен: без PIN и с PIN группы — invalid_pin, ничего не пишется', () => {
+    const b = loadBackend();
+    const { groupPins } = admin(b, 'setGroupPins');
+    setAt(b, '2026-11-09', { maxPiles: 2 });
+    const before = b.get();
+    expect(b.post({ action: 'setConfig', from: '2026-11-12', config: { maxPiles: 3 } })).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.post({ action: 'removeConfigChange', from: '2026-11-09' })).toEqual({ ok: false, error: 'invalid_pin' });
+    for (const action of ['setConfig', 'removeConfigChange']) {
+      expect(b.post({ action, group: 'СР1', groupPin: groupPins['СР1'], from: '2026-11-09', config: { maxPiles: 3 } })).toEqual({ ok: false, error: 'invalid_pin' });
+    }
+    expect(b.get()).toEqual(before);
   });
 });
 
