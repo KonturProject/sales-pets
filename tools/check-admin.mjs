@@ -417,7 +417,18 @@ try {
 
     // факты мока ровно равны норме опытных, поэтому смену видно только при повышении нормы: игрушки перестают копиться
     await admin.fill('[data-field="norm-experienced-quality"]', '50');
+    const v0 = (await publicSnapshot(mock)).version;
     await admin.click('[data-save="config"]');
+    // правка переписывает всю историю: сначала предпросмотр «было → станет», на сервер пока ничего не уходит
+    const preview = await waitForText(admin, '[data-preview="config"]', 'истори');
+    check(preview.includes('истори') && preview.includes('→'), `нет предпросмотра с последствиями: «${preview}»`);
+    check((await publicSnapshot(mock)).version === v0, 'правка записана до подтверждения');
+    await admin.click('[data-cancel="config"]');
+    check(await admin.locator('[data-preview="config"]').count() === 0 && await field('norm-experienced-quality') === '50', 'отмена не убрала предпросмотр или потеряла введённое');
+    check((await publicSnapshot(mock)).version === v0, 'отмена записала правку');
+    await admin.click('[data-save="config"]');
+    await admin.waitForSelector('[data-confirm="config"]', { timeout: 8_000 });
+    await admin.click('[data-confirm="config"]');
     check((await waitForText(admin, '[data-status="config"]', 'Сохранено')).includes('Сохранено'), `норма не сохранена: «${await textOf(admin, '[data-alert="config"]')}»`);
     const config = (await publicSnapshot(mock)).config;
     check(config.norms?.experienced?.quality === 50, 'норма опытных не записана на сервер');
@@ -439,7 +450,12 @@ try {
     const status = () => textOf(admin, '[data-status="config"]');
     const save = async () => {
       await admin.click('[data-save="config"]');
-      await admin.waitForFunction(() => document.querySelector('[data-alert="config"]')?.textContent || document.querySelector('[data-status="config"]')?.textContent, null, { timeout: 8_000 }).catch(() => {});
+      const outcome = '[data-alert="config"]:not(:empty), [data-status="config"]:not(:empty)';
+      await admin.waitForSelector(`${outcome}, [data-confirm="config"]`, { timeout: 8_000 }).catch(() => {});
+      if (await admin.locator('[data-confirm="config"]').count()) {
+        await admin.click('[data-confirm="config"]');
+        await admin.waitForSelector(outcome, { timeout: 8_000 }).catch(() => {});
+      }
     };
 
     await save();

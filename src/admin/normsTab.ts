@@ -1,9 +1,10 @@
-import type { Snapshot } from '@/data/api';
+import type { Snapshot, SnapshotConfig } from '@/data/api';
 import { configOf, dailyNormOf } from '@/data/config';
 import { DEFAULT_DAILY_NORM } from '@/data/facts';
 import {
   configFormOf, configPatch, LEVELS, LEVEL_TITLE, NORM_FIELD_TITLE, SCALAR_KEYS, SCALARS, type ConfigCurrent,
 } from './configForm';
+import { configPreview, describeChange } from './configPreview';
 import type { AdminCtx } from './ctx';
 import { errorText, h } from './dom';
 
@@ -14,13 +15,15 @@ const currentOf = (s: Snapshot): ConfigCurrent => ({
 
 /**
  * Вкладка «Нормы и пороги»: поля предзаполнены тем, что реально действует (`configOf`), на сервер уходит только
- * изменённое. Диапазоны проверяет сервер: его отказ показывается как есть. Правка действует на всю историю.
+ * изменённое. Диапазоны проверяет сервер: его отказ показывается как есть. Правка действует на всю историю, поэтому
+ * «Сохранить» сначала показывает, что изменится у питомцев сегодня, и пишет на сервер только после «Применить».
  */
 export async function normsTab(ctx: AdminCtx): Promise<HTMLElement> {
   let current = currentOf(await ctx.snapshot());
   const alert = h('p', { role: 'alert', 'data-alert': 'config' });
   const status = h('p', { role: 'status', 'data-status': 'config' });
   const box = h('div', {});
+  const previewBox = h('div', {});
 
   function paint(): void {
     const start = configFormOf(current);
@@ -54,19 +57,47 @@ export async function normsTab(ctx: AdminCtx): Promise<HTMLElement> {
         alert.textContent = patch.error;
         return;
       }
-      ctx.session.call('setConfig', { config: patch }).then(
-        async () => {
-          current = currentOf(await ctx.snapshot());
-          paint();
-          status.textContent = 'Сохранено';
-        },
+      previewBox.replaceChildren();
+      ctx.snapshot().then(
+        (snapshot) => showPreview(patch, snapshot),
         (e) => { alert.textContent = errorText(e); },
       );
     };
 
+    const showPreview = (patch: SnapshotConfig, snapshot: Snapshot) => {
+      const { asOf, changes } = configPreview(snapshot, patch);
+      const apply = h('button', { type: 'button', 'data-confirm': 'config' }, 'Применить');
+      apply.addEventListener('click', () => {
+        apply.disabled = true;
+        ctx.session.call('setConfig', { config: patch }).then(
+          async () => {
+            current = currentOf(await ctx.snapshot());
+            previewBox.replaceChildren();
+            paint();
+            status.textContent = 'Сохранено';
+          },
+          (e) => {
+            apply.disabled = false;
+            alert.textContent = errorText(e);
+          },
+        );
+      });
+      previewBox.replaceChildren(h(
+        'div',
+        { 'data-preview': 'config', role: 'group', 'aria-label': 'Что изменится' },
+        h('p', {}, `Правка пересчитает всю историю игры, а не только дни после неё. У питомцев сегодня (${asOf}) изменится:`),
+        changes.length
+          ? h('ul', {}, ...changes.map((c) => h('li', {}, describeChange(c))))
+          : h('p', {}, 'ничего: стадии, запасы и кучки сегодня те же. Прошлые дни могут пересчитаться.'),
+        apply,
+        h('button', { type: 'button', 'data-cancel': 'config', onclick: () => previewBox.replaceChildren() }, 'Отмена'),
+      ));
+    };
+
     box.replaceChildren(h(
       'form',
-      { 'data-form': 'config', onsubmit: save },
+      { 'data-form': 'config', onsubmit: save, oninput: () => previewBox.replaceChildren() },
+      h('p', { 'data-warning': 'config' }, 'Правка действует на всю историю игры: пересчитаются все прошлые дни. Перед записью покажем, что изменится у питомцев.'),
       h('h2', {}, 'Нормы оплат по уровням'),
       ...norms,
       h('h2', {}, 'Пороги'),
@@ -78,5 +109,5 @@ export async function normsTab(ctx: AdminCtx): Promise<HTMLElement> {
   }
 
   paint();
-  return h('div', {}, box, alert, status);
+  return h('div', {}, box, previewBox, alert, status);
 }
