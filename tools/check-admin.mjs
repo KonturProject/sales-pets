@@ -755,8 +755,19 @@ try {
     check(await rg.waitForSelector('[data-hint].flash', { timeout: 2_000 }).then(() => true, () => false), 'клик по предмету не показал подсказку');
     check(useRequests.length === 1, 'обычный клик по предмету потратил его');
 
-    // клавиатура: Enter на предмете тратит его (доступность)
+    // окно потеряло фокус посреди переноса: призрак возвращается, отпускание над питомцем ничего не тратит
     await rg.waitForFunction(() => !document.querySelector('button[data-use="toy"]')?.disabled, null, { timeout: 5_000 }).catch(() => {});
+    await ghostGone(); // призрак прошлого переноса ещё возвращается на место
+    await drag('button[data-use="toy"]', '.stage', { release: false });
+    check(await rg.locator('.drag-ghost').count() === 1, 'перед потерей фокуса перенос не начался');
+    await rg.evaluate(() => window.dispatchEvent(new Event('blur')));
+    check(await ghostGone(), 'после потери фокуса окна призрак остался');
+    check(await rg.locator('.stage.drop-ready').count() === 0, 'после потери фокуса зона осталась подсвеченной');
+    await rg.mouse.up();
+    await rg.waitForTimeout(300);
+    check(useRequests.length === 1 && await toys() === toys0 - 1, `отпускание после потери фокуса потратило предмет: запросов ${useRequests.length}`);
+
+    // клавиатура: Enter на предмете тратит его (доступность)
     await rg.focus('button[data-use="toy"]');
     await rg.keyboard.press('Enter');
     await rg.waitForFunction((want) => Number(document.querySelector('[data-stock="toy"]')?.textContent) === want, toys0 - 2, { timeout: 8_000 }).catch(() => {});

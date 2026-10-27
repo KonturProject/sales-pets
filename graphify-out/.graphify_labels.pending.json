@@ -1,7 +1,7 @@
 {
   "1": "render_sprites.py",
   "2": "rg/main.ts",
-  "3": "Collision Detection",
+  "3": "XMLHttpRequest",
   "4": "2D Maze Game Template",
   "5": "package.json",
   "6": "Part 1: Basics",
@@ -45,7 +45,7 @@
   "48": "Mathematical / Algorithmic Concepts",
   "49": "Game Development Terminology",
   "50": "WebVR API (Deprecated)",
-  "51": "errorText",
+  "51": "Бэкенд: Google Apps Script + Google Sheets",
   "52": "WebGL API",
   "53": "Feedback recipes — depth for `game-feel`",
   "54": "Web Application Testing",
@@ -115,11 +115,10 @@
   "118": "Keyboard Controls",
   "119": "Step 9: Mouse Controls",
   "120": "staffTab.ts",
-  "121": "serverToday",
-  "122": "Bounding Spheres",
+  "121": "api.ts",
+  "122": "Game kit для Claude Code",
   "123": "PetView.ts",
-  "124": "normsTab.ts",
+  "124": "configPreview.ts",
   "125": "api.ts",
-  "126": "paint",
   "127": "ctx.ts"
 }
