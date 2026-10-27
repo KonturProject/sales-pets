@@ -20,9 +20,9 @@ export interface Absence {
   to: DateStr | null;
 }
 
-/** Ключ сопоставления ФИО из внешних файлов с сотрудником: без краёв и двойных пробелов, без регистра. */
+/** Ключ сопоставления ФИО из внешних файлов с сотрудником: без краёв и двойных пробелов, без регистра, «ё» как «е». */
 export function normalizeName(s: string): string {
-  return s.trim().replace(/\s+/g, ' ').toLowerCase();
+  return s.trim().replace(/\s+/g, ' ').toLowerCase().replace(/ё/g, 'е');
 }
 
 export function groupOn(e: Employee, d: DateStr): GroupCode {

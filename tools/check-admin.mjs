@@ -204,6 +204,8 @@ try {
     const preview = await waitForText(admin, '[data-report="funnel"]', 'Новых сотрудников: 1');
     check(preview.includes('Новых сотрудников: 1'), `превью воронки: «${preview}»`);
     check(preview.includes('11.11.2026'), 'превью воронки: не указана дата «по»');
+    check(preview.includes('СР1 — Тест Новый'), `превью воронки: новый сотрудник не назван по имени и группе: «${preview}»`);
+    check(preview.includes('«Сотрудники»'), 'превью воронки: нет указания проверить дату приёма и уровень во вкладке «Сотрудники»');
     const button = await textOf(admin, '[data-confirm="funnel"]');
     check(button.includes('Добавить новых (1)'), `подпись кнопки: «${button}»`);
     check((await publicSnapshot(mock)).staff.length === staffBefore, 'штат пополнился до подтверждения');

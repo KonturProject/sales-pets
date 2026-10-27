@@ -69,4 +69,8 @@ describe('normalizeName', () => {
     expect(normalizeName('  Тестов  Тест   Тестович ')).toBe('тестов тест тестович');
     expect(normalizeName('ТЕСТОВ тест')).toBe(normalizeName('Тестов Тест'));
   });
+  test('ё и е — одна буква: ФИО из разных файлов не расходятся', () => {
+    expect(normalizeName('Тестов Пётр')).toBe(normalizeName('тестов петр'));
+    expect(normalizeName('ЁЖИКОВ Фёдор')).toBe(normalizeName('Ежиков Федор'));
+  });
 });

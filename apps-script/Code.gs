@@ -99,9 +99,9 @@ function isPlainObject_(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
-/** Так же, как normalizeName на странице: обрезать, схлопнуть пробелы, нижний регистр. */
+/** Так же, как normalizeName на странице: обрезать, схлопнуть пробелы, нижний регистр, «ё» как «е». */
 function normalizeName_(s) {
-  return s.trim().replace(/\s+/g, ' ').toLowerCase();
+  return s.trim().replace(/\s+/g, ' ').toLowerCase().replace(/ё/g, 'е');
 }
 
 function today_() {
@@ -574,7 +574,7 @@ function setStaffAction_(body) {
   body.staff.forEach(function (item) {
     if (!item || typeof item !== 'object' || typeof item.name !== 'string') fail_();
     const name = item.name.trim().replace(/\s+/g, ' ');
-    const key = name.toLowerCase();
+    const key = normalizeName_(name);
     if (name === '' || seen[key]) fail_();
     seen[key] = true;
     let e = byKey[key];

@@ -391,6 +391,14 @@ describe('setProvisional', () => {
 describe('importFunnel', () => {
   const day = (name, date, quality, long) => ({ name, date, quality, long });
 
+  test('ё и е — одна буква: «Петров Петр» из файла находит «Петров Пётр» штата, setStaff не плодит двойника', () => {
+    const { b, id } = withStaff();
+    expect(admin(b, 'importFunnel', { through: '2026-11-10', rows: [day('Петров Петр', '2026-11-09', 1, 1)] })).toMatchObject({ ok: true, added: 1 });
+    expect(b.get().funnel).toEqual([{ employeeId: id['Петров Пётр'], date: '2026-11-09', quality: 1, long: 1 }]);
+    expect(admin(b, 'setStaff', { staff: [{ name: 'ПЕТРОВ ПЕТР', group: 'СР1', shortName: 'Петя' }] })).toMatchObject({ ok: true, added: 0, updated: 1 });
+    expect(b.get().staff).toHaveLength(3);
+  });
+
   test('пишет факты по сотрудникам, двигает funnelThrough, повтор даёт тот же результат', () => {
     const { b, id } = withStaff();
     const rows = [

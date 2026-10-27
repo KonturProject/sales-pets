@@ -113,7 +113,10 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
       `Данные по ${ruDate(plan.through)} включительно; сотрудников в файле: ${parsed.employees.length}; строк к загрузке: ${plan.rows.length}`,
       `Вне шести групп: ${plan.outside}; позже ${ruDate(plan.through)} (не загружаются): ${plan.dropped}`,
     ];
-    if (fresh.length) lines.push(`Новых сотрудников: ${fresh.length}. Они будут добавлены в штат в группах из файла, уровень «опытный».`);
+    if (fresh.length) {
+      lines.push(`Новых сотрудников: ${fresh.length}. Они будут добавлены в штат в группах из файла, уровень «опытный», без даты приёма. Новичкам дату приёма и уровень поставьте во вкладке «Сотрудники»: иначе норма группы считается как для опытных.`);
+      lines.push(`Новые: ${fresh.map((e) => `${e.group} — ${e.name}`).join('; ')}. Сверьте написание с штатом: опечатка создаст двойника.`);
+    }
     show(lines, {
       label: fresh.length ? `Добавить новых (${fresh.length}) в штат и загрузить` : 'Загрузить',
       run: async () => {
