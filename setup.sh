@@ -76,7 +76,7 @@ if [ "$WITH_MEM" = 1 ]; then
   # По умолчанию claude-mem сжимает память через Claude, то есть из вашего лимита.
   # Gemini со своим ключом лимит Claude не трогает. Вернуть Claude: MEM_PROVIDER=claude bash setup.sh --with-mem
   MEM_PROVIDER="${MEM_PROVIDER:-gemini}"
-  echo "Провайдер памяти: $MEM_PROVIDER (подробности в README.md)"
+  echo "Провайдер памяти: $MEM_PROVIDER (подробности в docs/game-kit-setup.md)"
   run "claude-mem" npx -y claude-mem install --provider "$MEM_PROVIDER"
   run "claude-mem telemetry off" npx -y claude-mem telemetry disable
 fi

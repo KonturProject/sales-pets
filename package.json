@@ -9,7 +9,8 @@
     "test": "vitest run",
     "check:render": "node tools/check-render.mjs",
     "check:admin": "node tools/check-admin.mjs",
-    "mock-backend": "node tools/mock-backend.mjs"
+    "mock-backend": "node tools/mock-backend.mjs",
+    "audit:publish": "node tools/audit-publish.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
