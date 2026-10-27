@@ -28,9 +28,10 @@ describe('api.get', () => {
     expect(vi.getTimerCount()).toBe(0); // таймер таймаута снят
   });
 
-  test('{unchanged:true} превращается в «unchanged»', async () => {
-    const api = createApi({ url: () => BASE, fetchFn: vi.fn().mockResolvedValue(json({ ok: true, unchanged: true, version: 3 })) });
-    expect(await api.get(3)).toBe('unchanged');
+  test('{unchanged:true} отдаётся как «без изменений» с версией и «сейчас» сервера', async () => {
+    const serverNow = '2026-11-12T10:00:00+03:00';
+    const api = createApi({ url: () => BASE, fetchFn: vi.fn().mockResolvedValue(json({ ok: true, unchanged: true, version: 3, serverNow })) });
+    expect(await api.get(3)).toEqual({ unchanged: true, version: 3, serverNow });
   });
 });
 

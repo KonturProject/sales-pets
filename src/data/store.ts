@@ -1,4 +1,4 @@
-import type { Snapshot } from './api';
+import { serverToday, type Snapshot, type Unchanged } from './api';
 
 export interface Store {
   subscribe(cb: (s: Snapshot) => void): () => void;
@@ -16,7 +16,7 @@ const POLL_MS = 15_000;
  * дальнейшие опросы — только пока вкладка видна. Ошибки сети молча пропускаются: остаётся последний снимок.
  */
 export function createStore(opts: {
-  fetchSnapshot: (since?: number) => Promise<Snapshot | 'unchanged'>;
+  fetchSnapshot: (since?: number) => Promise<Snapshot | Unchanged>;
   pollMs?: number;
   visible?: () => boolean;
 }): Store {
@@ -29,8 +29,15 @@ export function createStore(opts: {
 
   async function fetchOnce(): Promise<void> {
     try {
-      const next = await opts.fetchSnapshot(snapshot?.version);
-      if (next !== 'unchanged' && next.version !== snapshot?.version) {
+      const reply = await opts.fetchSnapshot(snapshot?.version);
+      let next: Snapshot | null = null;
+      if (!('unchanged' in reply)) {
+        if (reply.version !== snapshot?.version) next = reply;
+      } else if (snapshot && reply.serverNow && serverToday({ ...snapshot, serverNow: reply.serverNow }) !== serverToday(snapshot)) {
+        // данные те же, но на сервере наступил другой день: «сегодня» страниц с долгой вкладкой должно сдвинуться
+        next = { ...snapshot, serverNow: reply.serverNow };
+      }
+      if (next) {
         snapshot = next;
         for (const cb of subscribers) {
           try {

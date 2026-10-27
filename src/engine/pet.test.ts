@@ -128,6 +128,13 @@ describe('скука, болезнь, смерть', () => {
     expect(s.toys).toBe(0);
     expect(s.mood).toBe('bored');
   });
+  test('расход на мёртвом питомце ничего не тратит (надгробие)', () => {
+    // смерть в конце 11-10, надгробие 11-11 без оплат; запас выдан админом в тот же день
+    const stock = [ov('2026-11-11', 'medkits'), ov('2026-11-11', 'toys')];
+    const f = facts({ paymentsByDay: { '2026-11-02': 6 }, overrides: stock });
+    const withUse = { ...f, overrides: [...stock, ov('2026-11-11', 'useMedkit'), ov('2026-11-11', 'useToy')] };
+    expect(simulate(withUse, '2026-11-11', cfg)).toMatchObject({ alive: false, medkits: 1, toys: 1 });
+  });
   test('смерть через 5 рабочих дней без оплат; со следующего рабочего дня новое яйцо', () => {
     const f = facts({ paymentsByDay: { '2026-11-02': 6 } });
     // без оплат: 11-03, 11-05, 11-06, 11-09, 11-10 → смерть в конце 11-10

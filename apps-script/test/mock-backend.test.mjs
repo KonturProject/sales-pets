@@ -69,6 +69,7 @@ describe('мок-бэкенд', () => {
 
   test('при неизменной версии отвечает unchanged', async () => {
     const { version } = await snapshot();
-    expect(await snapshot(`?since=${version}`)).toEqual({ ok: true, unchanged: true, version });
+    const full = await snapshot();
+    expect(await snapshot(`?since=${version}`)).toEqual({ ok: true, unchanged: true, version, serverNow: full.serverNow });
   });
 });

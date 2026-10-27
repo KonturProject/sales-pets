@@ -199,7 +199,9 @@ describe('GET', () => {
   test('?since=<версия> при неизменных данных не отдаёт снимок; после записи отдаёт', () => {
     const { b } = withStaff();
     const v = b.get().version;
-    expect(b.get({ since: String(v) })).toEqual({ ok: true, unchanged: true, version: v });
+    const same = b.get({ since: String(v) });
+    expect(same).toEqual({ ok: true, unchanged: true, version: v, serverNow: expect.stringMatching(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+03:00$/) });
+    expect(same.serverNow).toBe(b.get().serverNow);
     expect(b.get({ since: String(v - 1) }).staff).toHaveLength(3);
     expect(b.get({ since: 'мусор' }).staff).toHaveLength(3);
     const written = admin(b, 'setProvisional', { date: '2026-11-11', group: 'СР1', count: 1 });

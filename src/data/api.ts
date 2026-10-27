@@ -40,6 +40,13 @@ export interface Snapshot {
   overrides: SnapshotOverride[];
 }
 
+/** Ответ на `get(since)` при той же версии: данных нет, но есть «сейчас» сервера (у старого бэкенда его может не быть). */
+export interface Unchanged {
+  unchanged: true;
+  version: number;
+  serverNow?: string;
+}
+
 /** «Сегодня» по Москве глазами сервера (R23): от него считают границы импорта, а не от часов компьютера. */
 export function serverToday(s: Snapshot): DateStr {
   return s.serverNow.slice(0, 10);
@@ -130,10 +137,11 @@ export function createApi(o: {
   }
 
   return {
-    /** Снимок фактов; `since` — версия, уже имеющаяся у клиента: если она не изменилась, вернётся `'unchanged'`. */
-    async get(since?: number): Promise<Snapshot | 'unchanged'> {
+    /** Снимок фактов; `since` — версия, уже имеющаяся у клиента: если она не изменилась, вернётся `{unchanged: true, …}`. */
+    async get(since?: number): Promise<Snapshot | Unchanged> {
       const body = await request((base) => (since === undefined ? base : `${base}?since=${since}`), { method: 'GET' });
-      return body.unchanged === true ? 'unchanged' : (body as unknown as Snapshot);
+      if (body.unchanged !== true) return body as unknown as Snapshot;
+      return { unchanged: true, version: Number(body.version), serverNow: typeof body.serverNow === 'string' ? body.serverNow : undefined };
     },
     /** Действие бэкенда; тело — JSON как `text/plain`, чтобы запрос обошёлся без предзапроса CORS. */
     async post<T>(action: string, body: object): Promise<T> {

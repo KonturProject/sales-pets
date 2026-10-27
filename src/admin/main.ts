@@ -17,7 +17,7 @@ const ctx: AdminCtx = {
   session,
   snapshot: async () => {
     const s = await api.get();
-    if (s === 'unchanged') throw new Error('unexpected unchanged');
+    if ('unchanged' in s) throw new Error('unexpected unchanged');
     return s;
   },
 };

@@ -93,11 +93,11 @@ export function simulate(facts: GroupFacts, asOf: DateStr, cfg: Config): PetStat
       if (o.kind === 'piles') piles = clamp(piles + o.delta, 0, cfg.maxPiles);
       else if (o.kind === 'medkits') medkits = Math.max(0, medkits + o.delta);
       else if (o.kind === 'toys') toys = Math.max(0, toys + o.delta);
-      else if (o.kind === 'useMedkit' && medkits > 0) {
+      else if (o.kind === 'useMedkit' && alive && medkits > 0) {
         medkits--;
         sickStreak = 0;
         piles = Math.min(piles, cfg.sickPilesAbove);
-      } else if (o.kind === 'useToy' && toys > 0) {
+      } else if (o.kind === 'useToy' && alive && toys > 0) {
         toys--;
         toyToday = true;
       }

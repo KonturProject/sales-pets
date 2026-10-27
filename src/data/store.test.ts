@@ -7,12 +7,14 @@ const snap = (version: number): Snapshot => ({
   config: {}, staff: [], absences: [], payments: [], provisional: [], funnel: [], overrides: [],
 });
 
+const unchanged = (serverNow = '2026-11-12T10:00:00+03:00') => ({ unchanged: true as const, version: 1, serverNow });
+
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe('createStore', () => {
   test('новый снимок доходит до подписчика и current(); следующий опрос просит since=version', async () => {
-    const fetchSnapshot = vi.fn().mockResolvedValueOnce(snap(1)).mockResolvedValue('unchanged');
+    const fetchSnapshot = vi.fn().mockResolvedValueOnce(snap(1)).mockResolvedValue(unchanged());
     const store = createStore({ fetchSnapshot, pollMs: 1000, visible: () => true });
     const seen: number[] = [];
     store.subscribe((s) => seen.push(s.version));
@@ -30,7 +32,7 @@ describe('createStore', () => {
   test('«unchanged» и равная версия подписчика не будят', async () => {
     const fetchSnapshot = vi.fn()
       .mockResolvedValueOnce(snap(1))
-      .mockResolvedValueOnce('unchanged')
+      .mockResolvedValueOnce(unchanged())
       .mockResolvedValueOnce(snap(1))
       .mockResolvedValueOnce(snap(2));
     const store = createStore({ fetchSnapshot, pollMs: 1000, visible: () => true });
@@ -43,9 +45,27 @@ describe('createStore', () => {
     store.stop();
   });
 
+  test('«без изменений» с новой датой сервера будит подписчиков тем же снимком с новым «сейчас»', async () => {
+    const fetchSnapshot = vi.fn()
+      .mockResolvedValueOnce(snap(1))
+      .mockResolvedValueOnce(unchanged('2026-11-12T23:59:50+03:00'))
+      .mockResolvedValueOnce(unchanged('2026-11-13T00:00:05+03:00'))
+      .mockResolvedValueOnce(unchanged('2026-11-13T00:00:20+03:00'));
+    const store = createStore({ fetchSnapshot, pollMs: 1000, visible: () => true });
+    const seen: string[] = [];
+    store.subscribe((s) => seen.push(`${s.version} ${s.serverNow}`));
+    store.start();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(fetchSnapshot).toHaveBeenCalledTimes(4);
+    expect(seen).toEqual(['1 2026-11-12T10:00:00+03:00', '1 2026-11-13T00:00:05+03:00']);
+    expect(store.current()?.serverNow).toBe('2026-11-13T00:00:05+03:00');
+    expect(fetchSnapshot).toHaveBeenLastCalledWith(1);
+    store.stop();
+  });
+
   test('скрытая вкладка загружает данные один раз при запуске и дальше не опрашивает', async () => {
     let shown = false;
-    const fetchSnapshot = vi.fn().mockResolvedValue('unchanged');
+    const fetchSnapshot = vi.fn().mockResolvedValue(unchanged());
     const store = createStore({ fetchSnapshot, pollMs: 1000, visible: () => shown });
     store.start();
     await vi.advanceTimersByTimeAsync(5000);
@@ -102,7 +122,7 @@ describe('createStore', () => {
   });
 
   test('повторный start не плодит таймеры, stop их снимает', async () => {
-    const fetchSnapshot = vi.fn().mockResolvedValue('unchanged');
+    const fetchSnapshot = vi.fn().mockResolvedValue(unchanged());
     const store = createStore({ fetchSnapshot, pollMs: 1000, visible: () => true });
     store.start();
     store.start();
@@ -151,13 +171,13 @@ describe('createStore', () => {
   });
 
   test('новый запрос не начинается, пока предыдущий не вернулся', async () => {
-    let finish: (v: 'unchanged') => void = () => {};
-    const fetchSnapshot = vi.fn(() => new Promise<'unchanged'>((resolve) => { finish = resolve; }));
+    let finish: (v: ReturnType<typeof unchanged>) => void = () => {};
+    const fetchSnapshot = vi.fn(() => new Promise<ReturnType<typeof unchanged>>((resolve) => { finish = resolve; }));
     const store = createStore({ fetchSnapshot, pollMs: 1000, visible: () => true });
     store.start();
     await vi.advanceTimersByTimeAsync(3500);
     expect(fetchSnapshot).toHaveBeenCalledTimes(1);
-    finish('unchanged');
+    finish(unchanged());
     await vi.advanceTimersByTimeAsync(1000);
     expect(fetchSnapshot).toHaveBeenCalledTimes(2);
     store.stop();

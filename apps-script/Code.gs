@@ -800,18 +800,19 @@ function doPost(e) {
 /**
  * Публичный снимок: ФИО и группы, оплаты {date, group, author, invoice}, воронка, отсутствия, правки и расходы {id, date, group, kind, delta}.
  * Сумм, хешей, солей и `ref` расходов в нём нет. `config` — то, что сохранил setConfig (иначе {}); причин исключения из рейтинга здесь нет (getPrivate).
- * `?since=<версия>` при той же версии отдаёт {unchanged}.
+ * `?since=<версия>` при той же версии отдаёт {unchanged, version, serverNow}: «сейчас» нужно клиенту, чтобы заметить смену суток без новой версии.
  */
 function doGet(e) {
   try {
     const settings = readSettings_();
     const version = Number(settings.version) || 0;
     const since = e && e.parameter ? e.parameter.since : undefined;
-    if (typeof since === 'string' && /^\d+$/.test(since) && Number(since) === version) return jsonResponse_({ ok: true, unchanged: true, version: version });
+    const serverNow = Utilities.formatDate(new Date(), TIME_ZONE, "yyyy-MM-dd'T'HH:mm:ss'+03:00'");
+    if (typeof since === 'string' && /^\d+$/.test(since) && Number(since) === version) return jsonResponse_({ ok: true, unchanged: true, version: version, serverNow: serverNow });
     return jsonResponse_({
       ok: true,
       version: version,
-      serverNow: Utilities.formatDate(new Date(), TIME_ZONE, "yyyy-MM-dd'T'HH:mm:ss'+03:00'"),
+      serverNow: serverNow,
       funnelThrough: settings.funnelThrough || null,
       paymentsImportedThrough: settings.paymentsImportedThrough || null,
       config: parseConfig_(settings.config),
