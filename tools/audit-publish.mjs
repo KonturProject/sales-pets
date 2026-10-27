@@ -5,7 +5,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, extname, join, sep } from 'node:path';
 import { createServer } from 'vite';
 
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -68,44 +68,68 @@ for (const { id, re, skip } of SECRET_PATTERNS) {
   if (hits.size) note(`секрет «${id}»`, `${hits.size} файл(ов): ${[...hits].slice(0, 5).join(', ')}`);
 }
 
-// (в) реальные фамилии из локальных xlsx
+// (в) реальные фамилии из локальных xlsx и слова из их имён файлов (в имени отчёта бывает фамилия его владельца)
+const GENERIC_WORDS = new Set(['копия', 'воронка', 'воронки', 'детальные', 'данные', 'оплаченным', 'счетам', 'дни', 'отчет']);
+const norm = (s) => s.toLowerCase().replaceAll('ё', 'е');
 const xlsx = [...new Set([...readdirSync('.').filter((f) => /\.xlsx$/i.test(f)), ...process.argv.slice(2)])];
-const surnames = new Set();
-const common = new Set();
+const surnames = new Set(); // нормализованные фамилии и слова из имён файлов
+const common = new Set(); // самые частые фамилии: ищем только полные пары «Фамилия Имя»
+const phrases = new Set();
 if (xlsx.length) {
   const server = await createServer({ logLevel: 'error', appType: 'custom', server: { middlewareMode: true } });
   try {
     const { parseFunnelXlsx } = await server.ssrLoadModule('/src/import/funnel.ts');
     const { parsePaymentsXlsx } = await server.ssrLoadModule('/src/import/payments.ts');
     for (const file of xlsx) {
+      for (const w of basename(file, extname(file)).split(/[^\p{L}]+/u)) {
+        if (w.length < 4 || GENERIC_WORDS.has(norm(w))) continue;
+        surnames.add(norm(w));
+        if (norm(w).endsWith('а')) surnames.add(norm(w).slice(0, -1)); // «Иванова» в имени файла — ищем и «Иванов»
+      }
       const bytes = readFileSync(file);
       const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
       const names = [];
       try { names.push(...parseFunnelXlsx(buf).employees.map((e) => e.name)); } catch { /* не воронка */ }
       try { names.push(...parsePaymentsXlsx(buf).rows.map((r) => r.author)); } catch { /* не оплаты */ }
       for (const n of names) {
-        const surname = String(n).trim().split(/\s+/)[0];
-        if (!surname || surname.length < 4) continue;
-        const lower = surname.toLowerCase();
-        if (COMMON_SURNAMES.has(lower.replaceAll('ё', 'е').replace(/а$/, ''))) common.add(lower);
-        else surnames.add(lower);
+        const parts = String(n).trim().split(/\s+/).map(norm);
+        if (!parts[0] || parts[0].length < 4) continue;
+        if (COMMON_SURNAMES.has(parts[0].replace(/а$/, ''))) {
+          common.add(parts[0]);
+          if (parts[1]) { phrases.add(parts[0] + ' ' + parts[1]); phrases.add(parts[1] + ' ' + parts[0]); }
+        } else surnames.add(parts[0]);
       }
     }
   } finally {
     await server.close();
   }
 }
-console.log(`xlsx для сверки фамилий: ${xlsx.length}, уникальных фамилий: ${surnames.size} (самых частых, пропущено: ${common.size})`);
+console.log('xlsx для сверки: ' + xlsx.length + ', фамилий и слов из имён файлов: ' + surnames.size + ' (самых частых фамилий: ' + common.size + ', ищем только полные пары, пар: ' + phrases.size + ')');
 
-if (surnames.size) {
-  const variants = new Set();
-  for (const s of surnames) {
-    for (const v of new Set([s, s.replaceAll('ё', 'е'), s.replaceAll('е', 'ё')])) {
-      variants.add(v);
-      variants.add(v[0].toUpperCase() + v.slice(1));
-      variants.add(v.toUpperCase());
+/** Написания для побайтового поиска: все сочетания е/ё и три регистра (строчные, Каждое Слово, ПРОПИСНЫЕ). */
+function forms(text) {
+  const spots = [...text].flatMap((c, i) => (c === 'е' ? [i] : []));
+  const bases = new Set([text]);
+  if (spots.length <= 4) {
+    for (let mask = 1; mask < 1 << spots.length; mask++) {
+      const chars = [...text];
+      spots.forEach((p, k) => { if (mask & (1 << k)) chars[p] = 'ё'; });
+      bases.add(chars.join(''));
     }
+  } else bases.add(text.replaceAll('е', 'ё'));
+  const out = new Set();
+  for (const b of bases) {
+    out.add(b);
+    out.add(b.toUpperCase());
+    out.add(b.replace(/(^|\s)(\p{L})/gu, (_, sp, ch) => sp + ch.toUpperCase()));
   }
+  return out;
+}
+
+const needles = [...surnames, ...phrases];
+if (needles.length) {
+  const variants = new Set(needles.flatMap((n) => [...forms(n)]));
+  const hasName = (text) => { const t = norm(text); return needles.some((n) => t.includes(n)); };
   const dir = mkdtempSync(join(tmpdir(), 'audit-'));
   try {
     const patterns = join(dir, 'names.txt');
@@ -114,15 +138,16 @@ if (surnames.size) {
     for (const scope of [['--untracked'], revs]) {
       for (const line of gitGrep(['-I', '-l', '-F', '-f', patterns, ...scope, '--'])) hits.add(line.replace(/^[0-9a-f]{40}:/, ''));
     }
+    // имена файлов: в дереве и когда-либо бывшие в истории
+    for (const f of [...tracked, ...everAdded]) if (hasName(f)) hits.add('(имя файла) ' + f);
     // dist/ в .gitignore и в git grep не попадает: читаем напрямую
     const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
     if (existsSync('dist')) {
       for (const f of walk('dist').filter((p) => /\.(html|js|css|json|svg|txt)$/.test(p))) {
-        const body = readFileSync(f, 'utf8');
-        if ([...variants].some((v) => body.includes(v))) hits.add(f.replaceAll('\\', '/'));
+        if (hasName(readFileSync(f, 'utf8'))) hits.add(f.split(sep).join('/'));
       }
     }
-    if (hits.size) note('реальные фамилии', `${hits.size} файл(ов): ${[...hits].slice(0, 8).join(', ')}`);
+    if (hits.size) note('реальные фамилии', hits.size + ' файл(ов): ' + [...hits].slice(0, 8).join(', '));
     if (hits.size && process.env.AUDIT_EXPLAIN) {
       // диагностика: строки с совпадением, фамилия заменена на «■■■»
       const mask = (line) => [...variants].sort((a, b) => b.length - a.length).reduce((l, v) => l.replaceAll(v, '■■■'), line);
@@ -131,15 +156,30 @@ if (surnames.size) {
         for (const line of gitGrep(['-I', '-n', '-F', '-f', patterns, '--', f])) console.log(mask(line).slice(0, 160));
       }
     }
+
+    // (г) сообщения коммитов и имена авторов: уходят наружу вместе с историей, git grep их не видит
+    const jsSecrets = SECRET_PATTERNS.map((p) => ({ ...p, rx: new RegExp(p.re.replaceAll('[[:space:]]', String.raw`\s`)) }));
+    const commits = git('log', '--all', '--format=%h%x00%an <%ae>%x00%B%x1e').split('\x1e').map((c) => c.trim()).filter(Boolean);
+    const bad = new Set();
+    for (const c of commits) {
+      const [sha, author, message] = c.split('\0');
+      if (hasName(author + ' ' + message)) bad.add(sha);
+      for (const { rx, skip } of jsSecrets) {
+        const m = (author + ' ' + message).match(rx);
+        if (m && !(skip && skip(m[0]))) bad.add(sha);
+      }
+    }
+    if (bad.size) note('сообщения коммитов', bad.size + ' коммит(ов): ' + [...bad].slice(0, 8).join(', '));
+    console.log('сообщений коммитов проверено: ' + commits.length);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 } else {
-  console.log('предупреждение: фамилий для сверки нет (нет xlsx), проверка (в) пропущена');
+  console.log('предупреждение: фамилий для сверки нет (нет xlsx), проверка (в) и (г) пропущены');
 }
 
 if (findings.length) {
-  console.error(`FAIL (${findings.length}):\n- ${findings.join('\n- ')}`);
+  console.error('FAIL (' + findings.length + '):\n- ' + findings.join('\n- '));
   process.exit(1);
 }
-console.log('OK: аудит публикации — запрещённых файлов, секретов и реальных фамилий нет в дереве, истории и dist/');
+console.log('OK: аудит публикации — запрещённых файлов, секретов и реальных фамилий нет в дереве, истории, сообщениях коммитов и dist/');
