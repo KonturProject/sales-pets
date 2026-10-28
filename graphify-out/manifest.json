@@ -6,10 +6,10 @@
     "semantic_hash": "a36d56d6276baa996e367ab4c20761fb"
   },
   ".claude/settings.json": {
-    "mtime": 1792922941.0312319,
-    "seen": 1792922944.0259695,
-    "ast_hash": "03a213740fae3a1448a1d73eb49e87f8",
-    "semantic_hash": "03a213740fae3a1448a1d73eb49e87f8"
+    "mtime": 1793202331.316734,
+    "seen": 1793202709.2113688,
+    "ast_hash": "1a1712b71d1a629c3020ad2557c2fdef",
+    "semantic_hash": ""
   },
   ".claude/skills/webapp-testing/examples/console_logging.py": {
     "mtime": 1792922918.4406757,
@@ -295,9 +295,9 @@
     "semantic_hash": ""
   },
   ".claude/skills/game-architecture/SKILL.md": {
-    "mtime": 1792922885.8631358,
-    "seen": 1792938930.7047122,
-    "ast_hash": "fb156e2b6f3fdd7eb18c6773b79b0338",
+    "mtime": 1793202649.7484477,
+    "seen": 1793202709.2115078,
+    "ast_hash": "d2f4c53080a5b58f85e87875f4075561",
     "semantic_hash": ""
   },
   ".claude/skills/game-assets/SKILL.md": {
@@ -427,9 +427,9 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1792938083.6784227,
-    "seen": 1792938930.7047324,
-    "ast_hash": "b2386b987732054130f3e73625135c1d",
+    "mtime": 1793202674.5958226,
+    "seen": 1793202709.211534,
+    "ast_hash": "d29c29fbdb869a95d912b019906290ce",
     "semantic_hash": ""
   },
   "CREDITS.md": {
@@ -439,9 +439,9 @@
     "semantic_hash": ""
   },
   "PLAN.md": {
-    "mtime": 1793128356.3158555,
-    "seen": 1793128367.5483391,
-    "ast_hash": "12e67f5dc1391fbd00db56f5290e44ba",
+    "mtime": 1793202685.122084,
+    "seen": 1793202709.2115364,
+    "ast_hash": "4157b4d741bcfee08da0b2b48d0891df",
     "semantic_hash": ""
   },
   "README.assets.md": {
@@ -451,9 +451,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1793125547.4276972,
-    "seen": 1793128367.5483413,
-    "ast_hash": "9273affe7f1df26e616ff20f56b31e4a",
+    "mtime": 1793202701.0797145,
+    "seen": 1793202709.2115388,
+    "ast_hash": "e1a44b78d37703e07612ef5767154352",
     "semantic_hash": ""
   },
   "docs/superpowers/plans/2026-10-25-tamagochi-plan.md": {
@@ -487,9 +487,9 @@
     "semantic_hash": ""
   },
   "\u042d\u043a\u043e\u043d\u043e\u043c\u0438\u044f \u043b\u0438\u043c\u0438\u0442\u043e\u0432 Claude Code.md": {
-    "mtime": 1792922252.6091292,
-    "seen": 1792938930.7047436,
-    "ast_hash": "dd4e9f3595609bdfd7bf1c198c63f622",
+    "mtime": 1793202674.6702292,
+    "seen": 1793202709.2115538,
+    "ast_hash": "d6525cb0d2323b3ba89d24c1e472fff6",
     "semantic_hash": ""
   },
   "public/assets/eggs/sr1-0.svg": {
@@ -1081,15 +1081,21 @@
     "semantic_hash": ""
   },
   "docs/game-kit-setup.md": {
-    "mtime": 1792922885.8651283,
-    "seen": 1793128367.5483453,
-    "ast_hash": "424fc4c776d916c9ab849e1779500ba4",
+    "mtime": 1793202674.5401092,
+    "seen": 1793202709.211543,
+    "ast_hash": "a7185bc8a0d4edab15cb19b2924365d3",
     "semantic_hash": ""
   },
   "public/robots.txt": {
     "mtime": 1793125536.4197726,
     "seen": 1793128367.548351,
     "ast_hash": "f71d20196d4caf35b6a670db8c70b03d",
+    "semantic_hash": ""
+  },
+  ".claude/agents/reviewer.md": {
+    "mtime": 1793202341.908378,
+    "seen": 1793202709.2115035,
+    "ast_hash": "9d672c5856a22377541ae5a809905a44",
     "semantic_hash": ""
   }
 }
