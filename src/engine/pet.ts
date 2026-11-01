@@ -39,7 +39,7 @@ export interface PetState {
   satiety: number;
 }
 
-const HATCH_AT = 5;
+export const HATCH_AT = 5;
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 
 function phaseOf(total: number): Phase {

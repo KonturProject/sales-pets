@@ -31,6 +31,11 @@ describe('герои дня: нормы по датам', () => {
     const d = data({ staff: [emp('a')], funnel: [funnelOn('2026-11-10')], cfg: lowered });
     expect(heroesOfDay('2026-11-10', d)[0].value).toBe(100);
   });
+
+  test('строка героя несёт факты дня и нормы для подписи «кач 6/5 · длин 3/3»', () => {
+    const d = data({ staff: [emp('a')], funnel: [{ employeeId: 'a', date: '2026-11-10', quality: 6, long: 3 }] });
+    expect(heroesOfDay('2026-11-10', d)[0].facts).toEqual({ quality: 6, long: 3, normQuality: 5, normLong: 3 });
+  });
 });
 
 describe('рейтинг группы', () => {

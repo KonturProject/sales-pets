@@ -17,6 +17,15 @@ export interface RankRow {
   /** ничья делит место: 1, 1, 3 */
   place: number;
   value: number;
+  /** у героев дня: факты воронки за день и нормы дня */
+  facts?: HeroFacts;
+}
+
+export interface HeroFacts {
+  quality: number;
+  long: number;
+  normQuality: number;
+  normLong: number;
 }
 
 export interface RankData {
@@ -36,6 +45,7 @@ interface Scored {
   value: number;
   /** добавочный критерий при равенстве value */
   tie: number;
+  facts?: HeroFacts;
 }
 
 function rank(items: Scored[], n?: number): RankRow[] {
@@ -46,7 +56,7 @@ function rank(items: Scored[], n?: number): RankRow[] {
   const rows = sorted.map((s, i) => {
     const prev = sorted[i - 1];
     if (!prev || prev.value !== s.value || prev.tie !== s.tie) place = i + 1;
-    return { employeeId: s.e.id, name: s.e.name, group: s.group, place, value: s.value };
+    return { employeeId: s.e.id, name: s.e.name, group: s.group, place, value: s.value, ...(s.facts && { facts: s.facts }) };
   });
   return n === undefined ? rows : rows.slice(0, n);
 }
@@ -134,7 +144,7 @@ export function heroesOfDay(date: DateStr, d: RankData, n = 10): RankRow[] {
     const value = Math.round((done / total) * 100);
     if (value === 0) continue;
     const tie = [...(payments.get(e.id)?.values() ?? [])].reduce((a, b) => a + b, 0);
-    items.push({ e, group: groupOn(e, date), value, tie });
+    items.push({ e, group: groupOn(e, date), value, tie, facts: { ...fact, normQuality: norm.quality, normLong: norm.long } });
   }
   return rank(items, n);
 }
