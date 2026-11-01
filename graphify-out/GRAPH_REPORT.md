@@ -1,17 +1,17 @@
 # Graph Report - tamagochi Tver  (2026-11-01)
 
 ## Corpus Check
-- 163 files · ~163,111 words
+- 163 files · ~163,833 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 9 file(s) not represented in the graph (top: .css 5, (none) 2, .graphify-bak 1)
 
 ## Summary
-- 1880 nodes · 3443 edges · 151 communities (138 shown, 13 thin omitted)
+- 1880 nodes · 3444 edges · 151 communities (138 shown, 13 thin omitted)
 - Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 160 edges (avg confidence: 0.92)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `44ce4a9e`
+- Built from commit: `dd3f079e`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
