@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
-  buildAbsence, buildStaffPatch, filterStaff, formOf, parseStaffJson,
+  buildAbsence, buildStaffPatch, bulkStaffPatches, filterStaff, formOf, parseStaffJson,
   type StaffCurrent,
 } from './staffForm';
 
@@ -151,5 +151,38 @@ describe('buildAbsence', () => {
     expect(buildAbsence({ kind: 'vacation', from: '', to: '' })).toHaveProperty('error');
     expect(buildAbsence({ kind: 'vacation', from: '2026-11-09', to: '2026-11-08' })).toHaveProperty('error');
     expect(buildAbsence({ kind: 'other', from: 'вчера', to: '' })).toHaveProperty('error');
+  });
+});
+
+describe('bulkStaffPatches: уровни и даты приёма всего штата одной формой', () => {
+  const staff = [
+    person({ id: 'e1', name: 'Тест Один' }),
+    person({ id: 'e2', name: 'Тест Два', baseLevel: 'rookie1', hireDate: '2026-10-28' }),
+    person({ id: 'e3', name: 'Тест Три', fireDate: '2026-11-10' }),
+  ];
+  const same = () => Object.fromEntries(staff.map((e) => [e.id, { baseLevel: e.baseLevel, hireDate: e.hireDate ?? '' }]));
+
+  test('ничего не меняли — ни одной записи', () => {
+    expect(bulkStaffPatches(staff, same())).toEqual({ patches: [] });
+  });
+
+  test('уходят только изменённые поля изменённых строк', () => {
+    const edits = { ...same(), e1: { baseLevel: 'rookie2' as const, hireDate: '2026-10-21' }, e2: { baseLevel: 'rookie1' as const, hireDate: '' } };
+    expect(bulkStaffPatches(staff, edits)).toEqual({
+      patches: [
+        { name: 'Тест Один', baseLevel: 'rookie2', hireDate: '2026-10-21' },
+        { name: 'Тест Два', hireDate: null },
+      ],
+    });
+  });
+
+  test('неверная дата — ошибка с номером строки, без ФИО, и ничего не уходит', () => {
+    const result = bulkStaffPatches(staff, { ...same(), e1: { baseLevel: 'rookie1', hireDate: '2026-10-21' }, e3: { baseLevel: 'experienced', hireDate: '31.10.2026' } });
+    expect(result).toEqual({ error: 'Строка 3: дата приёма — ожидается дата вида 2026-11-09' });
+  });
+
+  test('приём не раньше увольнения — ошибка', () => {
+    expect(bulkStaffPatches(staff, { ...same(), e3: { baseLevel: 'experienced', hireDate: '2026-11-10' } }))
+      .toEqual({ error: 'Строка 3: увольнение должно быть позже приёма' });
   });
 });

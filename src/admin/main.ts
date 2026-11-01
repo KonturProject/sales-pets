@@ -7,20 +7,30 @@ import { normsTab } from './normsTab';
 import { overridesTab } from './overridesTab';
 import { paymentsTab } from './payments';
 import { pinsTab } from './pins';
-import { createSession } from './session';
+import { createSession, type Session } from './session';
 import { staffTab } from './staffTab';
+import { todayLine } from './today';
 
 const root = document.getElementById('app')!;
 
 const session = createSession(api.post, (e) => showLogin(e.code === 'locked' ? errorText(e) : 'Сессия закончилась: войдите снова'));
-const ctx: AdminCtx = {
-  session,
-  snapshot: async () => {
-    const s = await api.get();
-    if ('unchanged' in s) throw new Error('unexpected unchanged');
-    return s;
+/** Блок «Сегодня» над вкладками: обновляется с каждым снимком, который читает админка, и после каждой записи. */
+const todayBox = h('p', { 'data-today-line': true });
+const snapshot: AdminCtx['snapshot'] = async () => {
+  const s = await api.get();
+  if ('unchanged' in s) throw new Error('unexpected unchanged');
+  todayBox.textContent = todayLine(s);
+  return s;
+};
+const tracked: Session = {
+  ...session,
+  async call<T>(action: string, body?: object): Promise<T> {
+    const result = await session.call<T>(action, body);
+    if (action !== 'getPrivate') snapshot().catch(() => {});
+    return result;
   },
 };
+const ctx: AdminCtx = { session: tracked, snapshot };
 
 function showLogin(message = ''): void {
   // Поле PIN без `name`: браузер не предлагает сохранить его и не автозаполняет.
@@ -53,6 +63,7 @@ function showWork(): void {
   const logout = h('button', { type: 'button', onclick: () => { session.logout(); showLogin(); } }, 'Выйти');
   root.replaceChildren(
     h('header', {}, h('h1', {}, 'Админка'), logout),
+    todayBox,
     tabs([
       { id: 'payments', title: 'Оплаты', render: () => paymentsTab(ctx) },
       { id: 'import', title: 'Импорт', render: () => importTab(ctx) },

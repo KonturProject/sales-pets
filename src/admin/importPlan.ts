@@ -1,7 +1,8 @@
 import { addDays, prevWorkingDay } from '@/engine/calendar';
 import type { Config } from '@/engine/config';
+import { uniqueInvoices } from '@/engine/ranking';
 import { normalizeName, type Employee } from '@/engine/staff';
-import type { DateStr, GroupCode } from '@/engine/types';
+import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
 import type { ParsedFunnel, FunnelRow } from '@/import/funnel';
 import type { ImportedPayment } from '@/import/payments';
 
@@ -30,6 +31,27 @@ export function planPaymentsImport(
   if (from > to) return { error: 'В файле нет оплат за прошедшие дни игры' };
   const rows = parsed.rows.filter((r) => r.date >= from && r.date <= to);
   return { from, to, rows, dropped: parsed.rows.length - rows.length };
+}
+
+/**
+ * Строки превью оплат: счета по группам (как их посчитает экран: повтор счёта — одна оплата) и авторы, которых нет
+ * в штате: их оплаты кормят питомца, но в рейтинг не попадают.
+ */
+export function paymentsSummary(rows: ImportedPayment[], staff: Employee[]): string[] {
+  const known = new Set(staff.map((e) => normalizeName(e.name)));
+  const byGroup = Object.fromEntries(GROUPS.map((g) => [g, 0])) as Record<GroupCode, number>;
+  const unmatched = new Map<string, string>();
+  for (const r of uniqueInvoices(rows, (p) => normalizeName(p.author))) {
+    if (r.group in byGroup) byGroup[r.group]++;
+    const key = normalizeName(r.author);
+    if (!known.has(key)) unmatched.set(key, r.author.trim().replace(/\s+/g, ' '));
+  }
+  const lines = [`По группам: ${GROUPS.map((g) => `${g} ${byGroup[g]}`).join(' · ')}`];
+  if (unmatched.size) {
+    const names = [...unmatched.values()].sort((a, b) => a.localeCompare(b, 'ru'));
+    lines.push(`Авторы не найдены в штате (${names.length}): ${names.join('; ')}. Их оплаты кормят питомца, но не идут в рейтинг: проверьте ФИО во вкладке «Сотрудники».`);
+  }
+  return lines;
 }
 
 export interface FunnelPlan {

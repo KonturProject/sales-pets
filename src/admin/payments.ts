@@ -32,9 +32,10 @@ export function provisionalChanges(
 /** Вкладка «Оплаты»: числа оплат групп за сегодня (предварительные, до загрузки отчёта). */
 export async function paymentsTab(ctx: AdminCtx): Promise<HTMLElement> {
   const snapshot = await ctx.snapshot();
-  const today = serverToday(snapshot);
-  const current = provisionalToday(snapshot);
+  let today = serverToday(snapshot);
+  let current = provisionalToday(snapshot);
   const status = h('p', { role: 'status' });
+  const day = h('time', { 'data-today': today, datetime: today }, ruDate(today));
   const inputs = Object.fromEntries(
     GROUPS.map((g) => [g, h('input', { type: 'number', min: 0, max: MAX_COUNT, step: 1, value: current[g], 'data-pay': g, required: true })]),
   ) as Record<GroupCode, HTMLInputElement>;
@@ -47,7 +48,7 @@ export async function paymentsTab(ctx: AdminCtx): Promise<HTMLElement> {
         void save();
       },
     },
-    h('p', {}, 'Сегодня: ', h('time', { 'data-today': today, datetime: today }, ruDate(today))),
+    h('p', {}, 'Сегодня: ', day),
     ...GROUPS.map((g) => h('label', {}, g, ' ', inputs[g])),
     h('button', { type: 'submit' }, 'Сохранить'),
     status,
@@ -62,6 +63,24 @@ export async function paymentsTab(ctx: AdminCtx): Promise<HTMLElement> {
     }
     if (!result.changes.length) {
       status.textContent = 'Изменений нет';
+      return;
+    }
+    // вкладку могли открыть вчера: числа пишутся только в сегодняшний день сервера
+    let fresh: Snapshot;
+    try {
+      fresh = await ctx.snapshot();
+    } catch (e) {
+      status.textContent = errorText(e);
+      return;
+    }
+    if (serverToday(fresh) !== today) {
+      today = serverToday(fresh);
+      current = provisionalToday(fresh);
+      for (const g of GROUPS) inputs[g].value = String(current[g]);
+      day.dateTime = today;
+      day.dataset.today = today;
+      day.textContent = ruDate(today);
+      status.textContent = `Наступило ${ruDate(today)}: в полях числа нового дня. Проверьте и сохраните ещё раз.`;
       return;
     }
     const saved: GroupCode[] = [];

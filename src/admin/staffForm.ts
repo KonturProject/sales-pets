@@ -98,6 +98,32 @@ export function buildStaffPatch(current: StaffCurrent, form: StaffForm): StaffPa
   return Object.keys(patch).length === 1 ? { error: 'Ничего не изменено' } : patch;
 }
 
+/** Строка таблицы «Уровни и даты приёма»: дата пустая — не задана. */
+export interface BulkEdit {
+  baseLevel: Level;
+  hireDate: string;
+}
+
+/**
+ * Изменения таблицы уровней и дат приёма всего штата: только изменённые поля изменённых строк. Первая ошибка
+ * останавливает всё; в тексте — номер строки (по порядку `staff`), без ФИО.
+ */
+export function bulkStaffPatches(staff: Employee[], edits: Record<string, BulkEdit>): { patches: StaffPatch[] } | Failure {
+  const patches: StaffPatch[] = [];
+  for (const [i, e] of staff.entries()) {
+    const edit = edits[e.id];
+    if (!edit) continue;
+    const hire = readDate(edit.hireDate);
+    if (hire === 'bad') return { error: `Строка ${i + 1}: дата приёма — ожидается дата вида 2026-11-09` };
+    if (hire !== null && e.fireDate !== null && e.fireDate <= hire) return { error: `Строка ${i + 1}: увольнение должно быть позже приёма` };
+    const patch: StaffPatch = { name: e.name };
+    if (edit.baseLevel !== e.baseLevel) patch.baseLevel = edit.baseLevel;
+    if (hire !== e.hireDate) patch.hireDate = hire;
+    if (Object.keys(patch).length > 1) patches.push(patch);
+  }
+  return { patches };
+}
+
 export type StaffItem = { name: string; group: GroupCode } & Partial<Omit<StaffPatch, 'transfers' | 'name'>>;
 
 /**

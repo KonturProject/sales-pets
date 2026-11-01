@@ -4,7 +4,7 @@ import { GROUPS, type DateStr, type Level } from '@/engine/types';
 import type { AdminCtx } from './ctx';
 import { errorText, h, ruDate } from './dom';
 import { fileBlock } from './importTab';
-import { buildAbsence, buildStaffPatch, filterStaff, formOf, parseStaffJson, type StaffCurrent } from './staffForm';
+import { buildAbsence, buildStaffPatch, bulkStaffPatches, filterStaff, formOf, parseStaffJson, type BulkEdit, type StaffCurrent } from './staffForm';
 
 const LEVEL_TITLE: Record<Level, string> = { experienced: 'Опытный', rookie1: 'Новичок 1', rookie2: 'Новичок 2' };
 const KIND_TITLE: Record<Absence['kind'], string> = { vacation: 'Отпуск', sick: 'Больничный', other: 'Другое' };
@@ -20,8 +20,8 @@ const field = (label: string, control: HTMLElement) => h('label', {}, `${label} 
 const option = (value: string, title: string, selected = false) => h('option', { value, selected }, title);
 
 /**
- * Вкладка «Сотрудники»: поиск и карточка (приём, увольнение, перевод, уровень, исключение из рейтинга), отсутствия
- * и загрузка списка из JSON. После каждой записи снимок и причины читаются заново и вкладка перерисовывается:
+ * Вкладка «Сотрудники»: поиск и карточка (приём, увольнение, перевод, уровень, исключение из рейтинга), отсутствия,
+ * таблица уровней и дат приёма всего штата и загрузка списка из JSON. После каждой записи снимок и причины читаются заново и вкладка перерисовывается:
  * у админки нет опроса, `store` ей не нужен.
  */
 export async function staffTab(ctx: AdminCtx): Promise<HTMLElement> {
@@ -49,6 +49,7 @@ export async function staffTab(ctx: AdminCtx): Promise<HTMLElement> {
       await ctx.session.call(action, body);
       data = await load();
       paint();
+      paintBulk();
       status.textContent = 'Сохранено';
       return true;
     } catch (e) {
@@ -187,11 +188,75 @@ export async function staffTab(ctx: AdminCtx): Promise<HTMLElement> {
         const done = await ctx.session.call<{ added: number; updated: number }>('setStaff', { staff: items });
         data = await load();
         paint();
+        paintBulk();
         return [`Добавлено: ${done.added}; обновлено: ${done.updated}.`];
       },
     });
   });
 
+  // таблица уровней и дат приёма: правки копятся в полях и уходят одной кнопкой; перерисовка — только после записи
+  const bulkBody = h('tbody', {});
+  const bulkSave = h('button', { type: 'button', 'data-bulk-save': true, onclick: () => void saveBulk() }, 'Сохранить изменения');
+  const bulkAlert = h('p', { role: 'alert', 'data-alert': 'bulk' });
+  const bulkStatus = h('p', { role: 'status', 'data-status': 'bulk' });
+  let bulkFields = new Map<string, { level: HTMLSelectElement; hire: HTMLInputElement }>();
+  const bulkEdits = (): Record<string, BulkEdit> =>
+    Object.fromEntries([...bulkFields].map(([id, f]) => [id, { baseLevel: f.level.value as Level, hireDate: f.hire.value }]));
+  const countBulk = () => {
+    const result = bulkStaffPatches(data.staff, bulkEdits());
+    bulkSave.textContent = 'error' in result ? 'Сохранить изменения' : `Сохранить изменения (${result.patches.length})`;
+  };
+
+  function paintBulk(): void {
+    bulkFields = new Map();
+    bulkBody.replaceChildren(...data.staff.map((e, i) => {
+      const level = h('select', { 'data-bulk-level': e.id, 'aria-label': `Уровень, строка ${i + 1}`, onchange: countBulk },
+        ...(Object.keys(LEVEL_TITLE) as Level[]).map((l) => option(l, LEVEL_TITLE[l], l === e.baseLevel)));
+      const hire = h('input', { type: 'date', 'data-bulk-hire': e.id, value: e.hireDate ?? '', 'aria-label': `Дата приёма, строка ${i + 1}`, oninput: countBulk });
+      bulkFields.set(e.id, { level, hire });
+      return h('tr', { 'data-bulk-row': e.id }, h('td', {}, String(i + 1)), h('td', {}, e.name), h('td', {}, groupOn(e, data.today)), h('td', {}, level), h('td', {}, hire));
+    }));
+    countBulk();
+  }
+
+  async function saveBulk(): Promise<void> {
+    bulkAlert.textContent = '';
+    bulkStatus.textContent = '';
+    const result = bulkStaffPatches(data.staff, bulkEdits());
+    if ('error' in result) {
+      bulkAlert.textContent = result.error;
+      return;
+    }
+    if (!result.patches.length) {
+      bulkStatus.textContent = 'Изменений нет';
+      return;
+    }
+    bulkSave.disabled = true;
+    try {
+      await ctx.session.call('setStaff', { staff: result.patches });
+      data = await load();
+      paint();
+      paintBulk();
+      bulkStatus.textContent = `Сохранено строк: ${result.patches.length}`;
+    } catch (e) {
+      bulkAlert.textContent = errorText(e);
+    } finally {
+      bulkSave.disabled = false;
+    }
+  }
+
+  const bulk = h(
+    'section',
+    { 'data-bulk': true },
+    h('h2', {}, 'Уровни и даты приёма'),
+    h('p', {}, 'Поправьте уровни и даты приёма всему штату и сохраните одной кнопкой. Новички без даты приёма оцениваются как опытные.'),
+    h('table', { class: 'bulk' }, h('thead', {}, h('tr', {}, ...['№', 'Сотрудник', 'Группа', 'Уровень', 'Принят'].map((t) => h('th', {}, t)))), bulkBody),
+    bulkSave,
+    bulkAlert,
+    bulkStatus,
+  );
+
   paint();
-  return h('div', {}, h('section', {}, h('h2', {}, 'Штат'), field('Поиск', search), count, list), card, alert, status, json);
+  paintBulk();
+  return h('div', {}, h('section', {}, h('h2', {}, 'Штат'), field('Поиск', search), count, list), card, alert, status, bulk, json);
 }

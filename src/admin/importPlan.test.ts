@@ -3,7 +3,7 @@ import { defaultConfig } from '@/engine/config';
 import type { Employee } from '@/engine/staff';
 import type { ParsedFunnel } from '@/import/funnel';
 import type { ImportedPayment } from '@/import/payments';
-import { planFunnelImport, planPaymentsImport } from './importPlan';
+import { paymentsSummary, planFunnelImport, planPaymentsImport } from './importPlan';
 
 // Игра идёт со 2 ноября 2026: 4.11 — праздник, 7–8.11 — выходные
 const START = '2026-11-02';
@@ -100,5 +100,23 @@ describe('planFunnelImport', () => {
     expect(planFunnelImport(funnel({ firstDate: null, lastDate: null, rows: [] }), staff, opts)).toHaveProperty('error');
     expect(planFunnelImport(funnel({ lastDate: '2026-10-31' }), staff, { ...opts, today: '2026-11-02' })).toHaveProperty('error');
     expect(planFunnelImport(funnel({ lastDate: '2026-10-31' }), staff, opts)).toHaveProperty('error');
+  });
+});
+
+describe('paymentsSummary: строки превью оплат', () => {
+  const row = (group: ImportedPayment['group'], author: string, invoice: string): ImportedPayment => ({ date: '2026-11-03', group, author, invoice });
+  const staff = [staffMember('Тест Один'), staffMember('Тест Ёлкин')];
+
+  test('счета по группам (повтор счёта — одна оплата), все авторы найдены', () => {
+    const rows = [row('СР1', 'Тест Один', 'A1'), row('СР1', 'Тест Один', 'A1'), row('СР2', ' тест  елкин ', 'B1'), row('СР2', 'Тест Ёлкин', 'B2')];
+    expect(paymentsSummary(rows, staff)).toEqual(['По группам: СР1 1 · СР2 2 · СР3 0 · СР5 0 · СР6 0 · СР9 0']);
+  });
+
+  test('авторы не из штата — списком, по разу, с подсказкой', () => {
+    const rows = [row('СР3', 'Новый Автор', 'C1'), row('СР3', 'Новый  Автор', 'C2'), row('СР5', 'Другой Автор', 'D1'), row('СР1', 'Тест Один', 'A1')];
+    expect(paymentsSummary(rows, staff)).toEqual([
+      'По группам: СР1 1 · СР2 0 · СР3 2 · СР5 1 · СР6 0 · СР9 0',
+      'Авторы не найдены в штате (2): Другой Автор; Новый Автор. Их оплаты кормят питомца, но не идут в рейтинг: проверьте ФИО во вкладке «Сотрудники».',
+    ]);
   });
 });

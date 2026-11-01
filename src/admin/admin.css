@@ -84,3 +84,24 @@ td {
 .thresholds input {
   width: 3.5rem;
 }
+
+[data-today-line] {
+  margin: 0.4rem 0 0.8rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: #fff;
+}
+
+[data-today-line]:empty {
+  display: none;
+}
+
+.bulk select,
+.bulk input {
+  padding: 0.15rem 0.3rem;
+}
+
+.bulk td {
+  padding: 0.2rem 0.4rem;
+}

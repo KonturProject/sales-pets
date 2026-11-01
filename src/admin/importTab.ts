@@ -2,7 +2,7 @@ import { ApiError, serverToday } from '@/data/api';
 import { configOf } from '@/data/config';
 import type { AdminCtx } from './ctx';
 import { errorText, h, ruDate } from './dom';
-import { planFunnelImport, planPaymentsImport } from './importPlan';
+import { paymentsSummary, planFunnelImport, planPaymentsImport } from './importPlan';
 
 /** Ответ `importPayments`; для `dryRun` те же счётчики без записи. */
 interface PaymentsReply { added: number; ignored: number; removed: number; removedProvisional: number }
@@ -91,6 +91,7 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
         `Период: ${ruDate(plan.from)} — ${ruDate(plan.to)}`,
         `Оплат к загрузке: ${preview.added}; заменится прежних: ${preview.removed}; уберётся предварительных чисел: ${preview.removedProvisional}`,
         `Не засчитано в файле: ${parsed.skipped.length}; вне периода: ${plan.dropped + preview.ignored}`,
+        ...paymentsSummary(plan.rows, snapshot.staff),
       ],
       {
         label: 'Загрузить',

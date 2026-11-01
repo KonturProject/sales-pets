@@ -158,6 +158,57 @@ try {
     check(!storage.includes(MOCK_ADMIN_PIN), 'PIN администратора в хранилище');
     check(!logs.some((l) => l.includes(MOCK_ADMIN_PIN)), 'PIN администратора в консоли');
     check(!html.includes(`value="${MOCK_ADMIN_PIN}"`), 'PIN администратора в значении поля');
+
+    // смена админ-PIN: несовпадение ловится до сервера; новый работает, старый нет; сессия жива; PIN нигде не остался
+    const NEW_PIN = '48151623';
+    const pinField = (label) => `[data-new-pin][aria-label="${label}"]`;
+    await admin.fill(pinField('Новый PIN'), NEW_PIN);
+    await admin.fill(pinField('Новый PIN ещё раз'), '48151624');
+    await admin.click('text=Сменить админ-PIN');
+    check((await waitForText(admin, '[data-alert="admin-pin"]', 'не совпадают')).includes('не совпадают'), 'смена PIN: несовпадение не поймано');
+    await admin.fill(pinField('Новый PIN'), NEW_PIN);
+    await admin.fill(pinField('Новый PIN ещё раз'), NEW_PIN);
+    await admin.click('text=Сменить админ-PIN');
+    const changed = await waitForText(admin, '[data-status="admin-pin"]', 'изменён');
+    check(changed.includes('Админ-PIN изменён'), `смена PIN: «${changed}» / «${await textOf(admin, '[data-alert="admin-pin"]')}»`);
+    check(await admin.$$eval('[data-new-pin]', (f) => f.every((i) => i.value === '')), 'смена PIN: поля не очищены');
+    const login = async (pin) => (await (await fetch(mock.url, {
+      method: 'POST', headers: { 'content-type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'login', pin }),
+    })).json()).ok === true;
+    check(await login(NEW_PIN), 'смена PIN: новый PIN не принят сервером');
+    check(!(await login(MOCK_ADMIN_PIN)), 'смена PIN: старый PIN ещё работает');
+    await admin.click('[role="tab"][data-tab="staff"]');
+    await admin.waitForSelector('[data-staff-list]', { timeout: 8_000 }).catch(() => {});
+    check(await admin.locator('form[data-login]').count() === 0, 'смена PIN: сессия вышла, хотя PIN сменили из неё');
+    const after = await admin.evaluate(() => [document.documentElement.outerHTML, JSON.stringify([{ ...localStorage }, { ...sessionStorage }])].join('|'));
+    check(!after.includes(NEW_PIN) && !admin.url().includes(NEW_PIN) && !logs.some((l) => l.includes(NEW_PIN)), 'новый админ-PIN остался в DOM, хранилище, адресе или консоли');
+  });
+
+  await scenario('сотрудники: уровни и даты приёма всем сразу, блок «Сегодня»', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    await loginAdmin(admin, urls.admin);
+    const today = await waitForText(admin, '[data-today-line]', 'Сегодня');
+    check(today.includes('Сегодня 12.11') && today.includes('день 8 из 14') && today.includes('воронка по 11.11'), `блок «Сегодня»: «${today}»`);
+    await admin.click('[role="tab"][data-tab="staff"]');
+    await admin.waitForSelector('[data-bulk-row]', { timeout: 8_000 });
+    const staffBefore = (await publicSnapshot(mock)).staff;
+    check(await admin.$$eval('[data-bulk-row]', (r) => r.length) === staffBefore.length, 'таблица уровней: не все сотрудники');
+    check((await textOf(admin, '[data-bulk-save]')).endsWith('(0)'), `таблица уровней: без правок кнопка «${await textOf(admin, '[data-bulk-save]')}»`);
+    const id = await admin.$eval('[data-bulk-row]', (r) => r.dataset.bulkRow);
+    const was = staffBefore.find((e) => e.id === id);
+    const level = was.baseLevel === 'rookie1' ? 'rookie2' : 'rookie1';
+    await admin.selectOption(`[data-bulk-level="${id}"]`, level);
+    await admin.fill(`[data-bulk-hire="${id}"]`, '2026-10-26');
+    check((await textOf(admin, '[data-bulk-save]')).endsWith('(1)'), `таблица уровней: после правки кнопка «${await textOf(admin, '[data-bulk-save]')}»`);
+    await admin.click('[data-bulk-save]');
+    const saved = await waitForText(admin, '[data-status="bulk"]', 'Сохранено строк: 1');
+    check(saved.includes('Сохранено строк: 1'), `таблица уровней: «${saved}» / «${await textOf(admin, '[data-alert="bulk"]')}»`);
+    const staffAfter = (await publicSnapshot(mock)).staff;
+    const me = staffAfter.find((e) => e.id === id);
+    check(me.baseLevel === level && me.hireDate === '2026-10-26', `таблица уровней: записано ${me.baseLevel} ${me.hireDate}`);
+    const untouched = staffAfter.filter((e) => e.id !== id).every((e) => JSON.stringify(e) === JSON.stringify(staffBefore.find((b) => b.id === e.id)));
+    check(untouched, 'таблица уровней: задеты другие сотрудники');
+    check((await textOf(admin, '[data-bulk-save]')).endsWith('(0)'), 'таблица уровней: после записи не перерисована из снимка');
   });
 
   await scenario('импорт оплат → экран', async ({ mock, newPage, check, urls }) => {
@@ -176,6 +227,8 @@ try {
     const preview = await waitForText(admin, '[data-report="payments"]', 'Оплат к загрузке: 4');
     check(preview.includes('Оплат к загрузке: 4'), `превью оплат: «${preview}»`);
     check(preview.includes('11.11.2026'), 'превью оплат: не указан период');
+    check(preview.includes('По группам: СР1 4 · СР2 0'), `превью оплат: нет разбивки по группам «${preview}»`);
+    check(preview.includes('Авторы не найдены в штате (1): Тест Один'), `превью оплат: не назван автор вне штата «${preview}»`);
     check(sr1Day(await publicSnapshot(mock)) === dayBefore, 'превью записало оплаты до подтверждения');
 
     await admin.click('[data-confirm="payments"]');
