@@ -48,6 +48,32 @@ export function groupFunnel(rank: RankData, asOf: DateStr): Record<GroupCode, Fu
   return totals;
 }
 
+export interface PaymentGain {
+  group: GroupCode;
+  gain: number;
+}
+
+/** Новые оплаты между обновлениями экрана, больший прирост первым. `prev === null` — первая загрузка, праздника нет. */
+export function paymentGains(prev: Record<GroupCode, number> | null, next: Record<GroupCode, number>): PaymentGain[] {
+  if (!prev) return [];
+  return GROUPS.map((group) => ({ group, gain: next[group] - prev[group] }))
+    .filter((g) => g.gain > 0)
+    .sort((a, b) => b.gain - a.gain);
+}
+
+const payWord = (n: number) => {
+  const d = n % 10;
+  const dd = n % 100;
+  if (d === 1 && dd !== 11) return 'оплата';
+  return d >= 2 && d <= 4 && (dd < 12 || dd > 14) ? 'оплаты' : 'оплат';
+};
+
+/** Текст плашки праздника. */
+export function partyBanner(gains: PaymentGain[]): string {
+  if (gains.length === 1) return `${gains[0].group}: +${gains[0].gain} ${payWord(gains[0].gain)}! Все на праздник`;
+  return `Новые оплаты: ${gains.map((g) => `${g.group} +${g.gain}`).join(' · ')} · все на праздник`;
+}
+
 /** День игры для верхней строки. */
 export function dayLine(asOf: DateStr, cfg: Config): string {
   if (asOf < cfg.startDate) return `старт ${short(cfg.startDate)}`;

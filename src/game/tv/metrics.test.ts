@@ -4,7 +4,7 @@ import type { PetState } from '@/engine/pet';
 import type { RankData } from '@/engine/ranking';
 import type { Employee } from '@/engine/staff';
 import type { GroupCode } from '@/engine/types';
-import { dayLine, freshLine, groupFunnel, tickerItems } from './metrics';
+import { dayLine, freshLine, groupFunnel, partyBanner, paymentGains, tickerItems } from './metrics';
 
 const state = (o: Partial<PetState> = {}): PetState => ({
   alive: true, generation: 0, totalPayments: 0, phase: 'egg0', stage: 0,
@@ -95,5 +95,36 @@ describe('freshLine: свежесть данных', () => {
   test('до первой загрузки файлов', () => {
     expect(freshLine({ at: new Date('2026-11-02T06:05:00Z'), funnelThrough: null, paymentsThrough: null }))
       .toBe('обновлено 09:05 · воронки ещё нет · оплат из файла ещё нет');
+  });
+});
+
+describe('paymentGains: новые оплаты групп между обновлениями экрана', () => {
+  const totals = (o: Partial<Record<GroupCode, number>> = {}): Record<GroupCode, number> => ({ СР1: 0, СР2: 0, СР3: 0, СР5: 0, СР6: 0, СР9: 0, ...o });
+
+  test('первое обновление — загрузка, а не новая оплата', () => {
+    expect(paymentGains(null, totals({ СР1: 5 }))).toEqual([]);
+  });
+
+  test('прирост по группам — по убыванию; без изменений и уменьшение не считаются', () => {
+    expect(paymentGains(totals({ СР1: 5, СР2: 4, СР3: 3 }), totals({ СР1: 6, СР2: 2, СР3: 6 }))).toEqual([
+      { group: 'СР3', gain: 3 },
+      { group: 'СР1', gain: 1 },
+    ]);
+  });
+});
+
+describe('partyBanner: плашка праздника', () => {
+  test.each([
+    [1, 'СР3: +1 оплата! Все на праздник'],
+    [2, 'СР3: +2 оплаты! Все на праздник'],
+    [5, 'СР3: +5 оплат! Все на праздник'],
+    [21, 'СР3: +21 оплата! Все на праздник'],
+    [12, 'СР3: +12 оплат! Все на праздник'],
+  ])('одна группа, +%i', (gain, text) => {
+    expect(partyBanner([{ group: 'СР3', gain }])).toBe(text);
+  });
+
+  test('несколько групп — одной строкой', () => {
+    expect(partyBanner([{ group: 'СР1', gain: 3 }, { group: 'СР2', gain: 1 }])).toBe('Новые оплаты: СР1 +3 · СР2 +1 · все на праздник');
   });
 });

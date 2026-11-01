@@ -1,8 +1,10 @@
 /** Куда смотрит камера: `overview` — общий план (кто-то работает с экраном), остальное — цикл на стене. */
-export type Shot = 'overview' | 'rooms' | 'heroes' | 'group';
+export type Shot = 'overview' | 'rooms' | 'heroes' | 'group' | 'walk';
 
-/** Цикл на стене: комнаты, доска героев, доска группы. */
-export const CYCLE: readonly (readonly [Shot, number])[] = [['rooms', 25_000], ['heroes', 12_000], ['group', 18_000]];
+/** Прогулка в зале: столько длится кадр `walk`. */
+export const WALK_MS = 30_000;
+/** Цикл на стене: комнаты, доска героев, доска группы, прогулка (домой питомцы возвращаются под переход на комнаты). */
+export const CYCLE: readonly (readonly [Shot, number])[] = [['rooms', 25_000], ['heroes', 12_000], ['group', 18_000], ['walk', WALK_MS]];
 /** Слайд правой доски (группа или «Топ-10») держится столько. */
 export const SLIDE_MS = 6_000;
 

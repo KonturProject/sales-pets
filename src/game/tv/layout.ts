@@ -37,6 +37,7 @@ export function roomRect(i: number): RoomRect {
 export const CAMERA: Record<Shot, string> = {
   rooms: 'translate(-620.3px, 18.8px) scale(1.12889)',
   overview: 'translate(57px, 64px) scale(0.64508)',
+  walk: 'translate(57px, 64px) scale(0.64508)',
   heroes: 'translate(0px, -40px) scale(1.2)',
   group: 'translate(-1440px, -40px) scale(1.2)',
 };
