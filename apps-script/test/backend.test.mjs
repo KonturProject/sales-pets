@@ -222,6 +222,17 @@ describe('GET', () => {
     admin(b, 'importPayments', { from: '2026-11-09', to: '2026-11-10', rows: [], dryRun: true });
     expect(b.get().version).toBe(v);
   });
+
+  test('запрос открывает таблицу один раз, следующий запрос — заново', () => {
+    const { b } = withStaff();
+    const before = b.opened();
+    b.get();
+    expect(b.opened()).toBe(before + 1);
+    b.get({ since: '0' });
+    expect(b.opened()).toBe(before + 2);
+    admin(b, 'setProvisional', { date: '2026-11-11', group: 'СР1', count: 1 });
+    expect(b.opened()).toBe(before + 3);
+  });
 });
 
 describe('importPayments', () => {

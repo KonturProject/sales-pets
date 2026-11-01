@@ -136,13 +136,14 @@ export function loadBackend({ startAt = Date.parse('2026-11-12T10:00:00+03:00'),
     getSpreadsheetTimeZone: () => 'Europe/Moscow',
   };
   const props = new Map([['SPREADSHEET_ID', 'fake-spreadsheet']]);
+  let opened = 0;
   const cacheStore = new Map();
 
   const sandbox = {
     console,
     Date: FakeDate,
     Logger: { log() {} },
-    SpreadsheetApp: { getActiveSpreadsheet: () => spreadsheet, openById: () => spreadsheet },
+    SpreadsheetApp: { getActiveSpreadsheet: () => spreadsheet, openById: () => { opened++; return spreadsheet; } },
     PropertiesService: {
       getScriptProperties: () => ({
         getProperty: (k) => (props.has(k) ? props.get(k) : null),
@@ -193,6 +194,8 @@ export function loadBackend({ startAt = Date.parse('2026-11-12T10:00:00+03:00'),
     advance: (ms) => { clock.offset += ms; },
     now,
     props,
+    /** Сколько раз Code.gs открыл таблицу через openById. */
+    opened: () => opened,
     sheet: (name) => sheets.get(name) ?? null,
   };
 }

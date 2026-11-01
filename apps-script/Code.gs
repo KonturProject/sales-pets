@@ -116,9 +116,14 @@ function daysInclusive_(from, to) {
 
 // ---------------------------------------------------------------- таблицы
 
+/** Таблица открывается один раз на запрос: doGet и doPost сбрасывают её в начале. */
+let spreadsheetMemo_ = null;
+
 function spreadsheet_() {
+  if (spreadsheetMemo_) return spreadsheetMemo_;
   const id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
-  return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+  spreadsheetMemo_ = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+  return spreadsheetMemo_;
 }
 
 /** Лист для записи: создаётся с заголовком при первой записи. */
@@ -874,6 +879,7 @@ function handlePost_(e) {
 }
 
 function doPost(e) {
+  spreadsheetMemo_ = null;
   try {
     return jsonResponse_(handlePost_(e));
   } catch (err) {
@@ -888,6 +894,7 @@ function doPost(e) {
  * `?since=<версия>` при той же версии отдаёт {unchanged, version, serverNow}: «сейчас» нужно клиенту, чтобы заметить смену суток без новой версии.
  */
 function doGet(e) {
+  spreadsheetMemo_ = null;
   try {
     const settings = readSettings_();
     const version = Number(settings.version) || 0;
