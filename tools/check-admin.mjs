@@ -124,6 +124,29 @@ try {
     check((await admin.$eval('[role="status"]', (e) => e.textContent ?? '')).includes('СР1'), 'вкладка «Оплаты»: число вне диапазона не отклонено');
   });
 
+  await scenario('оплаты: вкладка открыта со вчера', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    let nextDay = false; // снимки сервера «уже 13.11»: вкладку открыли 12.11 и оставили на ночь
+    await admin.route(`${mock.url}**`, async (route) => {
+      if (!nextDay || route.request().method() !== 'GET') return route.continue();
+      const response = await route.fetch();
+      const snap = await response.json();
+      snap.serverNow = '2026-11-13T00:00:05+03:00';
+      return route.fulfill({ response, body: JSON.stringify(snap) });
+    });
+    let writes = 0;
+    admin.on('request', (r) => { if (r.method() === 'POST' && JSON.parse(r.postData() ?? '{}').action === 'setProvisional') writes++; });
+    await loginAdmin(admin, urls.admin);
+    await admin.waitForSelector('[data-pay="СР1"]', { timeout: 8_000 });
+    nextDay = true;
+    // утром вводят те же числа, что стоят в полях со вчера: это не «изменений нет», а новый день
+    await admin.click('form button[type="submit"]');
+    const said = await waitForText(admin, 'form [role="status"]', 'Наступило');
+    check(said.includes('Наступило 13.11'), `те же числа на следующий день: «${said}»`);
+    check(await admin.$eval('[data-today]', (e) => e.dataset.today) === '2026-11-13', 'вкладка «Оплаты»: поля не перешли на новый день');
+    check(writes === 0, `вкладка «Оплаты»: на смене дня ушло записей: ${writes}`);
+  });
+
   await scenario('PIN-коды', async ({ mock, newPage, check, urls, logs }) => {
     const admin = await newPage();
     await loginAdmin(admin, urls.admin);

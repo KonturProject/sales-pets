@@ -61,11 +61,8 @@ export async function paymentsTab(ctx: AdminCtx): Promise<HTMLElement> {
       status.textContent = result.error;
       return;
     }
-    if (!result.changes.length) {
-      status.textContent = 'Изменений нет';
-      return;
-    }
-    // вкладку могли открыть вчера: числа пишутся только в сегодняшний день сервера
+    // вкладку могли открыть вчера: числа пишутся только в сегодняшний день сервера.
+    // День сверяется и без правок: те же числа, что со вчера, — это ещё не внесённый новый день
     let fresh: Snapshot;
     try {
       fresh = await ctx.snapshot();
@@ -81,6 +78,10 @@ export async function paymentsTab(ctx: AdminCtx): Promise<HTMLElement> {
       day.dataset.today = today;
       day.textContent = ruDate(today);
       status.textContent = `Наступило ${ruDate(today)}: в полях числа нового дня. Проверьте и сохраните ещё раз.`;
+      return;
+    }
+    if (!result.changes.length) {
+      status.textContent = 'Изменений нет';
       return;
     }
     const saved: GroupCode[] = [];
