@@ -261,6 +261,7 @@ try {
     check(preview.includes('11.11.2026'), 'превью оплат: не указан период');
     check(preview.includes('По группам: СР1 4 · СР2 0'), `превью оплат: нет разбивки по группам «${preview}»`);
     check(preview.includes('Авторы не найдены в штате (1): Тест Один'), `превью оплат: не назван автор вне штата «${preview}»`);
+    check(preview.includes('Привязано к сотрудникам: 0 из 4 оплат'), `превью оплат: нет строки о привязке к сотрудникам «${preview}»`);
     check(sr1Day(await publicSnapshot(mock)) === dayBefore, 'превью записало оплаты до подтверждения');
 
     await admin.click('[data-confirm="payments"]');
@@ -289,7 +290,7 @@ try {
     const preview = await waitForText(admin, '[data-report="funnel"]', 'Новых сотрудников: 1');
     check(preview.includes('Новых сотрудников: 1'), `превью воронки: «${preview}»`);
     check(preview.includes('11.11.2026'), 'превью воронки: не указана дата «по»');
-    check(preview.includes('СР1 — Тест Новый'), `превью воронки: новый сотрудник не назван по имени и группе: «${preview}»`);
+    check(preview.includes('СР1: Тест Новый'), `превью воронки: новый сотрудник не назван по имени и группе: «${preview}»`);
     check(preview.includes('«Сотрудники»'), 'превью воронки: нет указания проверить дату приёма и уровень во вкладке «Сотрудники»');
     const button = await textOf(admin, '[data-confirm="funnel"]');
     check(button.includes('Добавить новых (1)'), `подпись кнопки: «${button}»`);
@@ -307,6 +308,45 @@ try {
     await waitForText(admin, '[data-report="funnel"]', 'Данные по');
     check(await textOf(admin, '[data-confirm="funnel"]') === 'Загрузить', 'повтор файла: сотрудник снова считается новым');
     check(!(await textOf(admin, '[data-report="funnel"]')).includes('Новых сотрудников'), 'повтор файла: в превью снова «Новых сотрудников»');
+  });
+
+  await scenario('импорт воронки 02.11: первая загрузка берёт только штат', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    // снимки сервера «сегодня 02.11»: первый день игры, дней игры до сегодняшнего ещё нет
+    await admin.route(`${mock.url}**`, async (route) => {
+      if (route.request().method() !== 'GET') return route.continue();
+      const response = await route.fetch();
+      const snap = await response.json();
+      snap.serverNow = '2026-11-02T10:00:00+03:00';
+      return route.fulfill({ response, body: JSON.stringify(snap) });
+    });
+    const actions = [];
+    admin.on('request', (r) => { if (r.method() === 'POST') actions.push(JSON.parse(r.postData() ?? '{}').action); });
+    const before = await publicSnapshot(mock);
+    const known = before.staff.find((e) => e.group === 'СР1').name;
+    // штат целиком: по 10 новых в каждой группе и один уже известный
+    const groups = GROUP_CODES.map((group) => ({
+      group,
+      people: [
+        ...(group === 'СР1' ? [{ name: known, quality: 1, long: 1 }] : []),
+        ...Array.from({ length: 10 }, (_, i) => ({ name: `Новый ${group} Номер${i + 1}`, quality: 2, long: 1 })),
+      ],
+    }));
+    await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="import"]');
+    await admin.setInputFiles('[data-file="funnel"]', xlsxFile('funnel-oct.xlsx', fx.funnelXlsx(['2026-10-29', '2026-10-30'], groups)));
+    const preview = await waitForText(admin, '[data-report="funnel"]', 'Первая загрузка');
+    check(preview.includes('Сотрудников в файле: 61; уже в штате: 1; новых: 60'), `первая воронка: превью «${preview}»`);
+    check(preview.includes('СР9 10'), `первая воронка: нет счёта по группам: «${preview}»`);
+    check(await textOf(admin, '[data-confirm="funnel"]') === 'Добавить в штат (60)', `первая воронка: кнопка «${await textOf(admin, '[data-confirm="funnel"]')}»`);
+    await admin.click('[data-confirm="funnel"]');
+    const done = await waitForText(admin, '[data-report="funnel"]', 'Добавлено в штат');
+    check(done.includes('Добавлено в штат: 60'), `первая воронка: итог «${done}» / «${await textOf(admin, '[data-alert="funnel"]')}»`);
+    const after = await publicSnapshot(mock);
+    check(after.staff.length === before.staff.length + 60, `первая воронка: в штате ${after.staff.length}, ожидалось ${before.staff.length + 60}`);
+    check(after.staff.some((e) => e.name === 'Новый СР6 Номер3' && e.group === 'СР6' && e.baseLevel === 'experienced'), 'первая воронка: новый сотрудник не в группе из файла');
+    check(after.funnel.length === before.funnel.length, 'первая воронка: загрузились показатели до старта игры');
+    check(actions.includes('setStaff') && !actions.includes('importFunnel'), `первая воронка: действия ${actions.join(', ')}`);
   });
 
   await scenario('импорт: не тот файл', async ({ newPage, check, urls }) => {

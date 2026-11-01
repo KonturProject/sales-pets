@@ -41,12 +41,18 @@ export function paymentsSummary(rows: ImportedPayment[], staff: Employee[]): str
   const known = new Set(staff.map((e) => normalizeName(e.name)));
   const byGroup = Object.fromEntries(GROUPS.map((g) => [g, 0])) as Record<GroupCode, number>;
   const unmatched = new Map<string, string>();
-  for (const r of uniqueInvoices(rows, (p) => normalizeName(p.author))) {
+  const unique = uniqueInvoices(rows, (p) => normalizeName(p.author));
+  let matched = 0;
+  for (const r of unique) {
     if (r.group in byGroup) byGroup[r.group]++;
     const key = normalizeName(r.author);
-    if (!known.has(key)) unmatched.set(key, r.author.trim().replace(/\s+/g, ' '));
+    if (known.has(key)) matched++;
+    else unmatched.set(key, r.author.trim().replace(/\s+/g, ' '));
   }
-  const lines = [`По группам: ${GROUPS.map((g) => `${g} ${byGroup[g]}`).join(' · ')}`];
+  const lines = [
+    `По группам: ${GROUPS.map((g) => `${g} ${byGroup[g]}`).join(' · ')}`,
+    `Привязано к сотрудникам: ${matched} из ${unique.length} оплат`,
+  ];
   if (unmatched.size) {
     const names = [...unmatched.values()].sort((a, b) => a.localeCompare(b, 'ru'));
     lines.push(`Авторы не найдены в штате (${names.length}): ${names.join('; ')}. Их оплаты кормят питомца, но не идут в рейтинг: проверьте ФИО во вкладке «Сотрудники».`);
@@ -64,19 +70,25 @@ export interface FunnelPlan {
   dropped: number;
 }
 
+/** Первая загрузка воронки (дней игры до сегодняшнего в файле нет): из файла берётся только штат. */
+export interface StaffOnlyPlan {
+  staffOnly: true;
+  /** разных сотрудников шести групп в файле */
+  inFile: number;
+  newStaff: FunnelPlan['newStaff'];
+  outside: number;
+}
+
 /**
  * Данные воронки «по» предыдущий рабочий день, но не позже последней даты файла.
  * ФИО, которых нет в штате, возвращаются в `newStaff`: сервер отклоняет файл с неизвестным ФИО целиком.
+ * Пока дней игры до сегодняшнего нет (02.11 — отчёт за октябрь или пустой ноябрьский), файл даёт только штат.
  */
 export function planFunnelImport(
   parsed: ParsedFunnel,
   staff: Employee[],
   { today, config }: { today: DateStr; config: Config },
-): FunnelPlan | { error: string } {
-  const previous = prevWorkingDay(today, config);
-  if (parsed.lastDate === null || previous === null) return { error: 'В файле нет дней игры до сегодняшнего' };
-  const through = parsed.lastDate < previous ? parsed.lastDate : previous;
-  if (through < config.startDate) return { error: 'В файле нет дней игры до сегодняшнего' };
+): FunnelPlan | StaffOnlyPlan | { error: string } {
   const known = new Set(staff.map((e) => normalizeName(e.name)));
   const newStaff: FunnelPlan['newStaff'] = [];
   for (const e of parsed.employees) {
@@ -84,6 +96,13 @@ export function planFunnelImport(
     if (known.has(key)) continue;
     known.add(key);
     newStaff.push({ name: e.name, group: e.group });
+  }
+  const previous = prevWorkingDay(today, config);
+  const through = previous === null || parsed.lastDate === null ? null : parsed.lastDate < previous ? parsed.lastDate : previous;
+  if (through === null || through < config.startDate) {
+    if (!newStaff.length) return { error: 'В файле нет дней игры до сегодняшнего, а все сотрудники из него уже в штате' };
+    const inFile = new Set(parsed.employees.map((e) => normalizeName(e.name))).size;
+    return { staffOnly: true, inFile, newStaff, outside: parsed.outside };
   }
   const rows = parsed.rows.filter((r) => r.date <= through);
   return { through, rows, newStaff, outside: parsed.outside, dropped: parsed.rows.length - rows.length };

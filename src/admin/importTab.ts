@@ -1,11 +1,21 @@
 import { ApiError, serverToday } from '@/data/api';
 import { configOf } from '@/data/config';
+import { GROUPS, type GroupCode } from '@/engine/types';
 import type { AdminCtx } from './ctx';
 import { errorText, h, ruDate } from './dom';
 import { paymentsSummary, planFunnelImport, planPaymentsImport } from './importPlan';
 
 /** Ответ `importPayments`; для `dryRun` те же счётчики без записи. */
 interface PaymentsReply { added: number; ignored: number; removed: number; removedProvisional: number }
+
+type Person = { name: string; group: GroupCode };
+const byGroup = (people: Person[]) => GROUPS.map((g) => `${g} ${people.filter((p) => p.group === g).length}`).join(' · ');
+/** Новые ФИО по группам — строкой на группу, чтобы глазами сверить написание. */
+const namesByGroup = (people: Person[]) =>
+  GROUPS.flatMap((g) => {
+    const names = people.filter((p) => p.group === g).map((p) => p.name);
+    return names.length ? [`${g}: ${names.join('; ')}`] : [];
+  });
 
 const importError = (e: unknown): string =>
   e instanceof ApiError && e.code === 'bad_request'
@@ -109,14 +119,35 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
     const parsed = parseFunnelXlsx(buf);
     const plan = planFunnelImport(parsed, snapshot.staff, { today: serverToday(snapshot), config: configOf(snapshot.config) });
     if ('error' in plan) return show([plan.error]);
+    if ('staffOnly' in plan) {
+      const fresh = plan.newStaff;
+      return show(
+        [
+          'Первая загрузка: показателей за дни игры в файле ещё нет, из него берётся только штат.',
+          `Сотрудников в файле: ${plan.inFile}; уже в штате: ${plan.inFile - fresh.length}; новых: ${fresh.length} — ${byGroup(fresh)}. Вне шести групп: ${plan.outside}.`,
+          ...namesByGroup(fresh),
+          'Новые добавятся уровнем «опытный» без даты приёма. После этого: Сотрудники → «Уровни и даты приёма» — новичкам уровень и дату приёма; кто уже уволен — дату увольнения в карточке.',
+        ],
+        {
+          label: `Добавить в штат (${fresh.length})`,
+          run: async () => {
+            await ctx.session.call('setStaff', { staff: fresh });
+            return [
+              `Добавлено в штат: ${fresh.length} — ${byGroup(fresh)}.`,
+              'Дальше: Сотрудники → «Уровни и даты приёма». Показатели воронки загружайте этим же блоком со следующего рабочего дня.',
+            ];
+          },
+        },
+      );
+    }
     const fresh = plan.newStaff;
     const lines = [
       `Данные по ${ruDate(plan.through)} включительно; сотрудников в файле: ${parsed.employees.length}; строк к загрузке: ${plan.rows.length}`,
       `Вне шести групп: ${plan.outside}; позже ${ruDate(plan.through)} (не загружаются): ${plan.dropped}`,
     ];
     if (fresh.length) {
-      lines.push(`Новых сотрудников: ${fresh.length}. Они будут добавлены в штат в группах из файла, уровень «опытный», без даты приёма. Новичкам дату приёма и уровень поставьте во вкладке «Сотрудники»: иначе норма группы считается как для опытных.`);
-      lines.push(`Новые: ${fresh.map((e) => `${e.group} — ${e.name}`).join('; ')}. Сверьте написание с штатом: опечатка создаст двойника.`);
+      lines.push(`Новых сотрудников: ${fresh.length} — ${byGroup(fresh)}. Они будут добавлены в штат в группах из файла, уровень «опытный», без даты приёма. Новичкам дату приёма и уровень поставьте во вкладке «Сотрудники»: иначе норма группы считается как для опытных.`);
+      lines.push(...namesByGroup(fresh), 'Сверьте написание с штатом: опечатка создаст двойника.');
     }
     show(lines, {
       label: fresh.length ? `Добавить новых (${fresh.length}) в штат и загрузить` : 'Загрузить',

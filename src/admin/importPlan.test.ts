@@ -96,6 +96,28 @@ describe('planFunnelImport', () => {
     expect('rows' in plan && plan.rows.every((r) => ['Тест Один', 'Тест Два'].includes(r.name))).toBe(true);
   });
 
+  test('первый день игры: дней игры в файле ещё нет — план только добавляет в штат новых из файла', () => {
+    const october = funnel({ firstDate: '2026-10-29', lastDate: '2026-10-30', rows: [{ name: 'Тест Один', date: '2026-10-30', quality: 3, long: 1 }] });
+    expect(planFunnelImport(october, [staffMember('тест  один')], { ...opts, today: '2026-11-02' })).toEqual({
+      staffOnly: true,
+      inFile: 2,
+      newStaff: [{ name: 'Тест Два', group: 'СР5' }],
+      outside: 0,
+    });
+  });
+
+  test('ноябрьский отчёт 02.11 (колонки до конца месяца, нули) — тоже только штат; 03.11 — обычная загрузка по 02.11', () => {
+    const november = funnel({
+      firstDate: '2026-11-02',
+      lastDate: '2026-11-30',
+      rows: [{ name: 'Тест Один', date: '2026-11-02', quality: 2, long: 1 }, { name: 'Тест Один', date: '2026-11-03', quality: 0, long: 0 }],
+    });
+    expect(planFunnelImport(november, [], { ...opts, today: '2026-11-02' })).toMatchObject({ staffOnly: true, inFile: 2 });
+    const next = planFunnelImport(november, [], { ...opts, today: '2026-11-03' });
+    expect(next).toMatchObject({ through: '2026-11-02', dropped: 1 });
+    expect('newStaff' in next && next.newStaff).toHaveLength(2);
+  });
+
   test('файл без дат или целиком до старта игры — ошибка', () => {
     expect(planFunnelImport(funnel({ firstDate: null, lastDate: null, rows: [] }), staff, opts)).toHaveProperty('error');
     expect(planFunnelImport(funnel({ lastDate: '2026-10-31' }), staff, { ...opts, today: '2026-11-02' })).toHaveProperty('error');
@@ -109,13 +131,17 @@ describe('paymentsSummary: строки превью оплат', () => {
 
   test('счета по группам (повтор счёта — одна оплата), все авторы найдены', () => {
     const rows = [row('СР1', 'Тест Один', 'A1'), row('СР1', 'Тест Один', 'A1'), row('СР2', ' тест  елкин ', 'B1'), row('СР2', 'Тест Ёлкин', 'B2')];
-    expect(paymentsSummary(rows, staff)).toEqual(['По группам: СР1 1 · СР2 2 · СР3 0 · СР5 0 · СР6 0 · СР9 0']);
+    expect(paymentsSummary(rows, staff)).toEqual([
+      'По группам: СР1 1 · СР2 2 · СР3 0 · СР5 0 · СР6 0 · СР9 0',
+      'Привязано к сотрудникам: 3 из 3 оплат',
+    ]);
   });
 
   test('авторы не из штата — списком, по разу, с подсказкой', () => {
     const rows = [row('СР3', 'Новый Автор', 'C1'), row('СР3', 'Новый  Автор', 'C2'), row('СР5', 'Другой Автор', 'D1'), row('СР1', 'Тест Один', 'A1')];
     expect(paymentsSummary(rows, staff)).toEqual([
       'По группам: СР1 1 · СР2 0 · СР3 2 · СР5 1 · СР6 0 · СР9 0',
+      'Привязано к сотрудникам: 1 из 4 оплат',
       'Авторы не найдены в штате (2): Другой Автор; Новый Автор. Их оплаты кормят питомца, но не идут в рейтинг: проверьте ФИО во вкладке «Сотрудники».',
     ]);
   });
