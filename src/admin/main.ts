@@ -9,17 +9,20 @@ import { paymentsTab } from './payments';
 import { pinsTab } from './pins';
 import { createSession, type Session } from './session';
 import { staffTab } from './staffTab';
-import { todayLine } from './today';
+import { todayLine, todayTasks } from './today';
 
 const root = document.getElementById('app')!;
 
 const session = createSession(api.post, (e) => showLogin(e.code === 'locked' ? errorText(e) : 'Сессия закончилась: войдите снова'));
-/** Блок «Сегодня» над вкладками: обновляется с каждым снимком, который читает админка, и после каждой записи. */
-const todayBox = h('p', { 'data-today-line': true });
+/** Блок «Сегодня» над вкладками: день игры и что сделать; обновляется с каждым снимком, который читает админка, и после каждой записи. */
+const todayText = h('p', { 'data-today-line': true });
+const todayList = h('ul', { 'data-today-tasks': true });
+const todayBox = h('section', { class: 'today' }, todayText, todayList);
 const snapshot: AdminCtx['snapshot'] = async () => {
   const s = await api.get();
   if ('unchanged' in s) throw new Error('unexpected unchanged');
-  todayBox.textContent = todayLine(s);
+  todayText.textContent = todayLine(s);
+  todayList.replaceChildren(...todayTasks(s).map((t) => h('li', { class: t.done ? 'done' : 'todo' }, t.text)));
   return s;
 };
 const tracked: Session = {

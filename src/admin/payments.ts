@@ -1,3 +1,4 @@
+import { THEME } from '@/art/manifest';
 import { serverToday, type Snapshot } from '@/data/api';
 import { GROUPS, type GroupCode } from '@/engine/types';
 import type { AdminCtx } from './ctx';
@@ -35,21 +36,51 @@ export async function paymentsTab(ctx: AdminCtx): Promise<HTMLElement> {
   let today = serverToday(snapshot);
   let current = provisionalToday(snapshot);
   const status = h('p', { role: 'status' });
+  /** итог записи; ошибка и смена дня — красным */
+  const say = (text: string, bad = false) => {
+    status.textContent = text;
+    status.classList.toggle('bad', bad);
+  };
   const day = h('time', { 'data-today': today, datetime: today }, ruDate(today));
   const inputs = Object.fromEntries(
-    GROUPS.map((g) => [g, h('input', { type: 'number', min: 0, max: MAX_COUNT, step: 1, value: current[g], 'data-pay': g, required: true })]),
+    GROUPS.map((g) => [g, h('input', {
+      type: 'number', min: 0, max: MAX_COUNT, step: 1, value: current[g], 'data-pay': g, required: true,
+      inputmode: 'numeric', 'aria-label': `${g}: оплат сегодня`, oninput: () => mark(),
+    })]),
   ) as Record<GroupCode, HTMLInputElement>;
+  /** несохранённые числа подсвечены */
+  const mark = () => {
+    for (const g of GROUPS) inputs[g].closest('.pay-card')?.classList.toggle('changed', inputs[g].value.trim() !== String(current[g]));
+  };
+  const step = (g: GroupCode, delta: number) => () => {
+    inputs[g].value = String(Math.max(0, (Number(inputs[g].value) || 0) + delta));
+    mark();
+  };
+  const card = (g: GroupCode) => h(
+    'div',
+    { class: 'pay-card', style: `--group: ${THEME[g].accent}` },
+    h('div', { class: 'pay-head' }, h('b', {}, g), h('span', { class: 'muted' }, THEME[g].species)),
+    h(
+      'div',
+      { class: 'pay-row' },
+      h('button', { type: 'button', class: 'step', 'aria-label': `${g}: на одну меньше`, onclick: step(g, -1) }, '−'),
+      inputs[g],
+      h('button', { type: 'button', class: 'step', 'aria-label': `${g}: на одну больше`, onclick: step(g, 1) }, '+'),
+    ),
+  );
 
   const form = h(
     'form',
     {
+      class: 'pay-form',
       onsubmit: (e) => {
         e.preventDefault();
         void save();
       },
     },
-    h('p', {}, 'Сегодня: ', day),
-    ...GROUPS.map((g) => h('label', {}, g, ' ', inputs[g])),
+    h('h2', {}, 'Оплаты за сегодня, ', day),
+    h('p', { class: 'muted' }, 'Сколько оплат у группы за сегодня — нарастающим итогом. Питомцы на экране реагируют сразу; утром файл оплат заменит эти числа точными.'),
+    h('div', { class: 'pay-grid' }, ...GROUPS.map(card)),
     h('button', { type: 'submit' }, 'Сохранить'),
     status,
   );
@@ -58,7 +89,7 @@ export async function paymentsTab(ctx: AdminCtx): Promise<HTMLElement> {
     const entered = Object.fromEntries(GROUPS.map((g) => [g, inputs[g].value])) as Record<GroupCode, string>;
     const result = provisionalChanges(current, entered);
     if ('error' in result) {
-      status.textContent = result.error;
+      say(result.error, true);
       return;
     }
     // вкладку могли открыть вчера: числа пишутся только в сегодняшний день сервера.
@@ -67,7 +98,7 @@ export async function paymentsTab(ctx: AdminCtx): Promise<HTMLElement> {
     try {
       fresh = await ctx.snapshot();
     } catch (e) {
-      status.textContent = errorText(e);
+      say(errorText(e), true);
       return;
     }
     if (serverToday(fresh) !== today) {
@@ -77,11 +108,12 @@ export async function paymentsTab(ctx: AdminCtx): Promise<HTMLElement> {
       day.dateTime = today;
       day.dataset.today = today;
       day.textContent = ruDate(today);
-      status.textContent = `Наступило ${ruDate(today)}: в полях числа нового дня. Проверьте и сохраните ещё раз.`;
+      mark();
+      say(`Наступило ${ruDate(today)}: в полях числа нового дня. Проверьте и сохраните ещё раз.`, true);
       return;
     }
     if (!result.changes.length) {
-      status.textContent = 'Изменений нет';
+      say('Изменений нет');
       return;
     }
     const saved: GroupCode[] = [];
@@ -91,10 +123,11 @@ export async function paymentsTab(ctx: AdminCtx): Promise<HTMLElement> {
         current[c.group] = c.count;
         saved.push(c.group);
       }
-      status.textContent = `Сохранено: ${saved.join(', ')}`;
+      say(`Сохранено в ${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}: ${saved.join(', ')}`);
     } catch (e) {
-      status.textContent = `${errorText(e)}${saved.length ? `. Уже сохранено: ${saved.join(', ')}` : ''}`;
+      say(`${errorText(e)}${saved.length ? `. Уже сохранено: ${saved.join(', ')}` : ''}`, true);
     }
+    mark();
   }
 
   return form;

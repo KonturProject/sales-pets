@@ -26,7 +26,7 @@ const importError = (e: unknown): string =>
  * Блок «выбрать файл → разобрать → показать счётчики → подтвердить». `onFile` получает содержимое файла и
  * говорит `show(строки, действие)`; действие — кнопка подтверждения, её подпись и вызов. ФИО на экран не выводятся.
  */
-export function fileBlock(id: string, title: string, accept: string, onFile: (buf: ArrayBuffer, show: Show) => Promise<void>): HTMLElement {
+export function fileBlock(id: string, title: string, accept: string, onFile: (buf: ArrayBuffer, show: Show) => Promise<void>, hint?: string): HTMLElement {
   const report = h('div', { 'data-report': id, role: 'status' });
   const alert = h('p', { role: 'alert', 'data-alert': id });
   const input = h('input', {
@@ -79,7 +79,7 @@ export function fileBlock(id: string, title: string, accept: string, onFile: (bu
     }
   }
 
-  return h('section', {}, h('h2', {}, title), h('label', {}, input), report, alert);
+  return h('section', {}, h('h2', {}, title), hint ? h('p', { class: 'muted' }, hint) : null, h('label', { class: 'file' }, input), report, alert);
 }
 
 export type Show = (lines: string[], action?: { label: string; run: () => Promise<string[]> }) => void;
@@ -88,7 +88,7 @@ export type Show = (lines: string[], action?: { label: string; run: () => Promis
 export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
   const xlsx = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-  const payments = fileBlock('payments', 'Оплаты: «Детальные данные по оплаченным счетам»', xlsx, async (buf, show) => {
+  const payments = fileBlock('payments', '2. Оплаты: «Детальные данные по оплаченным счетам»', xlsx, async (buf, show) => {
     const snapshot = await ctx.snapshot();
     const { parsePaymentsXlsx } = await import('@/import/payments');
     const parsed = parsePaymentsXlsx(buf);
@@ -111,9 +111,9 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
         },
       },
     );
-  });
+  }, 'После воронки, каждое утро: оплаты по вчерашний день. Повторная загрузка периода заменяет его, предварительные числа этих дней заменятся файлом.');
 
-  const funnel = fileBlock('funnel', 'Воронка: «АП_НП_СР_Воронка_Дни…»', xlsx, async (buf, show) => {
+  const funnel = fileBlock('funnel', '1. Воронка: «АП_НП_СР_Воронка_Дни…»', xlsx, async (buf, show) => {
     const snapshot = await ctx.snapshot();
     const { parseFunnelXlsx } = await import('@/import/funnel');
     const parsed = parseFunnelXlsx(buf);
@@ -157,7 +157,7 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
         return [`Загружено строк воронки: ${done.added}${fresh.length ? `; добавлено сотрудников: ${fresh.length}` : ''}.`];
       },
     });
-  });
+  }, 'Каждое утро: отчёт по последний рабочий день. Первая загрузка (02.11) берёт из отчёта только штат; новые люди из отчёта добавляются в штат и в следующие дни.');
 
-  return h('div', {}, payments, funnel);
+  return h('div', {}, funnel, payments);
 }

@@ -219,16 +219,118 @@ th {
   width: 3.5rem;
 }
 
-[data-today-line] {
+.today {
   margin: 0.4rem 0 0.8rem;
-  padding: 0.55rem 0.8rem;
+  padding: 0.6rem 0.9rem;
   border: 1px solid var(--line);
-  border-radius: 0.6rem;
+  border-radius: 0.7rem;
   background: var(--card);
 }
 
-[data-today-line]:empty {
+.today:has([data-today-line]:empty) {
   display: none;
+}
+
+[data-today-line] {
+  margin: 0;
+  font-weight: 600;
+}
+
+[data-today-tasks] {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+[data-today-tasks] li {
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.92rem;
+}
+
+[data-today-tasks] li.done {
+  background: #e7f1e4;
+  color: var(--ok);
+}
+
+[data-today-tasks] li.done::before {
+  content: '✓ ';
+}
+
+[data-today-tasks] li.todo {
+  background: #fde9c8;
+  color: #7a4a0c;
+  font-weight: 600;
+}
+
+[data-today-tasks] li.todo::before {
+  content: '→ ';
+}
+
+/* «Оплаты»: карточка на группу в её цвете, −/+ для телефона */
+.pay-form {
+  max-width: none;
+}
+
+.pay-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.pay-card {
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--group);
+  border-radius: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  background: #fff;
+}
+
+.pay-card.changed {
+  background: var(--changed);
+}
+
+.pay-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+
+.pay-head b {
+  font-size: 1.1rem;
+  color: var(--group);
+}
+
+.pay-row {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.pay-row input {
+  flex: 1;
+  min-width: 0;
+  font-size: 1.25rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.pay-row .step {
+  width: 2.6rem;
+  font-size: 1.25rem;
+  padding: 0;
+}
+
+.pay-form > button[type='submit'] {
+  justify-self: start;
+  padding: 0.55rem 2rem;
+}
+
+[role='status'].bad {
+  color: var(--bad);
 }
 
 .bulk select,
@@ -297,7 +399,8 @@ th {
     padding: 0.75rem 0.75rem 2rem;
   }
 
-  .staff-pick {
+  .staff-pick,
+  .pay-grid {
     grid-template-columns: 1fr;
   }
 
@@ -312,4 +415,19 @@ th {
   .panel {
     padding: 0.8rem;
   }
+}
+
+label.file {
+  justify-content: flex-start;
+}
+
+input[type='file']::file-selector-button {
+  font: inherit;
+  margin-right: 0.7rem;
+  padding: 0.35rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: 0.45rem;
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
 }

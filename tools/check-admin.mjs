@@ -129,6 +129,15 @@ try {
     await admin.setViewportSize({ width: 390, height: 800 });
     await loginAdmin(admin, urls.admin);
     await admin.waitForSelector('[data-pay="СР1"]', { timeout: 8_000 });
+    // −/+ у группы меняют число и подсвечивают несохранённое; без «Сохранить» на сервер ничего не уходит
+    const was = Number(await admin.inputValue('[data-pay="СР2"]'));
+    await admin.click('[aria-label="СР2: на одну больше"]');
+    await admin.click('[aria-label="СР2: на одну больше"]');
+    await admin.click('[aria-label="СР2: на одну меньше"]');
+    check(Number(await admin.inputValue('[data-pay="СР2"]')) === was + 1, 'оплаты: −/+ не меняют число');
+    check(await admin.$$eval('.pay-card.changed', (c) => c.length) === 1, 'оплаты: несохранённое число не подсвечено');
+    const tasks = await textOf(admin, '[data-today-tasks]');
+    check(tasks.includes('Штат: 25') && tasks.includes('Воронка по 11.11'), `блок «Сегодня»: дела «${tasks}»`);
     for (const tab of await admin.$$eval('[role="tab"]', (t) => t.map((x) => x.dataset.tab))) {
       await admin.click(`[role="tab"][data-tab="${tab}"]`);
       await admin.waitForTimeout(1_200);
