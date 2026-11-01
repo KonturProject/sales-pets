@@ -232,6 +232,15 @@ try {
     const untouched = staffAfter.filter((e) => e.id !== id).every((e) => JSON.stringify(e) === JSON.stringify(staffBefore.find((b) => b.id === e.id)));
     check(untouched, 'таблица уровней: задеты другие сотрудники');
     check((await textOf(admin, '[data-bulk-save]')).endsWith('(0)'), 'таблица уровней: после записи не перерисована из снимка');
+
+    // недописанная дата (стёрт один сегмент) — у поля пустое value: без проверки ушло бы «даты приёма нет»
+    await admin.click(`[data-bulk-hire="${id}"]`);
+    await admin.keyboard.press('Backspace');
+    check(await admin.$eval(`[data-bulk-hire="${id}"]`, (i) => i.validity.badInput), 'таблица уровней: Backspace не сделал дату недописанной');
+    await admin.click('[data-bulk-save]');
+    const half = await waitForText(admin, '[data-alert="bulk"]', 'не полностью');
+    check(half.includes('Строка 1: дата приёма введена не полностью'), `таблица уровней: недописанная дата — «${half}»`);
+    check((await publicSnapshot(mock)).staff.find((e) => e.id === id).hireDate === '2026-10-26', 'таблица уровней: недописанная дата стёрла дату приёма на сервере');
   });
 
   await scenario('импорт оплат → экран', async ({ mock, newPage, check, urls }) => {
@@ -396,6 +405,17 @@ try {
       await admin.click('[data-save="staff"]');
       await admin.waitForFunction(() => document.querySelector('[data-status="staff-form"]')?.textContent?.includes('Сохранено') || document.querySelector('[data-alert="staff-form"]')?.textContent, null, { timeout: 8_000 }).catch(() => {});
     };
+
+    // недописанная дата увольнения (одна цифра дня): форму держит сам браузер, пустое value не уходит как «не уволен»
+    const fireWas = (await person(target.id)).fireDate ?? null;
+    await admin.click('[data-field="fireDate"]');
+    await admin.keyboard.type('1');
+    check(await admin.$eval('[data-field="fireDate"]', (i) => i.validity.badInput), 'карточка: цифра не сделала дату недописанной');
+    check(await admin.$eval('form[data-form="staff"]', (f) => !f.checkValidity()), 'карточка: форма с недописанной датой считается заполненной');
+    await admin.click('[data-save="staff"]');
+    await admin.waitForTimeout(1_000);
+    check(((await person(target.id)).fireDate ?? null) === fireWas, 'карточка: недописанная дата дошла до сервера');
+    await admin.fill('[data-field="fireDate"]', '');
 
     // исключение из рейтинга: без причины сервер не вызывается, с причиной — флаг на сервере, причина только у админа
     await admin.check('[data-field="hiddenFromRating"]');

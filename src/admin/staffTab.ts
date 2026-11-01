@@ -18,7 +18,6 @@ interface Data {
 
 const field = (label: string, control: HTMLElement) => h('label', {}, `${label} `, control);
 const option = (value: string, title: string, selected = false) => h('option', { value, selected }, title);
-
 /**
  * Вкладка «Сотрудники»: поиск и карточка (приём, увольнение, перевод, уровень, исключение из рейтинга), отсутствия,
  * таблица уровней и дат приёма всего штата и загрузка списка из JSON. После каждой записи снимок и причины читаются заново и вкладка перерисовывается:
@@ -222,6 +221,12 @@ export async function staffTab(ctx: AdminCtx): Promise<HTMLElement> {
   async function saveBulk(): Promise<void> {
     bulkAlert.textContent = '';
     bulkStatus.textContent = '';
+    // у недописанной даты value пуст: без проверки ушло бы «даты приёма нет». Таблица — не форма, браузер её не держит
+    const half = [...bulkFields.values()].findIndex((f) => f.hire.validity.badInput); // порядок строк = порядок data.staff
+    if (half >= 0) {
+      bulkAlert.textContent = `Строка ${half + 1}: дата приёма введена не полностью — выберите день или очистите поле`;
+      return;
+    }
     const result = bulkStaffPatches(data.staff, bulkEdits());
     if ('error' in result) {
       bulkAlert.textContent = result.error;
