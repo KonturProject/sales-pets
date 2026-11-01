@@ -1,4 +1,4 @@
-// Генерирует свои SVG-ассеты прототипа: яйца групп (3 фазы), комната, гнездо, кучка, мухи, аптечка, игрушка, надгробие.
+// Генерирует свои SVG-ассеты: яйца групп (3 фазы), комната, гнездо, кучка, мухи, аптечка, игрушка, надгробие, питомцы-болванки.
 // Запуск: node tools/make-art.mjs  → public/assets/**
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -105,3 +105,56 @@ write('grave.svg', svg(120, 150, `
 <path d="M30 134 q8 -10 14 0 M80 134 q8 -12 14 0" stroke="#7f9a6b" stroke-width="4" fill="none" stroke-linecap="round"/>`));
 
 console.log('ok');
+
+// Питомцы-болванки видов из спеки (макет rooms-and-walk): шарф цвета группы, ноги на нижнем крае 120×120.
+const eyes = (y = 58, dx = 13) => `
+  <ellipse cx="${60 - dx}" cy="${y}" rx="6.5" ry="8.5" fill="#2e2620"/><ellipse cx="${60 + dx}" cy="${y}" rx="6.5" ry="8.5" fill="#2e2620"/>
+  <circle cx="${58 - dx}" cy="${y - 3}" r="2.6" fill="#fff"/><circle cx="${58 + dx}" cy="${y - 3}" r="2.6" fill="#fff"/>
+  <ellipse cx="${60 - dx - 9}" cy="${y + 11}" rx="6" ry="3.5" fill="#e88f8f" opacity=".45"/><ellipse cx="${60 + dx + 9}" cy="${y + 11}" rx="6" ry="3.5" fill="#e88f8f" opacity=".45"/>`;
+const scarf = (c, y) => `<path d="M34 ${y} Q60 ${y + 12} 86 ${y} L84 ${y + 9} Q60 ${y + 20} 36 ${y + 9}Z" fill="${c}"/>`;
+const PETS = {
+  // львёнок
+  sr1: (a) => `
+  <ellipse cx="44" cy="114" rx="11" ry="6" fill="#c98e50"/><ellipse cx="76" cy="114" rx="11" ry="6" fill="#c98e50"/>
+  <ellipse cx="60" cy="92" rx="30" ry="24" fill="#e7b46c"/>
+  <circle cx="60" cy="56" r="44" fill="#b9733d"/><circle cx="60" cy="56" r="44" fill="none" stroke="#a5642f" stroke-width="10" stroke-dasharray="9 7"/>
+  <circle cx="30" cy="26" r="10" fill="#e7b46c"/><circle cx="90" cy="26" r="10" fill="#e7b46c"/>
+  <circle cx="60" cy="60" r="31" fill="#eebd76"/>${eyes(58)}
+  <path d="M55 70h10l-5 6z" fill="#7a4a2a"/>${scarf(a, 86)}`,
+  // утёнок
+  sr2: (a) => `
+  <ellipse cx="46" cy="115" rx="10" ry="5" fill="#e8954a"/><ellipse cx="74" cy="115" rx="10" ry="5" fill="#e8954a"/>
+  <ellipse cx="62" cy="90" rx="36" ry="26" fill="#f1d27f"/><ellipse cx="88" cy="88" rx="12" ry="16" fill="#e8c56c" transform="rotate(30 88 88)"/>
+  <circle cx="58" cy="50" r="28" fill="#f4d886"/><path d="M52 22q6-12 10 0q6-8 6 4" fill="none" stroke="#e8c56c" stroke-width="5" stroke-linecap="round"/>
+  ${eyes(48, 11)}<ellipse cx="58" cy="64" rx="15" ry="6.5" fill="#e8954a"/>${scarf(a, 74)}`,
+  // цыплёнок
+  sr3: (a) => `
+  <path d="M44 112l-4 6M48 112v7M72 112v7M76 112l4 6" stroke="#e08a3e" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="60" cy="70" r="42" fill="#f7dc6c"/><ellipse cx="22" cy="76" rx="9" ry="15" fill="#efcf5c" transform="rotate(25 22 76)"/><ellipse cx="98" cy="76" rx="9" ry="15" fill="#efcf5c" transform="rotate(-25 98 76)"/>
+  <ellipse cx="54" cy="28" rx="5" ry="10" fill="#efcf5c" transform="rotate(-20 54 28)"/><ellipse cx="64" cy="26" rx="5" ry="11" fill="#efcf5c" transform="rotate(15 64 26)"/>
+  ${eyes(62, 14)}<path d="M53 72h14l-7 9z" fill="#e8954a"/>${scarf(a, 92)}`,
+  // ягнёнок
+  sr5: (a) => `
+  <rect x="40" y="100" width="10" height="16" rx="5" fill="#4a4038"/><rect x="70" y="100" width="10" height="16" rx="5" fill="#4a4038"/>
+  ${[[38, 86], [60, 94], [82, 86], [30, 66], [90, 66], [44, 46], [76, 46], [60, 40], [60, 70]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="22" fill="#f4f0e8"/>`).join('')}
+  <ellipse cx="34" cy="58" rx="14" ry="7" fill="#5c5048" transform="rotate(-20 34 58)"/><ellipse cx="86" cy="58" rx="14" ry="7" fill="#5c5048" transform="rotate(20 86 58)"/>
+  <ellipse cx="60" cy="64" rx="21" ry="24" fill="#6a5d53"/>
+  <ellipse cx="51" cy="62" rx="5" ry="6.5" fill="#fff"/><ellipse cx="69" cy="62" rx="5" ry="6.5" fill="#fff"/><circle cx="51" cy="63" r="3.2" fill="#2e2620"/><circle cx="69" cy="63" r="3.2" fill="#2e2620"/>
+  <ellipse cx="60" cy="78" rx="6" ry="3" fill="#3e352e"/>${scarf(a, 86)}`,
+  // совёнок
+  sr6: (a) => `
+  <ellipse cx="48" cy="115" rx="9" ry="5" fill="#d9a04f"/><ellipse cx="72" cy="115" rx="9" ry="5" fill="#d9a04f"/>
+  <path d="M30 30l6 22 14-12zM90 30l-6 22-14-12z" fill="#7d6577"/>
+  <ellipse cx="60" cy="70" rx="38" ry="44" fill="#8e7686"/><ellipse cx="60" cy="86" rx="24" ry="24" fill="#cdb9a8"/>
+  <path d="M48 80q4 4 8 0M56 90q4 4 8 0M64 80q4 4 8 0" stroke="#b39d8b" stroke-width="2.5" fill="none"/>
+  <circle cx="45" cy="56" r="16" fill="#efe4d2"/><circle cx="75" cy="56" r="16" fill="#efe4d2"/>
+  <circle cx="45" cy="57" r="9" fill="#2e2620"/><circle cx="75" cy="57" r="9" fill="#2e2620"/><circle cx="42" cy="53" r="3" fill="#fff"/><circle cx="72" cy="53" r="3" fill="#fff"/>
+  <path d="M55 66h10l-5 8z" fill="#d9a04f"/>${scarf(a, 96)}`,
+  // бегемотик
+  sr9: (a) => `
+  <ellipse cx="60" cy="86" rx="42" ry="30" fill="#a3a9c6"/><circle cx="60" cy="56" r="32" fill="#aab0cc"/>
+  <circle cx="36" cy="28" r="8" fill="#9298b6"/><circle cx="84" cy="28" r="8" fill="#9298b6"/>${eyes(48, 13)}
+  <ellipse cx="60" cy="74" rx="26" ry="16" fill="#c2c6dc"/><circle cx="52" cy="72" r="2.5" fill="#6f7591"/><circle cx="68" cy="72" r="2.5" fill="#6f7591"/>${scarf(a, 90)}`,
+};
+const ACCENT = { sr1: '#c0675d', sr2: '#6f9a6a', sr3: '#c99c38', sr5: '#555a6c', sr6: '#8b6fa3', sr9: '#5b86b8' };
+for (const [key, body] of Object.entries(PETS)) write(`pets/${key}.svg`, svg(120, 120, body(ACCENT[key])));
