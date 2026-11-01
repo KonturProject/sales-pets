@@ -139,6 +139,31 @@ try {
     check(!rows.some((r) => r.name === MOCK_VACATIONER), `панель «${block}»: отпускник ${MOCK_VACATIONER} в рейтинге`);
   }
 
+  // доски зала читаются с ТВ: строки не мельче 20 px сцены и целиком внутри доски, кнопка «Топ-10» строк не закрывает
+  const boardFit = () => page.$$eval('.board', (boards) => boards.map((b) => {
+    const cs = getComputedStyle(b);
+    const box = b.getBoundingClientRect();
+    const k = box.width / b.offsetWidth;
+    const bottom = box.bottom - (parseFloat(cs.borderBottomWidth) + parseFloat(cs.paddingBottom)) * k;
+    const block = [...b.querySelectorAll('.rank-block')].find((x) => getComputedStyle(x).display !== 'none');
+    const rows = block ? [...block.querySelectorAll('tbody tr')] : [];
+    const toggle = b.querySelector('.board-toggle')?.getBoundingClientRect();
+    const td = block?.querySelector('tbody td');
+    return {
+      board: `${b.dataset.board}/${b.dataset.slide ?? ''}`,
+      rows: rows.length,
+      font: td ? parseFloat(getComputedStyle(td).fontSize) : 0,
+      out: rows.filter((r) => r.getBoundingClientRect().bottom > bottom + 0.5).length,
+      underToggle: toggle ? rows.filter((r) => { const q = r.getBoundingClientRect(); return q.bottom > toggle.top && q.top < toggle.bottom; }).length : 0,
+    };
+  }));
+  const fitOk = (f) => f.rows > 0 && f.font >= 20 && f.out === 0 && f.underToggle === 0;
+  const fits = await boardFit();
+  await page.click('.board-toggle');
+  fits.push(...(await boardFit()).filter((f) => f.board.startsWith('group')));
+  await page.click('.board-toggle');
+  check(fits.length === 3 && fits.every(fitOk), `доски зала: шрифт или строки за краем ${JSON.stringify(fits)}`);
+
   // выбор дня и группы перерисовывает свой блок и переживает тик обновления
   await choose('select[data-pick="day"]', '2026-11-10');
   check(await valueOf('[data-block="heroes"]', (e) => e.dataset.day) === '2026-11-10', 'герои дня: выбор дня не применился');

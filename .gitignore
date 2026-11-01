@@ -7,3 +7,5 @@ sales-structure.json
 *.zip
 graphify-out/cache
 assets/_raw/
+# промпты графики: в тексте реальная фамилия, только локально
+docs/art/pet-prompts.md

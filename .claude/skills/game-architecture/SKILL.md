@@ -41,7 +41,7 @@ description: Устройство этого проекта игры — стр�
 
 ## Ассеты
 
-- Питомцы сейчас SVG-болванки видов из спеки (`public/assets/pets/srN.svg`, делает `tools/make-art.mjs`), рендер масштабирует их по стадии (`petScale`). Финальная графика — ChatGPT по `docs/art/pet-prompts.md`. Темы комнат — `THEME` в `src/art/manifest.ts`.
+- Питомцы сейчас SVG-болванки видов из спеки (`public/assets/pets/srN.svg`, делает `tools/make-art.mjs`), рендер масштабирует их по стадии (`petScale`). Финальная графика — ChatGPT по промптам из локального `docs/art/pet-prompts.md` (в `.gitignore`, не коммитить: в нём реальная фамилия, репозиторий публичный). Темы комнат — `THEME` в `src/art/manifest.ts`.
 - Новая картинка: файл в `public/assets/`, путь в `ART` (`src/art/manifest.ts`), строка в `CREDITS.md`.
 
 ## Соглашения
