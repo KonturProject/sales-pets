@@ -21,7 +21,7 @@ description: Устройство этого проекта игры — стр�
 |---|---|
 | `src/engine/` | чистая логика без DOM: календарь игры (`calendar.ts`, Москва, 14 рабочих дней), штат и отсутствия (`staff.ts`), оценка дня (`evaluate.ts`), симуляция питомца (`pet.ts`: `simulate()` → `PetState`), рейтинги (`ranking.ts`), типы и группы (`types.ts`: `GROUPS`, `GroupCode`, `DateStr`), конфиг по умолчанию (`config.ts`) |
 | `src/data/` | связь с бэкендом: `api.ts` (GET снимка, POST действий, `resolveBackend`, `resolvePollMs`), `store.ts` (опрос раз в 15 с, `since`/`unchanged`), `facts.ts` (`buildFacts`: снимок → состояния питомцев и рейтинги на дату), `config.ts` (таймлайн норм «с даты») |
-| `src/game/` | общий экран: `render.ts` (`mount`), `PetView.ts` (питомец, стадии до `MAX_STAGE = 15`), `RankingPanel.ts`, `PowerSaver.ts` (тик и экономия на телевизоре), `uses.ts` (анимация руки на расход аптечки/игрушки), CSS |
+| `src/game/` | `tv/` — экран ТВ (макет `rooms-and-walk.html`): `TvScreen.ts` (`mountTv`: сцена 1920×1080, мир, доски, камера), `RoomView.ts` (комната `[data-group]`), `PetActor.ts` (питомец в слое мира, блуждание), `layout.ts`/`schedule.ts`/`metrics.ts` (геометрия, цикл камеры `shotAt`, табло и строка дня — чистые, с тестами), `art.ts` (декор, SVG-эмоции); `PetView.ts` (гнездо страницы РГ, `MAX_STAGE = 15`), `RankingPanel.ts` (блоки рейтингов, `pickGroup`), `PowerSaver.ts`, `uses.ts` (рука РГ) |
 | `src/admin/` | админка: вкладки `*Tab.ts`, чистая логика форм и планов в `*Form.ts`/`*Plan.ts` (с тестами), `session.ts` (PIN только в памяти), `pins.ts` |
 | `src/rg/` | страница руководителя группы: вход по PIN группы, перенос предмета к питомцу (`drag.ts`), расход (`spend.ts`) |
 | `src/import/` | разбор xlsx воронки и оплат (`funnel.ts`, `payments.ts`), чанк `xlsx` грузится динамически только в админке |
@@ -34,13 +34,14 @@ description: Устройство этого проекта игры — стр�
 ## Главный цикл и экраны
 
 - Точка входа общего экрана: `src/main.ts`. `?demo=1` → демо; иначе, если адрес бэкенда пуст, «Игра ещё не запущена»; иначе живой экран.
-- Живой экран: `createStore` опрашивает `/exec` → на каждый новый снимок `buildFacts(snapshot, asOf)` → `view.update()` и `ranking.update()`. `PowerSaver.onTick` обновляет экран без запроса (смена дня).
+- Живой экран: `createStore` опрашивает `/exec` → на каждый новый снимок `buildFacts(snapshot, asOf)` → `tv.update()`; `asOf` — `serverToday(snapshot)`. `PowerSaver.onTick` зовёт `tv.setPower(mode)`: `active` — общий план зала, `ambient` (60 с без ввода) — цикл «комнаты 25 с → герои 12 с → группа 18 с», `idle` — всё стоит.
+- Страница РГ использует `PetView` и `room.css`; экран ТВ — свои `tv/*` и `tv.css`. Не смешивать: зона сброса РГ — `.stage` (R34).
 - Состояние игры не хранится: питомец каждый раз пересчитывается `simulate()` из фактов (оплаты, воронка, расходы РГ) от начала игры до `asOf`. Истина в таблице Apps Script.
 - Админка `src/admin/main.ts`, РГ `src/rg/main.ts`: свои входы, общие `api` и `store`.
 
 ## Ассеты
 
-- Питомцы сейчас заглушки: один PNG на группу (Kenney Animal Pack), рендер масштабирует его по стадии. Финальная графика ожидается от заказчика, ~15 картинок стадий на группу.
+- Питомцы сейчас SVG-болванки видов из спеки (`public/assets/pets/srN.svg`, делает `tools/make-art.mjs`), рендер масштабирует их по стадии (`petScale`). Финальная графика — ChatGPT по `docs/art/pet-prompts.md`. Темы комнат — `THEME` в `src/art/manifest.ts`.
 - Новая картинка: файл в `public/assets/`, путь в `ART` (`src/art/manifest.ts`), строка в `CREDITS.md`.
 
 ## Соглашения

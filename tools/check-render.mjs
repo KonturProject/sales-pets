@@ -95,6 +95,22 @@ try {
   await page.goto(`${base}?demo=1&asOf=2026-11-11`, { waitUntil: 'networkidle' });
   const eve = (await read()).find((g) => g.group === 'СР9');
   check(eve?.mood === 'dead', `СР9 накануне: mood ${eve?.mood}, ожидалось dead`);
+  check(await page.$$eval('.pet[data-kind="grave"] img[src*="grave"]', (els) => els.length) === 1, 'СР9 накануне: на экране нет надгробия');
+
+  // до старта игры: шесть целых яиц, в верхней строке дата старта
+  await page.goto(`${base}?demo=1&asOf=2026-11-01`, { waitUntil: 'networkidle' });
+  const beforeStart = await read();
+  check(beforeStart.length === 6 && beforeStart.every((g) => g.phase === 'egg0'), `до старта: ${JSON.stringify(beforeStart.map((g) => g.phase))}`);
+  check((await valueOf('.hud', (e) => e.textContent)).includes('старт 02.11'), 'до старта: в верхней строке нет «старт 02.11»');
+
+  // экран ТВ — одна сцена без прокрутки на Full HD и на 1366×768
+  for (const [width, height] of [[1920, 1080], [1366, 768]]) {
+    const tv = await browser.newPage({ viewport: { width, height } });
+    await tv.goto(`${base}?demo=1`, { waitUntil: 'networkidle' });
+    const size = await tv.evaluate(() => ({ sh: document.documentElement.scrollHeight, sw: document.documentElement.scrollWidth, ih: innerHeight, iw: innerWidth }));
+    check(size.sh <= size.ih && size.sw <= size.iw, `${width}×${height}: экран прокручивается ${JSON.stringify(size)}`);
+    await tv.close();
+  }
 
   // мусор в ?asOf= не должен вешать вкладку: рисуется дата по умолчанию
   await page.goto(`${base}?demo=1&asOf=today`, { waitUntil: 'networkidle', timeout: 10_000 });
@@ -108,6 +124,8 @@ try {
   const liveBroken = await brokenImages();
   check(liveBroken.length === 0, `живой экран: не загрузились картинки: ${liveBroken.join(', ')}`);
   check(await valueOf('[role="status"]', (e) => e.hidden) === true, 'живой экран: нет скрытого [role="status"] или показано «Нет связи» при рабочем бэкенде');
+  const hud = (await valueOf('.hud', (e) => e.textContent)) ?? '';
+  check(hud.includes('день 8 из 14') && hud.includes('обновлено') && hud.includes('воронка по 11.11'), `живой экран: верхняя строка «${hud}»`);
 
   // панель рейтингов: места, полные ФИО, отпускник вне рейтингов
   check(JSON.stringify(await panelRows('group')) === JSON.stringify(SR1_RANKING), `панель «Группа»: ${JSON.stringify(await panelRows('group'))}`);
