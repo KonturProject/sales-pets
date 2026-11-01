@@ -21,7 +21,7 @@ const short = (d: DateStr) => `${d.slice(8)}.${d.slice(5, 7)}`;
 
 /** Цифры, которые по очереди показывает табло комнаты. */
 export function tickerItems(s: PetState, funnel?: FunnelTotal): TickerItem[] {
-  if (!s.alive) return [{ label: 'Питомец погиб', value: 'нужна оплата' }];
+  if (!s.alive) return [{ label: 'Питомец погиб', value: 'ждём', unit: 'оплату' }];
   if (s.phase !== 'pet') return [{ label: 'До вылупления', value: String(s.totalPayments), unit: `из ${HATCH_AT} оплат` }];
   return [
     { label: 'Стадия', value: String(s.stage), unit: `/ ${MAX_STAGE}` },

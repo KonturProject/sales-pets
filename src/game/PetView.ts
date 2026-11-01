@@ -2,7 +2,7 @@ import { ART, GROUP_KEY } from '@/art/manifest';
 import type { Mood, PetState } from '@/engine/pet';
 import type { GroupCode } from '@/engine/types';
 
-const MOOD_LABEL: Record<Mood, string> = { ok: '', bored: 'скучает', sad: 'грустит', sick: 'болеет', dead: 'погиб' };
+export const MOOD_LABEL: Record<Mood, string> = { ok: '', bored: 'скучает', sad: 'грустит', sick: 'болеет', dead: 'погиб' };
 export const MAX_STAGE = 15;
 /** Длина анимации руки в `room.css`; следующая рука на том же гнезде ждёт, пока предыдущая уйдёт. */
 const HAND_MS = 1800;

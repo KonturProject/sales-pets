@@ -1,4 +1,5 @@
 import './ranking.css';
+import { THEME } from '@/art/manifest';
 import { workingDaysBetween } from '@/engine/calendar';
 import type { Config } from '@/engine/config';
 import { groupRanking, heroesOfDay, topOverall, type RankData, type RankRow } from '@/engine/ranking';
@@ -62,26 +63,41 @@ function fill(b: Block, rows: RankRow[], withGroup: boolean, format: (v: number)
   b.rows.replaceChildren(...rows.map((r) => {
     const tr = node('tr');
     tr.dataset.employee = r.employeeId;
-    tr.append(node('td', 'place', String(r.place)), node('td', 'name', r.name));
-    if (withGroup) tr.append(node('td', 'grp', r.group));
+    const who = node('td', 'who');
+    who.append(node('span', 'name', r.name));
+    if (r.facts) {
+      const f = r.facts;
+      who.append(node('span', 'facts', `кач ${f.quality}/${f.normQuality} · длин ${f.long}/${f.normLong}`));
+    }
+    tr.append(node('td', 'place', String(r.place)), who);
+    if (withGroup) {
+      const grp = node('td', 'grp');
+      const chip = node('span', 'chip', r.group);
+      chip.style.background = THEME[r.group]?.accent ?? '';
+      grp.append(chip);
+      tr.append(grp);
+    }
     tr.append(node('td', 'value', format(r.value)));
     return tr;
   }));
 }
 
+export type BlockName = 'group' | 'top' | 'heroes';
+
 /**
  * Три блока рейтингов: «Группа» (накопительно с начала игры, выбор группы), «Топ-10» (все группы) и «Герои дня»
- * (выбранный рабочий день). `update()` вызывают каждый тик: DOM перерисовывается, только если сменились данные
- * или дата, поэтому выбор в списках не сбрасывается.
+ * (выбранный рабочий день); раскладывает их по экрану вызывающий. `update()` вызывают каждый тик: DOM
+ * перерисовывается, только если сменились данные или дата, поэтому выбор в списках не сбрасывается.
+ * `pickGroup` — выбор группы без пользователя (листание на стене).
  */
-export function mountRanking(root: HTMLElement, get: () => RankData, opts: { asOf: () => DateStr }): { update(): void } {
+export function mountRanking(
+  get: () => RankData,
+  opts: { asOf: () => DateStr },
+): { blocks: Record<BlockName, HTMLElement>; update(): void; pickGroup(g: GroupCode): void } {
   const groupBlock = block('group', 'Группа', 'Оплат', false, 'group');
   const topBlock = block('top', 'Топ-10', 'Оплат', true);
   const heroesBlock = block('heroes', 'Герои дня', 'Норма', true, 'day');
   groupBlock.select!.append(...GROUPS.map((g) => new Option(g, g)));
-  const aside = node('aside', 'ranking');
-  aside.append(groupBlock.el, topBlock.el, heroesBlock.el);
-  root.replaceChildren(aside);
 
   let group: GroupCode = GROUPS[0];
   let pickedDay: DateStr | null = null; // выбор пользователя; null — день по умолчанию
@@ -122,6 +138,12 @@ export function mountRanking(root: HTMLElement, get: () => RankData, opts: { asO
     fill(topBlock, topOverall(data.cfg.startDate, asOf, data), true, String);
     renderHeroes(shown);
   };
+  const pickGroup = (g: GroupCode) => {
+    if (g === group) return;
+    group = g;
+    groupBlock.select!.value = g;
+    if (shown) renderGroup(shown);
+  };
   update();
-  return { update };
+  return { blocks: { group: groupBlock.el, top: topBlock.el, heroes: heroesBlock.el }, update, pickGroup };
 }
