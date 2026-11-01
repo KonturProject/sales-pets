@@ -11,9 +11,9 @@ type Kind = 'egg' | 'pet' | 'grave';
 const PET_SIZE = 170;
 const EGG_SIZE = 110;
 const GRAVE_SIZE = 120;
-/** Скорость шага, px мира в мс; больной ходит медленнее. */
-const SPEED = 0.13;
-const SICK_SPEED = SPEED * 0.55;
+/** Скорость шага, px мира в мс: в зале шаг крупнее (камера отдалена, питомец больше); больной ходит медленнее. */
+export const SPEED = { room: 0.13, hall: 0.2 };
+const SICK = 0.55;
 /** Питомец не подходит к стене комнаты ближе этого. */
 const EDGE = 70;
 const MOOD_EMOTE: Record<Mood, Emote | null> = { ok: 'ok', sad: 'sad', bored: 'bored', sick: 'sick', dead: null };
@@ -27,21 +27,31 @@ const div = (cls: string) => {
   return node;
 };
 
+/** Цель перехода: чего нет — остаётся прежним; `s` — масштаб (в зале питомец крупнее). */
+export interface Move {
+  x?: number;
+  y?: number;
+  s?: number;
+}
+
 /**
- * Питомец группы в слое мира (поверх домика): яйцо, питомец или надгробие; ноги в точке (`x`, `y`).
- * Живой вылупившийся питомец бродит по своей комнате и пинает её мяч. Любая смена вида или `setRunning(false)`
- * останавливает текущий цикл (`gen`): движение, начатое до смены, дальше не идёт.
+ * Питомец группы в слое мира (поверх домика): яйцо, питомец или надгробие; ноги в точке (`x`, `y`), масштаб `s`.
+ * Живой вылупившийся питомец бродит по своей комнате и пинает её мяч. Любая смена вида, `setRunning(false)` или
+ * `hold()` останавливает текущий цикл (`gen`): движение, начатое до смены, дальше не идёт.
+ * Прогулку ведёт `Hall`: `hold()` отдаёт ему питомца (жетон — номер цикла), `release()` возвращает в комнату.
  */
 export class PetActor {
   readonly el: HTMLElement;
   readonly shadow: HTMLElement;
   x: number;
-  readonly y: number;
+  y: number;
+  s = 1;
+  facing: 1 | -1 = 1;
   private readonly sprite: HTMLImageElement;
   private readonly flip: HTMLElement;
   private readonly bubble: HTMLElement;
   private kind: Kind | null = null;
-  private mood: Mood = 'ok';
+  private state: Mood = 'ok';
   private running = false;
   private gen = 0;
   private emoteTimer: ReturnType<typeof setTimeout> | undefined;
@@ -74,24 +84,52 @@ export class PetActor {
     this.el.style.setProperty('--size', `${size}px`);
     this.el.dataset.kind = kind;
     this.el.dataset.mood = s.mood;
-    this.mood = s.mood;
+    this.state = s.mood;
     if (kind === this.kind) return;
     const hatched = this.kind === 'egg' && kind === 'pet';
     this.kind = kind;
     this.halt();
-    this.x = this.room.rect.cx;
+    this.goHomeNow(true);
     this.face(1);
-    this.place();
     if (hatched) this.emote('joy', 2500);
     this.walkIfAllowed();
   }
 
-  /** Движение разрешено, пока вкладка видна; без него питомец стоит на месте. */
+  /** Гуляет ли (живой вылупившийся при видимой вкладке): только такие выходят в зал. */
+  get walker(): boolean {
+    return this.running && this.kind === 'pet';
+  }
+
+  get mood(): Mood {
+    return this.state;
+  }
+
+  /** Движение разрешено, пока вкладка видна; без него питомец стоит в своей комнате. */
   setRunning(on: boolean): void {
     if (on === this.running) return;
     this.running = on;
     if (on) this.walkIfAllowed();
-    else this.halt();
+    else {
+      this.halt();
+      this.goHomeNow();
+    }
+  }
+
+  /** Остановить блуждание и отдать питомца сценарию; жетон годен, пока питомца не перехватили. */
+  hold(): number {
+    this.halt();
+    return this.gen;
+  }
+
+  owns(token: number): boolean {
+    return token === this.gen;
+  }
+
+  /** Вернуть в комнату (кто не дошёл — сразу на место) и снова пустить бродить. */
+  release(): void {
+    this.halt();
+    this.goHomeNow();
+    this.walkIfAllowed();
   }
 
   emote(kind: Emote, ms = 1600): void {
@@ -101,13 +139,71 @@ export class PetActor {
     this.emoteTimer = setTimeout(() => this.bubble.classList.remove('on'), ms);
   }
 
+  /** Шаг до точки с обычной скоростью (в комнате или в зале). */
+  walk(x: number, y: number, token: number, speed = SPEED.room): Promise<boolean> {
+    const d = Math.hypot(x - this.x, y - this.y);
+    return this.moveTo({ x, y }, Math.max(250, d / (this.state === 'sick' ? speed * SICK : speed)), token);
+  }
+
+  /**
+   * Переход за `ms`; `arc` — прыжок дугой такой высоты (px мира). `false`, если питомца перехватили.
+   * В фоне кадров нет — переход всё равно заканчивается по таймеру.
+   */
+  moveTo(to: Move, ms: number, token: number, arc = 0): Promise<boolean> {
+    const from = { x: this.x, y: this.y, s: this.s };
+    const tx = to.x ?? from.x;
+    const ty = to.y ?? from.y;
+    const ts = to.s ?? from.s;
+    if (Math.abs(tx - from.x) > 3) this.face(tx < from.x ? -1 : 1);
+    this.el.classList.add('walking');
+    return new Promise((resolve) => {
+      const t0 = performance.now();
+      let done = false;
+      const finish = (ok: boolean) => {
+        if (done) return;
+        done = true;
+        clearTimeout(safety);
+        if (ok) this.el.classList.remove('walking');
+        resolve(ok);
+      };
+      const step = (now: number) => {
+        if (done) return;
+        if (token !== this.gen) return finish(false);
+        const k = Math.min(1, (now - t0) / ms);
+        const e = arc ? k : ease(k);
+        this.x = from.x + (tx - from.x) * e;
+        this.y = from.y + (ty - from.y) * e;
+        this.s = from.s + (ts - from.s) * e;
+        this.place(arc ? Math.sin(Math.PI * k) * arc : 0);
+        if (k < 1) requestAnimationFrame(step);
+        else finish(true);
+      };
+      const safety = setTimeout(() => step(t0 + ms), ms + 150);
+      requestAnimationFrame(step);
+    });
+  }
+
+  face(dir: 1 | -1): void {
+    this.facing = dir;
+    this.flip.style.transform = `scaleX(${dir})`;
+  }
+
   private walkIfAllowed(): void {
-    if (this.running && this.kind === 'pet') void this.wander(++this.gen);
+    if (this.walker) void this.wander(++this.gen);
   }
 
   private halt(): void {
     this.gen++;
     this.el.classList.remove('walking');
+  }
+
+  /** Вне комнаты (в зале, в прыжке) — сразу на пол своей комнаты; `center` — ещё и в её середину. */
+  private goHomeNow(center = false): void {
+    const r = this.room.rect;
+    if (center || this.s !== 1 || this.y !== r.floorY) this.x = r.cx;
+    this.y = r.floorY;
+    this.s = 1;
+    this.place();
   }
 
   /** Бродит по комнате: иногда подходит к мячу и пинает его, иногда просто идёт в случайную точку. */
@@ -123,13 +219,13 @@ export class PetActor {
         ball.rot += (nx - ball.x) * 2.2;
         ball.x = nx;
         this.room.placeBall();
-        if (this.mood === 'ok' && Math.random() < 0.5) this.emote('joy', 1300);
+        if (this.state === 'ok' && Math.random() < 0.5) this.emote('joy', 1300);
       } else if (!(await this.walkTo(r.x + EDGE + Math.random() * (r.w - 2 * EDGE), my))) {
         return;
       }
       if (!(await this.pause(500 + Math.random() * 1600, my))) return;
-      const mood = MOOD_EMOTE[this.mood];
-      if (mood && this.mood !== 'ok' && Math.random() < 0.5) this.emote(mood);
+      const mood = MOOD_EMOTE[this.state];
+      if (mood && this.state !== 'ok' && Math.random() < 0.5) this.emote(mood);
     }
   }
 
@@ -137,45 +233,15 @@ export class PetActor {
     return new Promise((resolve) => setTimeout(() => resolve(my === this.gen), ms));
   }
 
-  /** Шаг по полу до `tx`; `false`, если цикл остановили. В фоне кадров нет — шаг всё равно заканчивается по таймеру. */
+  /** Шаг по полу своей комнаты до `tx`. */
   private walkTo(tx: number, my: number): Promise<boolean> {
-    const from = this.x;
-    const d = Math.abs(tx - from);
-    const ms = Math.max(250, d / (this.mood === 'sick' ? SICK_SPEED : SPEED));
-    if (d > 3) this.face(tx < from ? -1 : 1);
-    this.el.classList.add('walking');
-    return new Promise((resolve) => {
-      const t0 = performance.now();
-      let done = false;
-      const finish = (ok: boolean) => {
-        if (done) return;
-        done = true;
-        clearTimeout(safety);
-        if (ok) this.el.classList.remove('walking');
-        resolve(ok);
-      };
-      const step = (now: number) => {
-        if (done) return;
-        if (my !== this.gen) return finish(false);
-        const k = Math.min(1, (now - t0) / ms);
-        this.x = from + (tx - from) * ease(k);
-        this.place();
-        if (k < 1) requestAnimationFrame(step);
-        else finish(true);
-      };
-      const safety = setTimeout(() => step(t0 + ms), ms + 150);
-      requestAnimationFrame(step);
-    });
+    return this.walk(tx, this.y, my);
   }
 
-  private face(dir: 1 | -1): void {
-    this.flip.style.transform = `scaleX(${dir})`;
-  }
-
-  private place(): void {
-    const at = `translate(${this.x}px, ${this.y}px)`;
-    this.el.style.transform = at;
-    this.shadow.style.transform = at;
+  /** `lift` — высота над полом в прыжке: тень остаётся на полу и уменьшается. */
+  private place(lift = 0): void {
+    this.el.style.transform = `translate(${this.x}px, ${this.y - lift}px) scale(${this.s})`;
+    this.shadow.style.transform = `translate(${this.x}px, ${this.y}px) scale(${this.s * (1 - Math.min(lift, 300) / 500)})`;
     this.el.style.zIndex = String(10 + Math.round(this.y));
     this.shadow.style.zIndex = String(9 + Math.round(this.y));
   }

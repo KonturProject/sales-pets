@@ -159,10 +159,29 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 .hud b { font-size: 26px; }
 .hud-fresh { opacity: .9; overflow: hidden; text-overflow: ellipsis; }
 
+/* прогулка и праздник (фаза Б): плашка снизу, растения по краям, конфетти и мяч зала в слое мира */
+.banner {
+  position: absolute; left: 50%; bottom: 22px; z-index: 50; padding: 12px 34px; border-radius: 99px;
+  background: #fffaf0; font-size: 32px; font-weight: 800; white-space: nowrap; box-shadow: 0 6px 0 rgba(0, 0, 0, .15);
+  transform: translate(-50%, 160px); transition: transform .6s cubic-bezier(.3, 1.4, .5, 1);
+}
+.banner.on { transform: translate(-50%, 0); }
+.fg { position: absolute; bottom: -20px; width: 300px; height: 360px; z-index: 40; pointer-events: none; transition: transform 2.4s cubic-bezier(.65, 0, .35, 1); }
+.fg.left { left: -30px; transform: translate(-340px, 120px); }
+.fg.right { right: -30px; transform: translate(340px, 120px) scaleX(-1); }
+.tv[data-shot='walk'] .fg.left, .tv[data-party] .fg.left { transform: none; }
+.tv[data-shot='walk'] .fg.right, .tv[data-party] .fg.right { transform: scaleX(-1); }
+.confetti { position: absolute; width: 14px; height: 18px; border-radius: 3px; z-index: 2000; pointer-events: none; }
+.hall-ball {
+  position: absolute; left: -30px; top: 0; width: 60px; height: 60px; border-radius: 50%; z-index: 1500; pointer-events: none;
+  background: radial-gradient(circle at 35% 35%, #fff9, transparent 40%), #d98b6a;
+  transition: transform .85s ease-out;
+}
+
 [data-power='idle'] .tv .bob,
 [data-power='idle'] .tv .flies { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
-  .tv-world { transition: none; }
+  .tv-world, .fg { transition: none; }
   .tv .bob { animation: none; }
 }
 

@@ -17,7 +17,7 @@ export const DECOR: Record<RoomTheme['decor'], string> = {
     <rect x="20" y="236" width="130" height="10" rx="4" fill="#8c6a47"/><path d="M44 236q0-20 16-20t16 16h8q-4 8-12 6H44z" fill="#f1cf6a"/><circle cx="66" cy="220" r="2" fill="#2e2620"/>`,
 };
 
-export type Emote = 'ok' | 'joy' | 'sad' | 'bored' | 'sick';
+export type Emote = 'ok' | 'joy' | 'sad' | 'bored' | 'sick' | 'star' | 'smile';
 
 /** Значки в пузыре над питомцем — SVG 40×40, а не эмодзи: на браузере телевизора шрифта эмодзи может не быть. */
 export const EMOTE: Record<Emote, string> = {
@@ -26,4 +26,12 @@ export const EMOTE: Record<Emote, string> = {
   sad: '<path d="M20 5c-6 10-10 15-10 21a10 10 0 0 0 20 0c0-6-4-11-10-21z" fill="#7fa6c9"/>',
   bored: '<text x="7" y="29" font-family="Arial, sans-serif" font-size="21" font-weight="800" fill="#7a6e60">Zz</text>',
   sick: '<rect x="17" y="4" width="7" height="24" rx="3.5" fill="#f4ede2" stroke="#9b6a6a" stroke-width="2"/><rect x="19" y="13" width="3" height="14" fill="#c96a5f"/><circle cx="20.5" cy="30" r="6" fill="#c96a5f"/>',
+  star: '<path d="M20 4l4.7 10 10.8 1.2-8 7.3 2.3 10.7L20 27.8l-9.8 5.4 2.3-10.7-8-7.3 10.8-1.2z" fill="#e8b84a"/>',
+  smile: '<circle cx="20" cy="20" r="15" fill="#f2c94c"/><circle cx="15" cy="17" r="2" fill="#3f372e"/><circle cx="25" cy="17" r="2" fill="#3f372e"/><path d="M13 23q7 7 14 0" stroke="#3f372e" stroke-width="2.5" fill="none" stroke-linecap="round"/>',
+};
+
+/** Растения переднего плана (макет): выезжают по краям экрана на прогулке и празднике. viewBox 0 0 300 360. */
+export const PLANTS = {
+  left: '<g fill="#7f9a6c"><ellipse cx="120" cy="150" rx="40" ry="120" transform="rotate(-25 120 150)"/><ellipse cx="170" cy="140" rx="34" ry="110" transform="rotate(18 170 140)"/><ellipse cx="80" cy="200" rx="30" ry="90" transform="rotate(-50 80 200)"/></g><g fill="#6b875a"><ellipse cx="200" cy="200" rx="28" ry="90" transform="rotate(45 200 200)"/></g><path d="M70 270h160l-22 90H92z" fill="#c48a5c"/><rect x="62" y="258" width="176" height="24" rx="8" fill="#d39b6b"/>',
+  right: '<g fill="#8aa676"><ellipse cx="130" cy="160" rx="38" ry="115" transform="rotate(-20 130 160)"/><ellipse cx="180" cy="170" rx="30" ry="100" transform="rotate(25 180 170)"/></g><path d="M80 270h150l-20 90H100z" fill="#b98b66"/><rect x="72" y="258" width="166" height="24" rx="8" fill="#c99a72"/>',
 };

@@ -112,6 +112,65 @@ try {
     await tv.close();
   }
 
+  // --- прогулка (фаза Б), часы Playwright: 60 с без ввода включают стену, цикл через 55 с доходит до зала
+  {
+    const wp = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+    const walkErrors = [];
+    wp.on('pageerror', (e) => walkErrors.push(e.message));
+    await wp.clock.install();
+    await wp.goto(`${base}?demo=1`, { waitUntil: 'networkidle' });
+    const pets = () => wp.$$eval('.pet', (els) => els.map((e) => {
+      const m = e.style.transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([\d.]+)\)/);
+      return { kind: e.dataset.kind, y: m ? Math.round(Number(m[2])) : NaN, s: m ? Number(m[3]) : NaN };
+    }));
+    const shot = () => wp.$eval('.tv', (e) => e.dataset.shot);
+    const banner = () => wp.$eval('.banner', (e) => (e.classList.contains('on') ? e.textContent : ''));
+    const litter = () => wp.$$eval('.tv-world > .confetti, .tv-world > .hall-ball', (e) => e.length);
+    const inRooms = (list) => list.every((p) => p.y <= 940 && p.s === 1);
+    // узлы без содержимого пузырей и табло: те меняют картинку, а не растут
+    const nodes = () => wp.evaluate(() => document.querySelectorAll('*:not(.emote *):not(.ticker *)').length);
+
+    // часы Playwright медленные (≈0,6 с на секунду): паузы без событий перематываются, прогулки идут по-настоящему.
+    // Цикл 85 с: прогулка с 55 по 85 с; pos — где в цикле стоим.
+    let pos = 0;
+    const toWalk = async (into) => { await wp.clock.fastForward((55_000 - pos + 85_000) % 85_000); await wp.clock.runFor(into); pos = (55_000 + into) % 85_000; };
+    await wp.clock.fastForward(61_000); // 60 с без ввода — режим стены
+    await wp.clock.runFor(1_000);
+    pos = 1_000;
+    await toWalk(9_000);
+    check(await shot() === 'walk', `прогулка: кадр ${await shot()}, ожидался walk`);
+    check((await banner()).includes('Прогулка'), `прогулка: плашка «${await banner()}»`);
+    const out = (await pets()).filter((p) => p.kind === 'pet');
+    check(out.length >= 2 && out.every((p) => p.y > 980 && p.s > 1.4), `прогулка: питомцы не в зале ${JSON.stringify(out)}`);
+    await wp.clock.runFor(25_000);
+    pos = 89_000 % 85_000;
+    check(await shot() === 'rooms', `после прогулки: кадр ${await shot()}`);
+    check(inRooms(await pets()), `после прогулки: не все дома ${JSON.stringify(await pets())}`);
+    check(await banner() === '' && await litter() === 0, 'после прогулки: осталась плашка, конфетти или мяч');
+
+    // ещё две прогулки целиком не растят DOM: работа на стене сутками
+    const before = await nodes();
+    for (let k = 0; k < 2; k++) {
+      await toWalk(34_000);
+      check(inRooms(await pets()) && await litter() === 0, `прогулка ${k + 2}: после неё не все дома или остался мусор`);
+    }
+    const after = await nodes();
+    check(after === before, `три прогулки подряд: узлов было ${before}, стало ${after}`);
+
+    // вкладку скрыли посреди прогулки: через тик экономии все дома, зал пуст
+    await toWalk(6_000);
+    check(await shot() === 'walk', `скрытие: перед скрытием кадр ${await shot()}, ожидался walk`);
+    await wp.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await wp.clock.runFor(16_000);
+    check(inRooms(await pets()), `скрытие: не все дома ${JSON.stringify(await pets())}`);
+    check(await banner() === '' && await litter() === 0, 'скрытие: осталась плашка, конфетти или мяч');
+    check(walkErrors.length === 0, `прогулка: ошибки страницы ${walkErrors.join('; ')}`);
+    await wp.close();
+  }
+
   // мусор в ?asOf= не должен вешать вкладку: рисуется дата по умолчанию
   await page.goto(`${base}?demo=1&asOf=today`, { waitUntil: 'networkidle', timeout: 10_000 });
   check((await read()).length === 6, 'asOf=today: ожидалось 6 групп (откат на дату по умолчанию)');
@@ -207,6 +266,24 @@ try {
   await page.waitForSelector('[data-group]', { timeout: 8_000 }).catch(() => {});
   await page.waitForTimeout(2_500);
   check(await page.$$eval('.hand', (h) => h.length) === 0, 'рука: при перезагрузке показан прошлый расход');
+
+  // --- праздник (фаза Б): +1 предварительная оплата у СР3 — плашка, конфетти; через 20 с зал пуст
+  check(await page.$eval('.tv', (e) => e.dataset.party ?? '') === '', 'праздник: показан при загрузке страницы');
+  const snapshotNow = await (await fetch(mock.url)).json();
+  const sr3Today = snapshotNow.provisional.find((p) => p.date === '2026-11-12' && p.group === 'СР3')?.count ?? 0;
+  const paid = await post({ action: 'setProvisional', pin: MOCK_ADMIN_PIN, date: '2026-11-12', group: 'СР3', count: sr3Today + 1 });
+  check(paid.ok === true, `праздник: setProvisional: ${paid.error}`);
+  const party = await page.waitForSelector('.tv[data-party="СР3"]', { timeout: 6_000 }).catch(() => null);
+  check(party !== null, 'праздник: .tv[data-party="СР3"] не появился за 6 с после оплаты');
+  const partyBanner = await page.$eval('.banner', (e) => (e.classList.contains('on') ? e.textContent : ''));
+  check(partyBanner === 'СР3: +1 оплата! Все на праздник', `праздник: плашка «${partyBanner}»`);
+  const confetti = await page.waitForSelector('.tv-world > .confetti', { state: 'attached', timeout: 8_000 }).catch(() => null);
+  check(confetti !== null, 'праздник: нет конфетти');
+  const over = await page.waitForSelector('.tv:not([data-party])', { timeout: 25_000 }).catch(() => null);
+  check(over !== null, 'праздник: не закончился за 25 с');
+  await page.waitForTimeout(2_500);
+  check(await page.$$eval('.tv-world > .confetti, .tv-world > .hall-ball', (e) => e.length) === 0, 'праздник: после конца остались конфетти или мяч');
+  check(await page.$eval('.banner', (e) => !e.classList.contains('on')), 'праздник: плашка не убралась');
 
   failures.push(...problems);
 
