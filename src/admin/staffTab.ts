@@ -213,7 +213,7 @@ export async function staffTab(ctx: AdminCtx): Promise<HTMLElement> {
       f.row.classList.toggle('changed', !!e && (f.level.value !== e.baseLevel || f.hire.value !== (e.hireDate ?? '') || f.hire.validity.badInput));
       if (f.level.value !== 'experienced' && !f.hire.value) undated++;
     }
-    bulkHint.textContent = undated ? `Новички без даты приёма: ${undated} — пока даты нет, их день оценивается нормой опытного.` : '';
+    bulkHint.textContent = undated ? `Новички без даты приёма: ${undated} — без даты уровень не меняется сам: «Новичок 1» останется им до конца игры, а не перейдёт во второй уровень и в опытные.` : '';
     const result = bulkStaffPatches(data.staff, bulkEdits());
     bulkSave.textContent = 'error' in result ? 'Сохранить изменения' : `Сохранить изменения (${result.patches.length})`;
   };

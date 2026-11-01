@@ -145,6 +145,7 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
       `Данные по ${ruDate(plan.through)} включительно; сотрудников в файле: ${parsed.employees.length}; строк к загрузке: ${plan.rows.length}`,
       `Вне шести групп: ${plan.outside}; позже ${ruDate(plan.through)} (не загружаются): ${plan.dropped}`,
     ];
+    if (plan.zeroThrough) lines.unshift(`Внимание: за ${ruDate(plan.through)} у всех сотрудников нули — похоже, отчёт выгружен до обновления CRM. Загрузка оценит этот день нулями; лучше скачайте свежий отчёт. Если загрузили по ошибке, повторная загрузка правильного файла перезапишет эти дни.`);
     if (fresh.length) {
       lines.push(`Новых сотрудников: ${fresh.length} — ${byGroup(fresh)}. Они будут добавлены в штат в группах из файла, уровень «опытный», без даты приёма. Новичкам дату приёма и уровень поставьте во вкладке «Сотрудники»: иначе норма группы считается как для опытных.`);
       lines.push(...namesByGroup(fresh), 'Сверьте написание с штатом: опечатка создаст двойника.');

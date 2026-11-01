@@ -68,6 +68,8 @@ export interface FunnelPlan {
   outside: number;
   /** строки файла позже `through`: на сервер не уходят */
   dropped: number;
+  /** за `through` у всех нули: похоже, выгрузка сделана до обновления CRM */
+  zeroThrough: boolean;
 }
 
 /** Первая загрузка воронки (дней игры до сегодняшнего в файле нет): из файла берётся только штат. */
@@ -82,7 +84,7 @@ export interface StaffOnlyPlan {
 /**
  * Данные воронки «по» предыдущий рабочий день, но не позже последней даты файла.
  * ФИО, которых нет в штате, возвращаются в `newStaff`: сервер отклоняет файл с неизвестным ФИО целиком.
- * Пока дней игры до сегодняшнего нет (02.11 — отчёт за октябрь или пустой ноябрьский), файл даёт только штат.
+ * В первый день игры (02.11: «вчера» игры ещё нет) файл даёт только штат; позже файл без дней игры — ошибка.
  */
 export function planFunnelImport(
   parsed: ParsedFunnel,
@@ -98,12 +100,16 @@ export function planFunnelImport(
     newStaff.push({ name: e.name, group: e.group });
   }
   const previous = prevWorkingDay(today, config);
-  const through = previous === null || parsed.lastDate === null ? null : parsed.lastDate < previous ? parsed.lastDate : previous;
-  if (through === null || through < config.startDate) {
-    if (!newStaff.length) return { error: 'В файле нет дней игры до сегодняшнего, а все сотрудники из него уже в штате' };
+  if (previous === null) {
+    if (!parsed.employees.length) return { error: 'В файле нет сотрудников шести групп' };
+    if (!newStaff.length) return { error: 'Все сотрудники из файла уже в штате; показатели воронки загружаются со следующего рабочего дня' };
     const inFile = new Set(parsed.employees.map((e) => normalizeName(e.name))).size;
     return { staffOnly: true, inFile, newStaff, outside: parsed.outside };
   }
+  if (parsed.lastDate === null) return { error: 'В файле нет дней игры до сегодняшнего' };
+  const through = parsed.lastDate < previous ? parsed.lastDate : previous;
+  if (through < config.startDate) return { error: 'В файле нет дней игры до сегодняшнего' };
   const rows = parsed.rows.filter((r) => r.date <= through);
-  return { through, rows, newStaff, outside: parsed.outside, dropped: parsed.rows.length - rows.length };
+  const zeroThrough = rows.filter((r) => r.date === through).every((r) => !r.quality && !r.long);
+  return { through, rows, newStaff, outside: parsed.outside, dropped: parsed.rows.length - rows.length, zeroThrough };
 }

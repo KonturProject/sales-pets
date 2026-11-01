@@ -1,7 +1,7 @@
 # Graph Report - tamagochi Tver  (2026-11-01)
 
 ## Corpus Check
-- 163 files · ~166,135 words
+- 163 files · ~166,502 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 9 file(s) not represented in the graph (top: .css 5, (none) 2, .graphify-bak 1)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `f54f0bc0`
+- Built from commit: `462c42bf`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 

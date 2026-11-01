@@ -114,8 +114,29 @@ describe('planFunnelImport', () => {
     });
     expect(planFunnelImport(november, [], { ...opts, today: '2026-11-02' })).toMatchObject({ staffOnly: true, inFile: 2 });
     const next = planFunnelImport(november, [], { ...opts, today: '2026-11-03' });
-    expect(next).toMatchObject({ through: '2026-11-02', dropped: 1 });
+    expect(next).toMatchObject({ through: '2026-11-02', dropped: 1, zeroThrough: false });
     expect('newStaff' in next && next.newStaff).toHaveLength(2);
+  });
+
+  test('за день «по» у всех нули (выгрузка до обновления CRM) — план это отмечает', () => {
+    const stale = funnel({
+      firstDate: '2026-11-02',
+      lastDate: '2026-11-30',
+      rows: [{ name: 'Тест Один', date: '2026-11-02', quality: 0, long: 0 }, { name: 'Тест Два', date: '2026-11-02', quality: 0, long: 0 }],
+    });
+    expect(planFunnelImport(stale, staff, { ...opts, today: '2026-11-03' })).toMatchObject({ through: '2026-11-02', zeroThrough: true });
+  });
+
+  test('после первого дня файл без дней игры — ошибка, а не «только штат»: октябрьский отчёт привёл бы уволенных', () => {
+    const october = funnel({ firstDate: '2026-10-29', lastDate: '2026-10-30', rows: [{ name: 'Тест Новый', date: '2026-10-30', quality: 3, long: 1 }] });
+    expect(planFunnelImport(october, [staffMember('Тест Один')], opts)).toEqual({ error: 'В файле нет дней игры до сегодняшнего' });
+    expect(planFunnelImport(funnel({ firstDate: null, lastDate: null, rows: [] }), [], { ...opts, today: '2026-11-03' })).toEqual({ error: 'В файле нет дней игры до сегодняшнего' });
+  });
+
+  test('первый день: файл без сотрудников шести групп или все уже в штате — понятная ошибка', () => {
+    const day1 = { ...opts, today: '2026-11-02' };
+    expect(planFunnelImport(funnel({ employees: [] }), [], day1)).toEqual({ error: 'В файле нет сотрудников шести групп' });
+    expect(planFunnelImport(funnel(), staff, day1)).toEqual({ error: 'Все сотрудники из файла уже в штате; показатели воронки загружаются со следующего рабочего дня' });
   });
 
   test('файл без дат или целиком до старта игры — ошибка', () => {

@@ -22,7 +22,7 @@ export function todayTasks(s: Snapshot): TodayTask[] {
   if (!active.length) return [{ done: false, text: 'Штата нет: Импорт → воронка, из неё добавятся сотрудники' }];
   const tasks: TodayTask[] = [{ done: true, text: `Штат: ${active.length}` }];
   const undated = active.filter((e) => e.baseLevel !== 'experienced' && !e.hireDate).length;
-  if (undated) tasks.push({ done: false, text: `Новички без даты приёма: ${undated} — оцениваются как опытные (Сотрудники)` });
+  if (undated) tasks.push({ done: false, text: `Новички без даты приёма: ${undated} — без даты уровень не сменится сам до конца игры (Сотрудники)` });
   const due = prevWorkingDay(today, configOf(s.config));
   if (due === null) return tasks;
   tasks.push(s.funnelThrough && s.funnelThrough >= due

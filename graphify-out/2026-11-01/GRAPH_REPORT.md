@@ -1,7 +1,7 @@
 # Graph Report - tamagochi Tver  (2026-11-01)
 
 ## Corpus Check
-- 163 files · ~166,067 words
+- 163 files · ~166,135 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 9 file(s) not represented in the graph (top: .css 5, (none) 2, .graphify-bak 1)
 
