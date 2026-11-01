@@ -285,6 +285,30 @@ try {
   check(await page.$$eval('.tv-world > .confetti, .tv-world > .hall-ball', (e) => e.length) === 0, 'праздник: после конца остались конфетти или мяч');
   check(await page.$eval('.banner', (e) => !e.classList.contains('on')), 'праздник: плашка не убралась');
 
+  // --- праздник у яйца (первые дни игры — только так): яйцо не выходит в зал, звезда и конфетти над ним
+  // повторяются весь праздник, а не один раз, пока камера ещё летит на общий план
+  const groupOrder = ['СР1', 'СР2', 'СР3', 'СР5', 'СР6', 'СР9']; // порядок питомцев в мире = GROUPS
+  const kinds = () => page.$$eval('.tv-world > .pet', (els) => els.map((e) => ({
+    kind: e.dataset.kind, phase: Number(e.querySelector('img')?.getAttribute('src')?.match(/-(\d)\.svg$/)?.[1]),
+  })));
+  const eggAt = (await kinds()).map((p, i) => ({ ...p, i })).filter((p) => p.kind === 'egg').sort((a, b) => a.phase - b.phase)[0];
+  check(eggAt !== undefined, 'праздник у яйца: в моке нет яйца');
+  if (eggAt) {
+    const eggGroup = groupOrder[eggAt.i];
+    const eggToday = (await (await fetch(mock.url)).json()).provisional.find((p) => p.date === '2026-11-12' && p.group === eggGroup)?.count ?? 0;
+    const eggPaid = await post({ action: 'setProvisional', pin: MOCK_ADMIN_PIN, date: '2026-11-12', group: eggGroup, count: eggToday + 1 });
+    check(eggPaid.ok === true, `праздник у яйца: setProvisional: ${eggPaid.error}`);
+    const eggParty = await page.waitForSelector(`.tv[data-party="${eggGroup}"]`, { timeout: 6_000 }).catch(() => null);
+    check(eggParty !== null, `праздник у яйца: .tv[data-party="${eggGroup}"] не появился за 6 с после оплаты`);
+    check((await kinds())[eggAt.i].kind === 'egg', `праздник у яйца: ${eggGroup} вылупился от одной оплаты — выберите другое яйцо`);
+    await page.waitForTimeout(6_000);
+    const later = await page.waitForSelector('.tv-world > .confetti', { state: 'attached', timeout: 4_000 }).catch(() => null);
+    check(later !== null, 'праздник у яйца: через 6 с после начала конфетти уже нет — праздник виден только в полёте камеры');
+    check(await page.waitForSelector('.tv:not([data-party])', { timeout: 20_000 }).then(() => true, () => false), 'праздник у яйца: не закончился');
+    await page.waitForTimeout(2_500);
+    check(await page.$$eval('.tv-world > .confetti, .tv-world > .hall-ball', (e) => e.length) === 0, 'праздник у яйца: после конца остались конфетти');
+  }
+
   failures.push(...problems);
 
   // --- бэкенд недоступен: сообщение вместо белого экрана, без необработанных ошибок

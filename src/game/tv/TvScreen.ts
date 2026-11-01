@@ -183,10 +183,7 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     showBanner(partyBanner(gains));
     setShot('overview');
     if (star.walker) hall.start(walkers(), PARTY_MS, star);
-    else {
-      hall.stop();
-      hall.cheer(star);
-    }
+    else hall.cheer(star, PARTY_MS);
   };
   const endParty = () => {
     if (partyUntil === null) return;

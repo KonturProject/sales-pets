@@ -12,6 +12,8 @@ const SPOTS: readonly (readonly [number, number])[] = [[1400, 1170], [1000, 1210
 const DOOR_Y = 1060;
 const STAGGER_MS = 320;
 const JUMP = 330;
+/** Праздник у яйца: звезда и конфетти над ним раз в столько, пока праздник идёт. */
+const CHEER_MS = 3_000;
 const COLORS = GROUPS.map((g) => THEME[g].accent);
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -25,6 +27,7 @@ export class Hall {
   private gen = 0;
   private out: PetActor[] = [];
   private homeTimer: ReturnType<typeof setTimeout> | undefined;
+  private cheerTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly litter = new Set<HTMLElement>();
   private readonly reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -41,16 +44,25 @@ export class Hall {
     void this.play(my, order, tokens, star);
   }
 
-  /** Праздник у того, кто не гуляет (яйцо, надгробие): конфетти и звезда над ним в комнате. */
-  cheer(p: PetActor): void {
-    p.emote('star', 2500);
-    this.confetti(p.x, p.y - 120);
+  /**
+   * Праздник у того, кто не гуляет (яйцо): звезда и конфетти над ним в комнате все `ms`, а не один раз —
+   * первый залп приходится на полёт камеры. Зал при этом пуст.
+   */
+  cheer(p: PetActor, ms: number): void {
+    this.stop();
+    const burst = (left: number) => {
+      p.emote('star', CHEER_MS);
+      this.confetti(p.x, p.y - 120);
+      if (left > CHEER_MS) this.cheerTimer = setTimeout(() => burst(left - CHEER_MS), CHEER_MS);
+    };
+    burst(ms);
   }
 
   /** Конец кадра или отмена: кто не дошёл — сразу в своей комнате; конфетти и мяч убираются. */
   stop(): void {
     this.gen++;
     clearTimeout(this.homeTimer);
+    clearTimeout(this.cheerTimer);
     this.out.forEach((p) => p.release());
     this.out = [];
     this.litter.forEach((n) => n.remove());
