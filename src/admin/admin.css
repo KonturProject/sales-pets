@@ -1,54 +1,139 @@
 :root {
   --paper: #fbf6ea;
+  --card: #fff;
   --ink: #3a2e22;
-  --line: #d9ccb2;
+  --muted: #7a6a58;
+  --line: #e2d6bf;
   --accent: #b5651d;
+  --accent-ink: #fff;
+  --ok: #2f6b3a;
+  --bad: #a3281c;
+  --changed: #fff4d6;
   font-family: system-ui, sans-serif;
   color: var(--ink);
   background: var(--paper);
 }
 
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0 auto;
-  max-width: 44rem;
-  padding: 1rem;
+  max-width: 72rem;
+  padding: 1rem 1.25rem 3rem;
 }
 
 header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1rem;
 }
 
 h1 {
-  font-size: 1.3rem;
+  font-size: 1.35rem;
+  margin: 0.4rem 0;
 }
 
+h2 {
+  font-size: 1.15rem;
+  margin: 0 0 0.7rem;
+}
+
+h3 {
+  font-size: 1rem;
+  margin: 1rem 0 0.5rem;
+}
+
+p {
+  margin: 0.4rem 0;
+  line-height: 1.4;
+}
+
+/* вкладки: на узком экране лента прокручивается сама, страница вбок не едет */
 [role='tablist'] {
   display: flex;
-  gap: 0.25rem;
+  gap: 0.35rem;
+  margin: 0.8rem 0 1rem;
+  padding-bottom: 0.35rem;
   border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+[role='tab'] {
+  flex: none;
+  white-space: nowrap;
+  border-radius: 999px;
 }
 
 [role='tab'][aria-selected='true'] {
   background: var(--accent);
-  color: #fff;
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* разделы вкладки — карточки; вкладка без разделов — одна карточка */
+[role='tabpanel'] > div > section,
+[role='tabpanel'] > div:not(:has(> section)),
+[role='tabpanel'] > form,
+[role='tabpanel'] > section,
+.panel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  padding: 1rem 1.2rem;
+  margin: 0 0 1rem;
+  box-shadow: 0 1px 2px rgb(58 46 34 / 6%);
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
-  padding: 0.35rem 0.7rem;
+  padding: 0.4rem 0.75rem;
   border: 1px solid var(--line);
-  border-radius: 0.4rem;
+  border-radius: 0.5rem;
   background: #fff;
   color: inherit;
+  max-width: 100%;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+input:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* главное действие раздела */
+button[type='submit'],
+[data-confirm],
+[data-bulk-save] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
 }
 
 form {
   display: grid;
   gap: 0.6rem;
-  max-width: 20rem;
+  max-width: 24rem;
 }
 
 label {
@@ -59,7 +144,16 @@ label {
 }
 
 [role='alert'] {
-  color: #a3281c;
+  color: var(--bad);
+}
+
+[role='alert']:empty,
+[role='status']:empty {
+  display: none;
+}
+
+[role='status'] {
+  color: var(--ok);
 }
 
 table {
@@ -70,9 +164,49 @@ table {
 
 th,
 td {
-  padding: 0.2rem 0.8rem;
+  padding: 0.3rem 0.8rem;
   border-bottom: 1px solid var(--line);
   text-align: left;
+}
+
+th {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+[role='tabpanel'] > div > label {
+  max-width: 26rem;
+  margin: 0.4rem 0;
+}
+
+/* таблица шире экрана прокручивается сама, страница вбок не едет */
+[role='tabpanel'] table:not(.bulk) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* широкая таблица прокручивается в своей рамке */
+.table-wrap {
+  max-width: 100%;
+  max-height: 65vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  margin: 0.6rem 0;
+}
+
+.table-wrap table {
+  margin: 0;
+  width: 100%;
+}
+
+.table-wrap th {
+  position: sticky;
+  top: 0;
+  background: var(--card);
+  z-index: 1;
 }
 
 .thresholds {
@@ -87,10 +221,10 @@ td {
 
 [data-today-line] {
   margin: 0.4rem 0 0.8rem;
-  padding: 0.45rem 0.7rem;
+  padding: 0.55rem 0.8rem;
   border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  background: #fff;
+  border-radius: 0.6rem;
+  background: var(--card);
 }
 
 [data-today-line]:empty {
@@ -99,9 +233,83 @@ td {
 
 .bulk select,
 .bulk input {
-  padding: 0.15rem 0.3rem;
+  padding: 0.2rem 0.35rem;
 }
 
 .bulk td {
-  padding: 0.2rem 0.4rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.bulk tr.changed td {
+  background: var(--changed);
+}
+
+.bulk tr[hidden] {
+  display: none;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+}
+
+.toolbar label {
+  justify-content: flex-start;
+}
+
+/* сотрудники: список слева, карточка справа */
+.staff-pick {
+  display: grid;
+  grid-template-columns: minmax(14rem, 20rem) 1fr;
+  gap: 1.2rem;
+  align-items: start;
+}
+
+[data-staff-list] {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  max-height: 34rem;
+  overflow: auto;
+  display: grid;
+  gap: 0.25rem;
+}
+
+[data-staff-list] button {
+  width: 100%;
+  text-align: left;
+  padding: 0.35rem 0.6rem;
+}
+
+[data-staff-list] button[aria-pressed='true'] {
+  background: var(--changed);
+  border-color: var(--accent);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  body {
+    padding: 0.75rem 0.75rem 2rem;
+  }
+
+  .staff-pick {
+    grid-template-columns: 1fr;
+  }
+
+  [data-staff-list] {
+    max-height: 16rem;
+  }
+
+  [role='tabpanel'] > div > section,
+  [role='tabpanel'] > div:not(:has(> section)),
+  [role='tabpanel'] > form,
+  [role='tabpanel'] > section,
+  .panel {
+    padding: 0.8rem;
+  }
 }

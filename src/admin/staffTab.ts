@@ -198,12 +198,27 @@ export async function staffTab(ctx: AdminCtx): Promise<HTMLElement> {
   const bulkSave = h('button', { type: 'button', 'data-bulk-save': true, onclick: () => void saveBulk() }, 'Сохранить изменения');
   const bulkAlert = h('p', { role: 'alert', 'data-alert': 'bulk' });
   const bulkStatus = h('p', { role: 'status', 'data-status': 'bulk' });
-  let bulkFields = new Map<string, { level: HTMLSelectElement; hire: HTMLInputElement }>();
+  const bulkHint = h('p', { class: 'muted', 'data-bulk-hint': true });
+  // фильтр только прячет строки: правки в скрытых строках не теряются и уходят той же кнопкой
+  const bulkFilter = h('select', { 'data-bulk-filter': true, 'aria-label': 'Группа', onchange: () => filterBulk() },
+    option('', 'Все группы'), ...GROUPS.map((g) => option(g, g)));
+  let bulkFields = new Map<string, { level: HTMLSelectElement; hire: HTMLInputElement; row: HTMLElement; group: string }>();
   const bulkEdits = (): Record<string, BulkEdit> =>
     Object.fromEntries([...bulkFields].map(([id, f]) => [id, { baseLevel: f.level.value as Level, hireDate: f.hire.value }]));
   const countBulk = () => {
+    const byId = new Map(data.staff.map((e) => [e.id, e]));
+    let undated = 0;
+    for (const [id, f] of bulkFields) {
+      const e = byId.get(id);
+      f.row.classList.toggle('changed', !!e && (f.level.value !== e.baseLevel || f.hire.value !== (e.hireDate ?? '') || f.hire.validity.badInput));
+      if (f.level.value !== 'experienced' && !f.hire.value) undated++;
+    }
+    bulkHint.textContent = undated ? `Новички без даты приёма: ${undated} — пока даты нет, их день оценивается нормой опытного.` : '';
     const result = bulkStaffPatches(data.staff, bulkEdits());
     bulkSave.textContent = 'error' in result ? 'Сохранить изменения' : `Сохранить изменения (${result.patches.length})`;
+  };
+  const filterBulk = () => {
+    for (const f of bulkFields.values()) f.row.hidden = bulkFilter.value !== '' && f.group !== bulkFilter.value;
   };
 
   function paintBulk(): void {
@@ -212,10 +227,13 @@ export async function staffTab(ctx: AdminCtx): Promise<HTMLElement> {
       const level = h('select', { 'data-bulk-level': e.id, 'aria-label': `Уровень, строка ${i + 1}`, onchange: countBulk },
         ...(Object.keys(LEVEL_TITLE) as Level[]).map((l) => option(l, LEVEL_TITLE[l], l === e.baseLevel)));
       const hire = h('input', { type: 'date', 'data-bulk-hire': e.id, value: e.hireDate ?? '', 'aria-label': `Дата приёма, строка ${i + 1}`, oninput: countBulk });
-      bulkFields.set(e.id, { level, hire });
-      return h('tr', { 'data-bulk-row': e.id }, h('td', {}, String(i + 1)), h('td', {}, e.name), h('td', {}, groupOn(e, data.today)), h('td', {}, level), h('td', {}, hire));
+      const group = groupOn(e, data.today);
+      const row = h('tr', { 'data-bulk-row': e.id }, h('td', {}, String(i + 1)), h('td', {}, e.name), h('td', {}, group), h('td', {}, level), h('td', {}, hire));
+      bulkFields.set(e.id, { level, hire, row, group });
+      return row;
     }));
     countBulk();
+    filterBulk();
   }
 
   async function saveBulk(): Promise<void> {
@@ -254,8 +272,9 @@ export async function staffTab(ctx: AdminCtx): Promise<HTMLElement> {
     'section',
     { 'data-bulk': true },
     h('h2', {}, 'Уровни и даты приёма'),
-    h('p', {}, 'Поправьте уровни и даты приёма всему штату и сохраните одной кнопкой. Новички без даты приёма оцениваются как опытные.'),
-    h('table', { class: 'bulk' }, h('thead', {}, h('tr', {}, ...['№', 'Сотрудник', 'Группа', 'Уровень', 'Принят'].map((t) => h('th', {}, t)))), bulkBody),
+    h('p', {}, 'Новичкам — уровень («Новичок 1» — первая неделя, «Новичок 2» — вторая) и дату приёма; изменённые строки подсвечены, сохраняются одной кнопкой.'),
+    h('div', { class: 'toolbar' }, h('label', {}, 'Показать ', bulkFilter), bulkHint),
+    h('div', { class: 'table-wrap' }, h('table', { class: 'bulk' }, h('thead', {}, h('tr', {}, ...['№', 'Сотрудник', 'Группа', 'Уровень', 'Принят'].map((t) => h('th', {}, t)))), bulkBody)),
     bulkSave,
     bulkAlert,
     bulkStatus,
@@ -263,5 +282,12 @@ export async function staffTab(ctx: AdminCtx): Promise<HTMLElement> {
 
   paint();
   paintBulk();
-  return h('div', {}, h('section', {}, h('h2', {}, 'Штат'), field('Поиск', search), count, list), card, alert, status, bulk, json);
+  const pick = h(
+    'section',
+    {},
+    h('h2', {}, 'Карточка сотрудника'),
+    h('p', { class: 'muted' }, 'Увольнение, перевод в другую группу, исключение из рейтинга, отпуска и больничные.'),
+    h('div', { class: 'staff-pick' }, h('div', {}, field('Поиск', search), count, list), h('div', {}, card, alert, status)),
+  );
+  return h('div', {}, bulk, pick, json);
 }

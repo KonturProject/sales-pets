@@ -124,6 +124,19 @@ try {
     check((await admin.$eval('[role="status"]', (e) => e.textContent ?? '')).includes('СР1'), 'вкладка «Оплаты»: число вне диапазона не отклонено');
   });
 
+  await scenario('телефон 390 px: ни одна вкладка не шире экрана', async ({ newPage, check, urls }) => {
+    const admin = await newPage();
+    await admin.setViewportSize({ width: 390, height: 800 });
+    await loginAdmin(admin, urls.admin);
+    await admin.waitForSelector('[data-pay="СР1"]', { timeout: 8_000 });
+    for (const tab of await admin.$$eval('[role="tab"]', (t) => t.map((x) => x.dataset.tab))) {
+      await admin.click(`[role="tab"][data-tab="${tab}"]`);
+      await admin.waitForTimeout(1_200);
+      const wide = await admin.evaluate(() => document.documentElement.scrollWidth);
+      check(wide <= 390, `телефон: вкладка «${tab}» шириной ${wide} px — страница прокручивается вбок`);
+    }
+  });
+
   await scenario('оплаты: вкладка открыта со вчера', async ({ mock, newPage, check, urls }) => {
     const admin = await newPage();
     let nextDay = false; // снимки сервера «уже 13.11»: вкладку открыли 12.11 и оставили на ночь
