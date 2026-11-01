@@ -64,6 +64,8 @@ export type ApiErrorCode = 'invalid_pin' | 'locked' | 'bad_request' | 'server_er
 
 const SERVER_CODES: readonly string[] = ['invalid_pin', 'locked', 'bad_request', 'server_error'];
 const TIMEOUT_MS = 10_000;
+/** Запись ждёт дольше чтения: холодный старт Apps Script и ожидание блокировки листа — до 10 с каждое (R43). */
+const WRITE_TIMEOUT_MS = 30_000;
 const NO_CONNECTION = 'Нет связи с сервером';
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
@@ -115,12 +117,14 @@ export function createApi(o: {
   url: () => string;
   fetchFn?: (url: string, init: RequestInit) => Promise<Response>;
   timeoutMs?: number;
+  writeTimeoutMs?: number;
 }) {
   const doFetch = o.fetchFn ?? ((url: string, init: RequestInit) => fetch(url, init));
-  const timeoutMs = o.timeoutMs ?? TIMEOUT_MS;
+  const readMs = o.timeoutMs ?? TIMEOUT_MS;
+  const writeMs = o.writeTimeoutMs ?? WRITE_TIMEOUT_MS;
 
   /** Один запрос без cookie, с таймаутом; любой сбой доставки — `ApiError('network')`, `ok:false` — ошибка сервера. */
-  async function request(makeUrl: (base: string) => string, init: RequestInit): Promise<Record<string, unknown>> {
+  async function request(makeUrl: (base: string) => string, init: RequestInit, timeoutMs: number): Promise<Record<string, unknown>> {
     const base = o.url();
     if (!base) throw new ApiError('network', NO_CONNECTION);
     const ctl = new AbortController();
@@ -147,7 +151,7 @@ export function createApi(o: {
   return {
     /** Снимок фактов; `since` — версия, уже имеющаяся у клиента: если она не изменилась, вернётся `{unchanged: true, …}`. */
     async get(since?: number): Promise<Snapshot | Unchanged> {
-      const body = await request((base) => (since === undefined ? base : `${base}?since=${since}`), { method: 'GET' });
+      const body = await request((base) => (since === undefined ? base : `${base}?since=${since}`), { method: 'GET' }, readMs);
       if (body.unchanged !== true) return body as unknown as Snapshot;
       return { unchanged: true, version: Number(body.version), serverNow: typeof body.serverNow === 'string' ? body.serverNow : undefined };
     },
@@ -157,7 +161,7 @@ export function createApi(o: {
         method: 'POST',
         headers: { 'content-type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ ...body, action }),
-      });
+      }, writeMs);
       return reply as T;
     },
   };

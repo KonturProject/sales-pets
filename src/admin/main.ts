@@ -12,7 +12,7 @@ import { staffTab } from './staffTab';
 
 const root = document.getElementById('app')!;
 
-const session = createSession(api.post, () => showLogin('Сессия закончилась: войдите снова'));
+const session = createSession(api.post, (e) => showLogin(e.code === 'locked' ? errorText(e) : 'Сессия закончилась: войдите снова'));
 const ctx: AdminCtx = {
   session,
   snapshot: async () => {

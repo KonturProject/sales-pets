@@ -12,9 +12,9 @@ export interface Session {
 
 /**
  * PIN администратора живёт только в этом замыкании: ни в DOM, ни в хранилище, ни в консоли.
- * Если сервер посреди работы отказал по PIN (сменили, блокировка), PIN забывается и вызывается `onLogout`.
+ * Если сервер посреди работы отказал по PIN (сменили, блокировка), PIN забывается и вызывается `onLogout` с этой ошибкой.
  */
-export function createSession(post: Post, onLogout: () => void): Session {
+export function createSession(post: Post, onLogout: (reason: ApiError) => void): Session {
   let pin: string | null = null;
 
   return {
@@ -29,7 +29,7 @@ export function createSession(post: Post, onLogout: () => void): Session {
       } catch (e) {
         if (e instanceof ApiError && (e.code === 'invalid_pin' || e.code === 'locked') && pin !== null) {
           pin = null;
-          onLogout();
+          onLogout(e);
         }
         throw e;
       }

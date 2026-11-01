@@ -87,6 +87,17 @@ describe('ошибки', () => {
     await vi.advanceTimersByTimeAsync(1);
     await pending;
   });
+
+  test('запись ждёт ответа 30 секунд: медленный сервер не превращает прошедшую запись в «Нет связи»', async () => {
+    const fetchFn = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    }));
+    const pending = expect(createApi({ url: () => BASE, fetchFn }).post('setGroupPins', {})).rejects.toMatchObject({ code: 'network' });
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await pending;
+  });
 });
 
 describe('resolveBackend (R11)', () => {

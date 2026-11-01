@@ -53,6 +53,7 @@ describe('createSession', () => {
     await expect(session.call('setStaff')).rejects.toMatchObject({ code });
     await expect(session.call('setStaff')).rejects.toMatchObject({ code: 'invalid_pin' });
     expect(onLogout).toHaveBeenCalledTimes(1);
+    expect(onLogout).toHaveBeenCalledWith(expect.objectContaining({ code })); // экран входа назовёт причину: блокировка ≠ «сессия закончилась»
     expect(calls.filter((c) => c.action === 'setStaff')).toHaveLength(1);
   });
 
