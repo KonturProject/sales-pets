@@ -1,3 +1,4 @@
+import '@fontsource-variable/nunito'; // свой файл шрифта: на ТВ может не быть доступа к Google Fonts
 import './game/room.css';
 import { api, backendUrl, resolvePollMs, serverToday } from '@/data/api';
 import { buildFacts } from '@/data/facts';

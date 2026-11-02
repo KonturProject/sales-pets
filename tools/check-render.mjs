@@ -76,7 +76,6 @@ try {
   const brokenImages = () => page.$$eval('img', (imgs) => imgs.filter((i) => !i.complete || i.naturalWidth === 0).map((i) => i.src));
   // чтение и выбор в панели не бросают при отсутствии элемента: провал попадает в список, а не обрывает проверку
   const valueOf = (selector, pick) => page.$eval(selector, pick).catch(() => null);
-  const choose = (selector, value) => page.selectOption(selector, value, { timeout: 2_000 }).catch(() => {});
   const panelRows = (block) => page.$$eval(`[data-block="${block}"] tbody tr[data-employee]`, (trs) => trs.map((tr) => ({
     place: Number(tr.querySelector('.place')?.textContent),
     name: tr.querySelector('.name')?.textContent?.trim(),
@@ -137,14 +136,20 @@ try {
     const nodes = () => wp.evaluate(() => document.querySelectorAll('*:not(.emote *):not(.ticker *)').length);
 
     // часы Playwright медленные (≈0,6 с на секунду): паузы без событий перематываются, прогулки идут по-настоящему.
-    // Цикл 85 с: прогулка с 55 по 85 с; pos — где в цикле стоим.
+    // Цикл 85 с идёт с загрузки (камера автоматическая и без режима стены): прогулка с 55 по 85 с; pos — где в цикле стоим.
     let pos = 0;
     const toWalk = async (into) => { await wp.clock.fastForward((55_000 - pos + 85_000) % 85_000); await wp.clock.runFor(into); pos = (55_000 + into) % 85_000; };
-    await wp.clock.fastForward(61_000); // 60 с без ввода — режим стены
     await wp.clock.runFor(1_000);
     pos = 1_000;
+    check(await shot() === 'rooms', `после загрузки: кадр ${await shot()}, ожидался rooms (цикл без ожидания режима стены)`);
     await toWalk(9_000);
     check(await shot() === 'walk', `прогулка: кадр ${await shot()}, ожидался walk`);
+    // ввод не дёргает камеру: прогулка идёт дальше
+    await wp.mouse.move(400, 300);
+    await wp.mouse.click(30, 500);
+    await wp.clock.runFor(1_000);
+    pos += 1_000;
+    check(await shot() === 'walk', `ввод посреди прогулки: кадр ${await shot()}, ожидался walk`);
     check((await banner()).includes('Прогулка'), `прогулка: плашка «${await banner()}»`);
     const out = (await pets()).filter((p) => p.kind === 'pet');
     check(out.length >= 2 && out.every((p) => p.y > 980 && p.s > 1.4), `прогулка: питомцы не в зале ${JSON.stringify(out)}`);
@@ -199,12 +204,19 @@ try {
   check(JSON.stringify(top[0]) === JSON.stringify(SR1_RANKING[0]), `панель «Топ-10»: первая строка ${JSON.stringify(top[0])}`);
   const heroes = await panelRows('heroes');
   check(heroes.length === 10 && heroes[0].place === 1 && heroes[0].value === 100, `панель «Герои дня»: ${JSON.stringify(heroes.slice(0, 2))} (строк ${heroes.length})`);
-  check(await valueOf('select[data-pick="day"]', (s) => s.value) === '2026-11-11', 'панель «Герои дня»: по умолчанию не предыдущий рабочий день');
+  check(await valueOf('[data-block="heroes"]', (e) => e.dataset.day) === '2026-11-11', 'панель «Герои дня»: по умолчанию не предыдущий рабочий день');
+  check(await valueOf('.dock-days b', (e) => e.textContent) === '11.11', 'нижняя панель: день героев не 11.11');
+  check(await page.$$eval('.tv select', (els) => els.length) === 0, 'экран ТВ: остались системные выпадающие списки');
+  const nunito = await page.evaluate(async () => {
+    await document.fonts.ready;
+    return [...document.fonts].some((f) => f.family.includes('Nunito') && f.status === 'loaded');
+  });
+  check(nunito, 'экран ТВ: шрифт Nunito не загрузился (запасной системный)');
   for (const [block, rows] of [['group', await panelRows('group')], ['top', top], ['heroes', heroes]]) {
     check(!rows.some((r) => r.name === MOCK_VACATIONER), `панель «${block}»: отпускник ${MOCK_VACATIONER} в рейтинге`);
   }
 
-  // доски зала читаются с ТВ: строки не мельче 20 px сцены и целиком внутри доски, кнопка «Топ-10» строк не закрывает
+  // доски зала читаются с ТВ: строки не мельче 20 px сцены и целиком внутри доски
   const boardFit = () => page.$$eval('.board', (boards) => boards.map((b) => {
     const cs = getComputedStyle(b);
     const box = b.getBoundingClientRect();
@@ -212,32 +224,34 @@ try {
     const bottom = box.bottom - (parseFloat(cs.borderBottomWidth) + parseFloat(cs.paddingBottom)) * k;
     const block = [...b.querySelectorAll('.rank-block')].find((x) => getComputedStyle(x).display !== 'none');
     const rows = block ? [...block.querySelectorAll('tbody tr')] : [];
-    const toggle = b.querySelector('.board-toggle')?.getBoundingClientRect();
     const td = block?.querySelector('tbody td');
     return {
       board: `${b.dataset.board}/${b.dataset.slide ?? ''}`,
       rows: rows.length,
       font: td ? parseFloat(getComputedStyle(td).fontSize) : 0,
       out: rows.filter((r) => r.getBoundingClientRect().bottom > bottom + 0.5).length,
-      underToggle: toggle ? rows.filter((r) => { const q = r.getBoundingClientRect(); return q.bottom > toggle.top && q.top < toggle.bottom; }).length : 0,
     };
   }));
-  const fitOk = (f) => f.rows > 0 && f.font >= 20 && f.out === 0 && f.underToggle === 0;
+  const fitOk = (f) => f.rows > 0 && f.font >= 20 && f.out === 0;
   const fits = await boardFit();
-  await page.click('.board-toggle');
+  await page.click('.dock [data-pick="top"]');
   fits.push(...(await boardFit()).filter((f) => f.board.startsWith('group')));
-  await page.click('.board-toggle');
+  check(await valueOf('.tv', (e) => e.dataset.shot) === 'group', 'нижняя панель: «Топ-10» не повела камеру к доске');
+  check(await valueOf('.dock [aria-pressed="true"]', (e) => e.dataset.pick) === 'top', 'нижняя панель: «Топ-10» не отмечена');
+  await page.click('.dock [data-pick="СР1"]');
   check(fits.length === 3 && fits.every(fitOk), `доски зала: шрифт или строки за краем ${JSON.stringify(fits)}`);
 
-  // выбор дня и группы перерисовывает свой блок и переживает тик обновления
-  await choose('select[data-pick="day"]', '2026-11-10');
+  // выбор дня и группы на нижней панели перерисовывает свой блок и переживает тик обновления
+  await page.click('.dock-days button[aria-label="Предыдущий день"]');
   check(await valueOf('[data-block="heroes"]', (e) => e.dataset.day) === '2026-11-10', 'герои дня: выбор дня не применился');
-  await choose('select[data-pick="group"]', 'СР2');
+  check(await valueOf('.tv', (e) => e.dataset.shot) === 'heroes', 'нижняя панель: выбор дня не повёл камеру к доске героев');
+  await page.click('.dock [data-pick="СР2"]');
   await page.waitForTimeout(1_500);
   const sr2 = await panelRows('group');
   check(sr2.length === 3 && sr2.every((r) => r.name.startsWith('Тест СР2-')), `панель «Группа»: СР2 ${JSON.stringify(sr2)}`);
-  check(await valueOf('select[data-pick="group"]', (s) => s.value) === 'СР2', 'выбор группы сбросился после тика обновления');
-  check(await valueOf('select[data-pick="day"]', (s) => s.value) === '2026-11-10', 'выбор дня сбросился после тика обновления');
+  check(await valueOf('[data-block="group"]', (e) => e.dataset.shown) === 'СР2', 'выбор группы сбросился после тика обновления');
+  check(await valueOf('.dock [aria-pressed="true"]', (e) => e.dataset.pick) === 'СР2', 'нижняя панель: СР2 не отмечена');
+  check(await valueOf('[data-block="heroes"]', (e) => e.dataset.day) === '2026-11-10', 'выбор дня сбросился после тика обновления');
 
   // --- рука РГ (R20, R24): расход предмета подхватывает опрос; первый снимок после загрузки молчит.
   // Запасы читаются из DOM, абсолютные числа не предполагаются; PIN группы в вывод не попадает.

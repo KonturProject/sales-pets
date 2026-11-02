@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { defaultConfig } from '@/engine/config';
-import { heroDays } from './RankingPanel';
+import { heroDays, stepDay } from './RankingPanel';
 
 const cfg = defaultConfig;
 
@@ -32,5 +32,19 @@ describe('heroDays (R8): рабочие дни для выбора и день �
     const { days, initial } = heroDays('9999-12-31', cfg);
     expect(days).toHaveLength(14);
     expect(initial).toBe('2026-11-20');
+  });
+});
+
+describe('stepDay: стрелки дня героев на нижней панели', () => {
+  const days = ['2026-11-02', '2026-11-03', '2026-11-05'];
+  test('листает на соседний рабочий день и не уходит за края списка', () => {
+    expect(stepDay(days, '2026-11-03', -1)).toBe('2026-11-02');
+    expect(stepDay(days, '2026-11-03', 1)).toBe('2026-11-05');
+    expect(stepDay(days, '2026-11-05', 1)).toBe('2026-11-05');
+    expect(stepDay(days, '2026-11-02', -1)).toBe('2026-11-02');
+  });
+  test('дня нет в списке (первый день игры) — последний день; пустой список — null', () => {
+    expect(stepDay(days, null, -1)).toBe('2026-11-05');
+    expect(stepDay([], null, 1)).toBeNull();
   });
 });

@@ -1,3 +1,4 @@
+import '@fontsource-variable/nunito';
 import '@/game/room.css';
 import './rg.css';
 import { ART } from '@/art/manifest';

@@ -31,13 +31,13 @@ export function roomRect(i: number): RoomRect {
 }
 
 /**
- * Положения камеры (из макета): `rooms` — домик под верхней строкой 64 px, `overview` — весь зал;
- * у досок — масштаб 1.2, доска у края кадра, мир закрывает экран без пустых полос.
+ * Положения камеры: `rooms` — домик между верхней строкой (64 px) и нижней панелью, `overview` — весь зал;
+ * у досок — масштаб 1.15, доска в 80 px от края кадра и над нижней панелью, мир закрывает экран без пустых полос.
  */
 export const CAMERA: Record<Shot, string> = {
-  rooms: 'translate(-620.3px, 18.8px) scale(1.12889)',
+  rooms: 'translate(-496px, 22.4px) scale(1.04)',
   overview: 'translate(57px, 64px) scale(0.64508)',
   walk: 'translate(57px, 64px) scale(0.64508)',
-  heroes: 'translate(0px, -40px) scale(1.2)',
-  group: 'translate(-1440px, -40px) scale(1.2)',
+  heroes: 'translate(0px, -58px) scale(1.15)',
+  group: 'translate(-1299px, -58px) scale(1.15)',
 };

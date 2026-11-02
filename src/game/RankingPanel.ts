@@ -12,7 +12,15 @@ export function heroDays(asOf: DateStr, cfg: Config): { days: DateStr[]; initial
   return { days, initial: before.length ? before[before.length - 1] : null };
 }
 
-const short = (d: DateStr) => `${d.slice(8)}.${d.slice(5, 7)}`;
+/** Соседний день героев для стрелок: в пределах `days`; если `current` нет в списке — последний день. */
+export function stepDay(days: readonly DateStr[], current: DateStr | null, delta: number): DateStr | null {
+  if (!days.length) return null;
+  const i = current === null ? -1 : days.indexOf(current);
+  if (i < 0) return days[days.length - 1];
+  return days[Math.min(Math.max(i + delta, 0), days.length - 1)];
+}
+
+export const short = (d: DateStr) => `${d.slice(8)}.${d.slice(5, 7)}`;
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag);
@@ -24,20 +32,21 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string,
 interface Block {
   el: HTMLElement;
   rows: HTMLTableSectionElement;
-  select?: HTMLSelectElement;
+  /** плашка выбранного (группа или день) в заголовке: выбирают на нижней панели экрана */
+  pick?: HTMLElement;
 }
 
-/** Блок панели: заголовок (+ выбор), таблица «место, сотрудник, [группа], значение». */
+/** Блок панели: заголовок (+ плашка выбранного), таблица «место, сотрудник, [группа], значение». */
 function block(name: string, title: string, valueTitle: string, withGroup: boolean, pick?: string): Block {
   const el = node('section', 'rank-block');
   el.dataset.block = name;
   const head = node('header', 'rank-head');
   head.append(node('h2', undefined, title));
-  let select: HTMLSelectElement | undefined;
+  let chip: HTMLElement | undefined;
   if (pick) {
-    select = node('select');
-    select.dataset.pick = pick;
-    head.append(select);
+    chip = node('span', 'rank-pick');
+    chip.dataset.pick = pick;
+    head.append(chip);
   }
   const titles = ['Место', 'Сотрудник', ...(withGroup ? ['Группа'] : []), valueTitle];
   const headRow = node('tr');
@@ -48,7 +57,7 @@ function block(name: string, title: string, valueTitle: string, withGroup: boole
   const table = node('table');
   table.append(thead, rows);
   el.append(head, table);
-  return { el, rows, select };
+  return { el, rows, pick: chip };
 }
 
 function fill(b: Block, rows: RankRow[], withGroup: boolean, format: (v: number) => string): void {
@@ -85,49 +94,46 @@ function fill(b: Block, rows: RankRow[], withGroup: boolean, format: (v: number)
 export type BlockName = 'group' | 'top' | 'heroes';
 
 /**
- * Три блока рейтингов: «Группа» (накопительно с начала игры, выбор группы), «Топ-10» (все группы) и «Герои дня»
+ * Три блока рейтингов: «Группа» (накопительно с начала игры), «Топ-10» (все группы) и «Герои дня»
  * (выбранный рабочий день); раскладывает их по экрану вызывающий. `update()` вызывают каждый тик: DOM
- * перерисовывается, только если сменились данные или дата, поэтому выбор в списках не сбрасывается.
- * `pickGroup` — выбор группы без пользователя (листание на стене).
+ * перерисовывается, только если сменились данные или дата, поэтому выбор не сбрасывается.
+ * Выбор приходит снаружи (нижняя панель, листание на стене): `pickGroup`, `stepDay`; `picked()` — что показано.
  */
 export function mountRanking(
   get: () => RankData,
   opts: { asOf: () => DateStr },
-): { blocks: Record<BlockName, HTMLElement>; update(): void; pickGroup(g: GroupCode): void } {
+): {
+  blocks: Record<BlockName, HTMLElement>;
+  update(): void;
+  pickGroup(g: GroupCode): void;
+  stepDay(delta: number): void;
+  picked(): { group: GroupCode; day: DateStr | null; days: readonly DateStr[] };
+} {
   const groupBlock = block('group', 'Группа', 'Оплат', false, 'group');
   const topBlock = block('top', 'Топ-10', 'Оплат', true);
   const heroesBlock = block('heroes', 'Герои дня', 'Норма', true, 'day');
-  groupBlock.select!.append(...GROUPS.map((g) => new Option(g, g)));
 
   let group: GroupCode = GROUPS[0];
   let pickedDay: DateStr | null = null; // выбор пользователя; null — день по умолчанию
   let shown: { data: RankData; asOf: DateStr } | null = null;
-  let dayOptions = '';
+  let day: DateStr | null = null;
+  let days: DateStr[] = [];
 
-  const renderGroup = ({ data, asOf }: NonNullable<typeof shown>) =>
+  const renderGroup = ({ data, asOf }: NonNullable<typeof shown>) => {
+    groupBlock.el.dataset.shown = group;
+    groupBlock.pick!.textContent = group;
+    groupBlock.pick!.style.setProperty('--accent', THEME[group].accent);
     fill(groupBlock, groupRanking(group, data.cfg.startDate, asOf, data), false, String);
+  };
 
   const renderHeroes = ({ data, asOf }: NonNullable<typeof shown>) => {
-    const { days, initial } = heroDays(asOf, data.cfg);
-    const day = pickedDay !== null && days.includes(pickedDay) ? pickedDay : initial;
-    const select = heroesBlock.select!;
-    if (days.join() !== dayOptions) {
-      dayOptions = days.join();
-      select.replaceChildren(...days.map((d) => new Option(short(d), d)));
-    }
-    select.value = day ?? '';
+    const hd = heroDays(asOf, data.cfg);
+    days = hd.days;
+    day = pickedDay !== null && days.includes(pickedDay) ? pickedDay : hd.initial;
+    heroesBlock.pick!.textContent = day ? short(day) : '—';
     heroesBlock.el.dataset.day = day ?? '';
     fill(heroesBlock, day ? heroesOfDay(day, data) : [], true, (v) => `${v}%`);
   };
-
-  groupBlock.select!.addEventListener('change', () => {
-    group = groupBlock.select!.value as GroupCode;
-    if (shown) renderGroup(shown);
-  });
-  heroesBlock.select!.addEventListener('change', () => {
-    pickedDay = heroesBlock.select!.value;
-    if (shown) renderHeroes(shown);
-  });
 
   const update = () => {
     const data = get();
@@ -141,9 +147,18 @@ export function mountRanking(
   const pickGroup = (g: GroupCode) => {
     if (g === group) return;
     group = g;
-    groupBlock.select!.value = g;
     if (shown) renderGroup(shown);
   };
+  const step = (delta: number) => {
+    pickedDay = stepDay(days, day, delta);
+    if (shown) renderHeroes(shown);
+  };
   update();
-  return { blocks: { group: groupBlock.el, top: topBlock.el, heroes: heroesBlock.el }, update, pickGroup };
+  return {
+    blocks: { group: groupBlock.el, top: topBlock.el, heroes: heroesBlock.el },
+    update,
+    pickGroup,
+    stepDay: step,
+    picked: () => ({ group, day, days }),
+  };
 }

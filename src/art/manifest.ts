@@ -36,9 +36,9 @@ export interface RoomTheme {
 
 export const THEME: Record<GroupCode, RoomTheme> = {
   СР1: { species: 'Лев', accent: '#c0675d', wall: ['#ecd2b4', '#ddb48e'], floor: '#b98c62', decor: 'savanna' },
-  СР2: { species: 'Утка в короне', accent: '#6f9a6a', wall: ['#d3dfc8', '#b8cbaa'], floor: '#8ea67c', decor: 'pond' },
-  СР3: { species: 'Зелёный ворчун', accent: '#c99c38', wall: ['#f0dfab', '#e2c680'], floor: '#c4a165', decor: 'sun' },
-  СР5: { species: 'Эльфийка', accent: '#555a6c', wall: ['#5d6480', '#474c63'], floor: '#3c4052', decor: 'night' },
-  СР6: { species: 'Деловая леди', accent: '#8b6fa3', wall: ['#d2c5dd', '#b9a8c8'], floor: '#8d7a6a', decor: 'library' },
-  СР9: { species: 'Жёлтый крепыш', accent: '#5b86b8', wall: ['#c9dae8', '#adc5db'], floor: '#7f9cb6', decor: 'water' },
+  СР2: { species: 'Скрудж', accent: '#6f9a6a', wall: ['#d3dfc8', '#b8cbaa'], floor: '#8ea67c', decor: 'pond' },
+  СР3: { species: 'Гринч', accent: '#c99c38', wall: ['#f0dfab', '#e2c680'], floor: '#c4a165', decor: 'sun' },
+  СР5: { species: 'Йода', accent: '#555a6c', wall: ['#5d6480', '#474c63'], floor: '#3c4052', decor: 'night' },
+  СР6: { species: 'Знайка', accent: '#8b6fa3', wall: ['#d2c5dd', '#b9a8c8'], floor: '#8d7a6a', decor: 'library' },
+  СР9: { species: 'Миньон', accent: '#5b86b8', wall: ['#c9dae8', '#adc5db'], floor: '#7f9cb6', decor: 'water' },
 };

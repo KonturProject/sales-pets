@@ -2,9 +2,10 @@ import './tv.css';
 import type { Config } from '@/engine/config';
 import type { PetState } from '@/engine/pet';
 import type { RankData } from '@/engine/ranking';
+import { THEME } from '@/art/manifest';
 import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
 import type { PowerMode } from '@/game/PowerSaver';
-import { mountRanking } from '@/game/RankingPanel';
+import { mountRanking, short } from '@/game/RankingPanel';
 import { PLANTS } from './art';
 import { Hall } from './Hall';
 import { BOARDS, CAMERA, roomRect, STAGE } from './layout';
@@ -38,11 +39,21 @@ const SLIDES = GROUPS.length + 1;
 const PARTY_MS = 20_000;
 /** Прогулка — только когда в зале есть с кем встретиться. */
 const MIN_WALKERS = 2;
+/** Выбор на нижней панели держит камеру у доски столько, потом цикл продолжается. */
+const HOLD_MS = 15_000;
 
 const div = (cls: string, text?: string) => {
   const node = document.createElement('div');
   node.className = cls;
   if (text !== undefined) node.textContent = text;
+  return node;
+};
+
+const button = (text: string, onClick: () => void) => {
+  const node = document.createElement('button');
+  node.type = 'button';
+  node.textContent = text;
+  node.addEventListener('click', onClick);
   return node;
 };
 
@@ -54,8 +65,10 @@ const plant = (side: 'left' | 'right') => {
 
 /**
  * Экран ТВ: сцена 1920×1080, вписанная в окно; мир — зал с досками рейтингов и домик из шести комнат.
- * Камера: при вводе (`active`) — общий план, на стене (`ambient`) — цикл `shotAt` с прогулкой в зале, вкладка скрыта
- * (`idle`) — всё стоит. Новая оплата группы — праздник на общем плане (`data-party`), потом цикл с начала.
+ * Камера всегда автоматическая: цикл `shotAt` с прогулкой в зале; ввод и фокус вкладки кадр не меняют (режим `active`
+ * только ускоряет анимации), вкладка скрыта (`idle`) — всё стоит. Новая оплата группы — праздник на общем плане
+ * (`data-party`), потом цикл с начала. Нижняя панель (`.dock`) выбирает группу, «Топ-10» и день героев: камера
+ * едет к доске и держит её `HOLD_MS`.
  */
 export function mountTv(root: HTMLElement, o: TvOptions): Tv {
   const world = div('tv-world');
@@ -97,13 +110,47 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
   root.replaceChildren(screen);
 
   const ranking = o.rank ? mountRanking(o.rank, { asOf: o.asOf }) : null;
+  /** выбор на нижней панели: камера держит эту доску до `until`, листание её не перебивает */
+  let hold: { shot: 'heroes' | 'group'; until: number } | null = null;
+  const holdOn = (shot: 'heroes' | 'group') => {
+    hold = { shot, until: Date.now() + HOLD_MS };
+    camera();
+  };
+  const dock = div('dock');
+  const dayLabel = document.createElement('b');
+  const dayPrev = button('‹', () => { ranking?.stepDay(-1); syncDock(); holdOn('heroes'); });
+  const dayNext = button('›', () => { ranking?.stepDay(1); syncDock(); holdOn('heroes'); });
+  dayPrev.setAttribute('aria-label', 'Предыдущий день');
+  dayNext.setAttribute('aria-label', 'Следующий день');
+  const days = div('dock-days');
+  days.append(div('dock-label', 'Герои дня'), dayPrev, dayLabel, dayNext);
+  const picks = div('dock-groups');
+  for (const g of [...GROUPS, 'top'] as const) {
+    const b = button(g === 'top' ? 'Топ-10' : g, () => {
+      if (g !== 'top') ranking?.pickGroup(g);
+      showSlide(g === 'top' ? 'top' : 'group');
+      holdOn('group');
+    });
+    b.dataset.pick = g;
+    if (g !== 'top') b.style.setProperty('--accent', THEME[g].accent);
+    picks.append(b);
+  }
+  dock.append(days, picks);
+  /** нижняя панель показывает то, что сейчас на досках, в том числе при листании на стене */
+  function syncDock(): void {
+    if (!ranking) return;
+    const { group, day, days: list } = ranking.picked();
+    const on = groupBoard.dataset.slide === 'top' ? 'top' : group;
+    for (const b of picks.children) b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.pick === on));
+    dayLabel.textContent = day ? short(day) : '—';
+    dayPrev.disabled = !list.length || day === list[0];
+    dayNext.disabled = !list.length || day === list[list.length - 1];
+  }
+
   if (ranking) {
     heroesBoard.append(ranking.blocks.heroes);
-    const toggle = document.createElement('button');
-    toggle.type = 'button';
-    toggle.className = 'board-toggle';
-    toggle.addEventListener('click', () => showSlide(groupBoard.dataset.slide === 'top' ? 'group' : 'top'));
-    groupBoard.append(ranking.blocks.group, ranking.blocks.top, toggle);
+    groupBoard.append(ranking.blocks.group, ranking.blocks.top);
+    stage.append(dock);
   } else {
     heroesBoard.append(div('board-empty', 'Герои дня появятся с первыми данными'));
     groupBoard.append(div('board-empty', 'Рейтинги появятся с первыми данными'));
@@ -111,8 +158,7 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
 
   function showSlide(slide: 'group' | 'top'): void {
     groupBoard.dataset.slide = slide;
-    const toggle = groupBoard.querySelector('.board-toggle');
-    if (toggle) toggle.textContent = slide === 'top' ? 'Рейтинг группы' : 'Топ-10';
+    syncDock();
   }
   showSlide('group');
 
@@ -140,6 +186,7 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
   const showBanner = (text: string | null) => {
     if (text !== null) banner.textContent = text;
     banner.classList.toggle('on', text !== null);
+    screen.toggleAttribute('data-banner', text !== null); // плашка внизу: нижняя панель на это время уезжает
   };
   const walkers = () => pets.filter((p) => p.walker);
 
@@ -156,8 +203,14 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
   let partyUntil: number | null = null;
   let loop: ReturnType<typeof setInterval> | undefined;
   let ticks = 0;
-  const camera = () => {
-    if (power !== 'ambient' || partyUntil !== null) return;
+  function camera(): void {
+    if (power === null || power === 'idle' || partyUntil !== null) return;
+    if (hold && Date.now() < hold.until) {
+      endWalk();
+      setShot(hold.shot);
+      return;
+    }
+    hold = null;
     const { shot: next, slide } = shotAt(Date.now() - cycleStart);
     const walk = next === 'walk' && (walking || walkers().length >= MIN_WALKERS);
     setShot(next === 'walk' && !walk ? 'rooms' : next);
@@ -170,13 +223,14 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     const k = slide % SLIDES;
     if (k === GROUPS.length) showSlide('top');
     else {
-      showSlide('group');
       ranking.pickGroup(GROUPS[k]);
+      showSlide('group');
     }
-  };
+  }
 
   const startParty = (gains: ReturnType<typeof paymentGains>) => {
     endWalk();
+    hold = null;
     const star = pets[GROUPS.indexOf(gains[0].group)];
     partyUntil = Date.now() + PARTY_MS;
     screen.dataset.party = gains[0].group;
@@ -192,7 +246,6 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     hall.stop();
     showBanner(null);
     cycleStart = Date.now();
-    if (power === 'active') setShot('overview');
     camera();
   };
 
@@ -217,10 +270,8 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     }
     loop ??= setInterval(tick, 1000);
     pets.forEach((p) => p.setRunning(true));
-    if (mode === 'active') {
-      endWalk();
-      setShot('overview');
-    } else if (was !== 'ambient') {
+    // ввод (`active`) кадр не меняет, цикл идёт дальше; с начала — только после скрытой вкладки
+    if (was === null || was === 'idle') {
       cycleStart = Date.now();
       camera();
     }
@@ -242,6 +293,7 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
       pets[i].update(states[r.group]);
     });
     ranking?.update();
+    syncDock();
     day.textContent = dayLine(asOf, o.cfg());
     fresh.textContent = o.fresh?.() ?? '';
     const now = Object.fromEntries(GROUPS.map((g) => [g, states[g].totalPayments])) as Record<GroupCode, number>;

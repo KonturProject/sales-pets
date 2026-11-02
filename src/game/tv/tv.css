@@ -9,7 +9,7 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
   overflow: hidden;
   background: #2b2722;
   color: var(--ink);
-  font-family: 'Nunito', 'Segoe UI', system-ui, sans-serif;
+  font-family: 'Nunito Variable', 'Segoe UI', system-ui, sans-serif;
 }
 .tv-fit { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .tv-stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #e9dfcf; }
@@ -50,11 +50,7 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 .board .rank-block { padding: 0; background: none; border: 0; border-radius: 0; }
 .board .rank-head { margin-bottom: 12px; align-items: center; }
 .board .rank-head h2 { font-size: 38px; letter-spacing: .01em; }
-.board .rank-head select {
-  font-size: 30px; font-weight: 800; color: var(--ink);
-  background: #f1e7d6; border: 0; border-radius: 12px; padding: 2px 10px;
-}
-.board[data-board='group'] { padding-bottom: 64px; }
+.board .rank-pick { font-size: 30px; border-radius: 12px; padding: 2px 14px; }
 .board .rank-block table { table-layout: fixed; font-size: 22px; }
 .board thead { display: none; }
 .board .rank-block td { padding: 6px 4px; border-top: 2px solid #eadfcc; vertical-align: middle; line-height: 1.15; }
@@ -66,11 +62,6 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 .board .rank-block .empty { font-size: 22px; padding: 24px 4px; }
 .chip { display: inline-block; padding: 1px 9px; border-radius: 99px; color: #fff; font-size: 17px; font-weight: 700; }
 .board-empty { font-size: 26px; color: var(--ink-soft); padding-top: 40px; text-align: center; }
-.board-toggle {
-  position: absolute; right: 20px; bottom: 16px;
-  font: inherit; font-size: 18px; padding: 6px 14px; border-radius: 99px;
-  border: 1px solid #d9ccb2; background: #f1e7d6; color: var(--ink); cursor: pointer;
-}
 
 /* домик и комнаты */
 .house {
@@ -166,6 +157,31 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
   transform: translate(-50%, 160px); transition: transform .6s cubic-bezier(.3, 1.4, .5, 1);
 }
 .banner.on { transform: translate(-50%, 0); }
+
+/* нижняя панель: выбор дня героев, группы и «Топ-10» прямо на экране; пока внизу плашка — уезжает вниз */
+.dock {
+  position: absolute; left: 50%; bottom: 16px; z-index: 50; display: flex; align-items: center; gap: 22px;
+  padding: 7px 10px 7px 22px; border-radius: 99px; white-space: nowrap;
+  background: rgba(74, 56, 38, .9); color: #fff8ec; box-shadow: 0 6px 0 rgba(0, 0, 0, .15);
+  transform: translateX(-50%); transition: transform .6s cubic-bezier(.3, 1.4, .5, 1);
+}
+.tv[data-banner] .dock { transform: translate(-50%, 120px); }
+.dock button {
+  font: inherit; font-weight: 800; color: inherit; border: 0; cursor: pointer;
+  background: rgba(255, 248, 236, .14); transition: background .3s, color .3s, box-shadow .3s;
+}
+.dock button:hover { background: rgba(255, 248, 236, .26); }
+.dock-days { display: flex; align-items: center; gap: 8px; font-size: 22px; }
+.dock-label { margin-right: 4px; opacity: .85; }
+.dock-days b { min-width: 72px; text-align: center; font-size: 24px; }
+.dock-days button { width: 38px; height: 38px; border-radius: 50%; font-size: 26px; line-height: 1; padding: 0 0 3px; }
+.dock-days button:disabled { opacity: .3; cursor: default; background: rgba(255, 248, 236, .14); }
+.dock-groups { display: flex; gap: 8px; }
+.dock-groups button { padding: 5px 18px; border-radius: 99px; font-size: 22px; }
+.dock-groups button[aria-pressed='true'] { background: var(--accent, #fff8ec); color: #fff; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .55); }
+.dock-groups button[data-pick='top'][aria-pressed='true'] { color: var(--ink); }
+/* что сейчас в кадре — та часть панели ярче */
+.tv[data-shot='heroes'] .dock-days, .tv[data-shot='group'] .dock-groups { text-shadow: 0 0 12px rgba(255, 236, 200, .6); }
 .fg { position: absolute; bottom: -20px; width: 300px; height: 360px; z-index: 40; pointer-events: none; transition: transform 2.4s cubic-bezier(.65, 0, .35, 1); }
 .fg.left { left: -30px; transform: translate(-340px, 120px); }
 .fg.right { right: -30px; transform: translate(340px, 120px) scaleX(-1); }
@@ -181,7 +197,7 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 [data-power='idle'] .tv .bob,
 [data-power='idle'] .tv .flies { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
-  .tv-world, .fg { transition: none; }
+  .tv-world, .fg, .dock { transition: none; }
   .tv .bob { animation: none; }
 }
 
