@@ -71,6 +71,7 @@ try {
     piles: Number(e.dataset.piles), flies: !!e.querySelector('.flies'),
     medkits: e.querySelector('[data-count="medkits"]')?.textContent?.trim(),
     toys: e.querySelector('[data-count="toys"]')?.textContent?.trim(),
+    species: e.querySelector('.species')?.textContent?.trim(),
   })));
   const brokenImages = () => page.$$eval('img', (imgs) => imgs.filter((i) => !i.complete || i.naturalWidth === 0).map((i) => i.src));
   // чтение и выбор в панели не бросают при отсутствии элемента: провал попадает в список, а не обрывает проверку
@@ -89,6 +90,11 @@ try {
   // --- демо
   await page.goto(`${base}?demo=1`, { waitUntil: 'networkidle' });
   checkStates(await read(), 'демо');
+  // вид питомца — сюрприз: до вылупления на табличке «???»
+  for (const r of await read()) {
+    const ok = r.phase === 'pet' ? !!r.species && r.species !== '???' : r.species === '???';
+    check(ok, `демо ${r.group}: на табличке «${r.species}» при фазе ${r.phase}`);
+  }
   const broken = await brokenImages();
   check(broken.length === 0, `демо: не загрузились картинки: ${broken.join(', ')}`);
 

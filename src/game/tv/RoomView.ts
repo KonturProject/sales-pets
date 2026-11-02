@@ -38,6 +38,7 @@ export class RoomView {
   /** мяч в координатах комнаты: центр по `x`, угол поворота */
   readonly ball = { x: 330, rot: 0 };
   private readonly ballEl: HTMLElement;
+  private readonly species: HTMLElement;
   private readonly mood: HTMLElement;
   private readonly sub: HTMLElement;
   private readonly sat: HTMLElement;
@@ -71,7 +72,9 @@ export class RoomView {
 
     const sign = el('header', 'sign');
     const title = el('div', 'title');
-    title.append(el('b', 'code', group), el('span', 'species', theme.species));
+    // вид питомца — сюрприз: до вылупления «???» (update)
+    this.species = el('span', 'species', '???');
+    title.append(el('b', 'code', group), this.species);
     this.mood = el('span', 'mood');
     this.sub = el('div', 'sub');
     const sat = el('div', 'sat');
@@ -117,6 +120,7 @@ export class RoomView {
     d.piles = String(s.piles);
     d.alive = String(s.alive);
 
+    this.species.textContent = s.phase === 'pet' ? THEME[this.group].species : '???';
     this.mood.textContent = MOOD_LABEL[s.mood];
     this.sub.textContent = !s.alive ? 'питомец погиб'
       : s.phase === 'pet' ? `стадия ${s.stage} · оплат ${s.totalPayments}`
