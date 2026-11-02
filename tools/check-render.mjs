@@ -142,6 +142,12 @@ try {
     await wp.clock.runFor(1_000);
     pos = 1_000;
     check(await shot() === 'rooms', `после загрузки: кадр ${await shot()}, ожидался rooms (цикл без ожидания режима стены)`);
+    // с 12 с кадра «комнаты» — крупный план того, кому нужна помощь (в демо СР6 болеет)
+    await wp.clock.fastForward(12_000);
+    await wp.clock.runFor(1_000);
+    pos = 14_000;
+    const care = await wp.$eval('.tv', (e) => `${e.dataset.shot}/${e.dataset.focus}`);
+    check(care === 'room/СР6' && (await banner()).includes('нужна аптечка'), `визит заботы: кадр ${care}, плашка «${await banner()}»`);
     await toWalk(9_000);
     check(await shot() === 'walk', `прогулка: кадр ${await shot()}, ожидался walk`);
     // ввод не дёргает камеру: прогулка идёт дальше

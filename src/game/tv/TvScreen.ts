@@ -8,8 +8,9 @@ import type { PowerMode } from '@/game/PowerSaver';
 import { mountRanking, short } from '@/game/RankingPanel';
 import { PLANTS } from './art';
 import { Hall } from './Hall';
-import { BOARDS, CAMERA, roomRect, STAGE } from './layout';
+import { BOARDS, CAMERA, roomCamera, roomRect, STAGE } from './layout';
 import { dayLine, groupFunnel, partyBanner, paymentGains, type FunnelTotal } from './metrics';
+import { careRooms, growthMoments, MAX_MOMENTS, type RoomMoment } from './moments';
 import { PetActor } from './PetActor';
 import { RoomView } from './RoomView';
 import { shotAt, WALK_MS, type Shot } from './schedule';
@@ -41,6 +42,11 @@ const PARTY_MS = 20_000;
 const MIN_WALKERS = 2;
 /** Выбор на нижней панели держит камеру у доски столько, потом цикл продолжается. */
 const HOLD_MS = 15_000;
+/** Крупный план при вылуплении или росте держится столько. */
+const MOMENT_MS = 8_000;
+/** Кадр «комнаты»: столько общий план, дальше визиты к тем, кому нужна помощь, по `CARE_MS`. */
+const CARE_FROM = 12_000;
+const CARE_MS = 6_500;
 
 const div = (cls: string, text?: string) => {
   const node = document.createElement('div');
@@ -169,17 +175,23 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
   addEventListener('resize', doFit);
   doFit();
 
-  let shot: Shot | null = null;
-  const setShot = (next: Shot, animate = true) => {
-    if (next === shot) return;
-    shot = next;
+  let shot: string | null = null;
+  /** Кадр камеры; `room` — крупный план комнаты `focus` (номер в `GROUPS`). Возвращает, сменился ли кадр. */
+  const setShot = (next: Shot | 'room', animate = true, focus = -1): boolean => {
+    const key = next === 'room' ? `room:${focus}` : next;
+    if (key === shot) return false;
+    shot = key;
     screen.dataset.shot = next;
+    if (next === 'room') screen.dataset.focus = GROUPS[focus];
+    else delete screen.dataset.focus;
     if (!animate) world.style.transition = 'none';
-    world.style.transform = CAMERA[next];
+    const c = next === 'room' ? roomCamera(focus) : null;
+    world.style.transform = c ? `translate(${c.x}px, ${c.y}px) scale(${c.s})` : CAMERA[next as Shot];
     if (!animate) {
       void world.offsetWidth;
       world.style.transition = '';
     }
+    return true;
   };
   setShot('overview', false);
 
@@ -203,15 +215,42 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
   let partyUntil: number | null = null;
   let loop: ReturnType<typeof setInterval> | undefined;
   let ticks = 0;
+  /** важные моменты (вылупление, рост) ждут очереди; `moment` — показываемый сейчас */
+  let moments: RoomMoment[] = [];
+  let moment: (RoomMoment & { until: number }) | null = null;
+  let states: Record<GroupCode, PetState> | null = null;
+  let roomBanner = false;
+  /** Крупный план комнаты с плашкой; `null` — убрать плашку крупного плана. Из зала питомец сразу дома. */
+  const focusRoom = (m: RoomMoment | null) => {
+    if (!m) {
+      if (roomBanner) showBanner(null);
+      roomBanner = false;
+      return;
+    }
+    endWalk();
+    const i = GROUPS.indexOf(m.group);
+    if (setShot('room', true, i)) pets[i].release();
+    roomBanner = true;
+    showBanner(m.text);
+  };
   function camera(): void {
     if (power === null || power === 'idle' || partyUntil !== null) return;
-    if (hold && Date.now() < hold.until) {
+    const now = Date.now();
+    if (hold && now < hold.until) {
       endWalk();
+      focusRoom(null);
       setShot(hold.shot);
       return;
     }
     hold = null;
-    const { shot: next, slide } = shotAt(Date.now() - cycleStart);
+    if (moment && now >= moment.until) moment = null;
+    if (!moment && moments.length) moment = { ...moments.shift()!, until: now + MOMENT_MS };
+    if (moment) return focusRoom(moment);
+    const { shot: next, slide, at } = shotAt(now - cycleStart);
+    // вторая половина кадра «комнаты» — по очереди к тем, кому нужна помощь РГ
+    const care = next === 'rooms' && at >= CARE_FROM && states ? careRooms(states) : [];
+    if (care.length) return focusRoom(care[(Math.floor((at - CARE_FROM) / CARE_MS) + slide) % care.length]);
+    focusRoom(null);
     const walk = next === 'walk' && (walking || walkers().length >= MIN_WALKERS);
     setShot(next === 'walk' && !walk ? 'rooms' : next);
     if (walk && !walking) {
@@ -234,6 +273,7 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     const star = pets[GROUPS.indexOf(gains[0].group)];
     partyUntil = Date.now() + PARTY_MS;
     screen.dataset.party = gains[0].group;
+    roomBanner = false;
     showBanner(partyBanner(gains));
     setShot('overview');
     if (star.walker) hall.start(walkers(), PARTY_MS, star);
@@ -285,18 +325,20 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
 
   let paid: Record<GroupCode, number> | null = null; // оплаты групп на прошлом обновлении: прирост — праздник
   const update = () => {
-    const states = o.states();
+    const next = o.states();
     const asOf = o.asOf();
     const totals = o.rank ? funnelOf(o.rank(), asOf) : undefined;
     rooms.forEach((r, i) => {
-      r.update(states[r.group], totals?.[r.group]);
-      pets[i].update(states[r.group]);
+      r.update(next[r.group], totals?.[r.group]);
+      pets[i].update(next[r.group]);
     });
+    moments = [...moments, ...growthMoments(states, next)].slice(-MAX_MOMENTS);
+    states = next;
     ranking?.update();
     syncDock();
     day.textContent = dayLine(asOf, o.cfg());
     fresh.textContent = o.fresh?.() ?? '';
-    const now = Object.fromEntries(GROUPS.map((g) => [g, states[g].totalPayments])) as Record<GroupCode, number>;
+    const now = Object.fromEntries(GROUPS.map((g) => [g, next[g].totalPayments])) as Record<GroupCode, number>;
     const gains = paymentGains(paid, now);
     paid = now;
     if (gains.length && power !== null && power !== 'idle') startParty(gains);

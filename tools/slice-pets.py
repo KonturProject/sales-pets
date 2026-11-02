@@ -18,6 +18,7 @@ STAGES = 5
 MAX_SIDE = 384
 SOLID = 40   # пиксели плотнее этого — тело фигуры
 FAINT = 8    # прозрачнее этого — фон (у ChatGPT там остаётся мусор в RGB)
+OPAQUE = 250  # плотнее этого — заливка и контур фигуры
 PAD = 2
 
 
@@ -46,6 +47,18 @@ def slice_sheet(path: Path) -> list[Image.Image]:
     # полупрозрачные края отдаём ближайшему уже распределённому пикселю
     _, (iy, ix) = ndimage.distance_transform_edt(owner == 0, return_indices=True)
     owner = np.where(alpha >= FAINT, owner[iy, ix], 0)
+    # светлая кайма от вырезанного белого фона: полупрозрачный край у контура берёт цвет ближайшего плотного пикселя
+    # (дальше 2 px — сияние вокруг предмета, его не трогаем)
+    dist, (iy, ix) = ndimage.distance_transform_edt(alpha < OPAQUE, return_indices=True)
+    rim = (alpha >= FAINT) & (alpha < OPAQUE) & (dist <= 2)
+    rgba[rim, :3] = rgba[iy[rim], ix[rim], :3]
+    # непрозрачная белая обводка «наклейкой» (бывает у ChatGPT): светлый внешний пиксель контура красим цветом
+    # фигуры чуть глубже; тонкие светлые детали (меч, искры) без глубины рядом не трогаем
+    solid = alpha >= OPAQUE
+    lum = rgba[..., :3].astype(float) @ [0.299, 0.587, 0.114]
+    dist, (iy, ix) = ndimage.distance_transform_edt(~ndimage.binary_erosion(solid, iterations=3), return_indices=True)
+    stroke = solid & ~ndimage.binary_erosion(solid, iterations=2) & (lum > 200) & (dist <= 4)
+    rgba[stroke, :3] = rgba[iy[stroke], ix[stroke], :3]
     stages = []
     for stage in range(1, STAGES + 1):
         mask = owner == stage

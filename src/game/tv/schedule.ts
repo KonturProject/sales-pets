@@ -13,18 +13,18 @@ const SLIDES_PER_PASS = Math.floor((CYCLE.find(([s]) => s === 'group')?.[1] ?? 0
 
 /**
  * Кадр цикла через `ms` от его начала. `slide` — сквозной номер слайда правой доски: каждый проход
- * показывает следующие три, так что за несколько проходов видны все группы и «Топ-10».
+ * показывает следующие три, так что за несколько проходов видны все группы и «Топ-10». `at` — мс внутри кадра.
  */
-export function shotAt(ms: number): { shot: Shot; slide: number } {
+export function shotAt(ms: number): { shot: Shot; slide: number; at: number } {
   const t = Number.isFinite(ms) && ms > 0 ? ms : 0;
   const pass = Math.floor(t / CYCLE_MS);
   const base = pass * SLIDES_PER_PASS;
   let rest = t - pass * CYCLE_MS;
   for (const [shot, len] of CYCLE) {
     if (rest < len) {
-      return { shot, slide: shot === 'group' ? base + Math.min(Math.floor(rest / SLIDE_MS), SLIDES_PER_PASS - 1) : base };
+      return { shot, slide: shot === 'group' ? base + Math.min(Math.floor(rest / SLIDE_MS), SLIDES_PER_PASS - 1) : base, at: rest };
     }
     rest -= len;
   }
-  return { shot: CYCLE[0][0], slide: base };
+  return { shot: CYCLE[0][0], slide: base, at: 0 };
 }

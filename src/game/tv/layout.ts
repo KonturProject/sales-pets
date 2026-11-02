@@ -2,6 +2,11 @@ import type { Shot } from './schedule';
 
 /** Сцена экрана ТВ: рисуется в 1920×1080 и целиком масштабируется под окно. */
 export const STAGE = { w: 1920, h: 1080 };
+/** Верхняя строка и место под нижнюю панель: крупные планы их не заходят. */
+export const HUD_H = 64;
+export const DOCK_H = 90;
+/** Крупный план комнаты: во столько раз больше мира. */
+const ROOM_ZOOM = 1.9;
 /** Мир: зал с досками рейтингов и домик; камера — `transform` мира. */
 export const WORLD = { w: 2800, h: 1575 };
 /** Домик 3×2 комнаты в координатах мира. */
@@ -41,3 +46,10 @@ export const CAMERA: Record<Shot, string> = {
   heroes: 'translate(0px, -58px) scale(1.15)',
   group: 'translate(-1299px, -58px) scale(1.15)',
 };
+
+/** Камера на комнату `i` крупным планом: комната в центре между верхней строкой и нижней панелью. */
+export function roomCamera(i: number): { x: number; y: number; s: number } {
+  const r = roomRect(i);
+  const s = ROOM_ZOOM;
+  return { x: STAGE.w / 2 - (r.x + r.w / 2) * s, y: (HUD_H + STAGE.h - DOCK_H) / 2 - (r.y + r.h / 2) * s, s };
+}
