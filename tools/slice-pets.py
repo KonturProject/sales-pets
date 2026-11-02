@@ -48,9 +48,10 @@ def slice_sheet(path: Path) -> list[Image.Image]:
     _, (iy, ix) = ndimage.distance_transform_edt(owner == 0, return_indices=True)
     owner = np.where(alpha >= FAINT, owner[iy, ix], 0)
     # светлая кайма от вырезанного белого фона: полупрозрачный край у контура берёт цвет ближайшего плотного пикселя
-    # (дальше 2 px — сияние вокруг предмета, его не трогаем)
+    # (дальше 2 px — сияние вокруг предмета, его не трогаем; край темнее источника — это сам контур, его не осветляем)
+    lum = rgba[..., :3].astype(float) @ [0.299, 0.587, 0.114]
     dist, (iy, ix) = ndimage.distance_transform_edt(alpha < OPAQUE, return_indices=True)
-    rim = (alpha >= FAINT) & (alpha < OPAQUE) & (dist <= 2)
+    rim = (alpha >= FAINT) & (alpha < OPAQUE) & (dist <= 2) & (lum > lum[iy, ix])
     rgba[rim, :3] = rgba[iy[rim], ix[rim], :3]
     # непрозрачная белая обводка «наклейкой» (бывает у ChatGPT): светлый внешний пиксель контура красим цветом
     # фигуры чуть глубже; тонкие светлые детали (меч, искры) без глубины рядом не трогаем

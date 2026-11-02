@@ -13,7 +13,7 @@ import { dayLine, groupFunnel, partyBanner, paymentGains, type FunnelTotal } fro
 import { careRooms, growthMoments, MAX_MOMENTS, type RoomMoment } from './moments';
 import { PetActor } from './PetActor';
 import { RoomView } from './RoomView';
-import { shotAt, walkFor, type Shot } from './schedule';
+import { careTurn, shotAt, walkFor, type Shot } from './schedule';
 
 export interface TvOptions {
   states: () => Record<GroupCode, PetState>;
@@ -44,9 +44,6 @@ const MIN_WALKERS = 2;
 const HOLD_MS = 15_000;
 /** Крупный план при вылуплении или росте держится столько. */
 const MOMENT_MS = 8_000;
-/** Кадр «комнаты»: столько общий план, дальше визиты к тем, кому нужна помощь, по `CARE_MS`. */
-const CARE_FROM = 12_000;
-const CARE_MS = 6_500;
 
 const div = (cls: string, text?: string) => {
   const node = document.createElement('div');
@@ -121,6 +118,13 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
   const holdOn = (shot: 'heroes' | 'group') => {
     hold = { shot, until: Date.now() + HOLD_MS };
     camera();
+  };
+  /** выбор зрителя живёт, пока длится удержание (праздник его прерывает): дальше у героев снова день по умолчанию */
+  const dropHold = () => {
+    if (!hold) return;
+    hold = null;
+    ranking?.resetDay();
+    syncDock();
   };
   const dock = div('dock');
   const dayLabel = document.createElement('b');
@@ -242,19 +246,15 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
       setShot(hold.shot);
       return;
     }
-    if (hold) {
-      // выбор зрителя живёт, пока длится удержание: дальше у героев снова день по умолчанию
-      hold = null;
-      ranking?.resetDay();
-      syncDock();
-    }
+    dropHold();
     if (moment && now >= moment.until) moment = null;
     if (!moment && moments.length) moment = { ...moments.shift()!, until: now + MOMENT_MS };
     if (moment) return focusRoom(moment);
     const { shot: next, slide, at } = shotAt(now - cycleStart);
     // вторая половина кадра «комнаты» — по очереди к тем, кому нужна помощь РГ
-    const care = next === 'rooms' && at >= CARE_FROM && states ? careRooms(states) : [];
-    if (care.length) return focusRoom(care[(Math.floor((at - CARE_FROM) / CARE_MS) + slide) % care.length]);
+    const turn = careTurn(now - cycleStart);
+    const care = turn !== null && states ? careRooms(states) : [];
+    if (turn !== null && care.length) return focusRoom(care[turn % care.length]);
     focusRoom(null);
     const walk = next === 'walk' && (walking || (walkFor(at) > 0 && walkers().length >= MIN_WALKERS));
     setShot(next === 'walk' && !walk ? 'rooms' : next);
@@ -274,7 +274,7 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
 
   const startParty = (gains: ReturnType<typeof paymentGains>) => {
     endWalk();
-    hold = null;
+    dropHold();
     const star = pets[GROUPS.indexOf(gains[0].group)];
     partyUntil = Date.now() + PARTY_MS;
     screen.dataset.party = gains[0].group;

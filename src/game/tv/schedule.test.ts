@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { MIN_WALK_MS, shotAt, WALK_MS, walkFor } from './schedule';
+import { careTurn, MIN_WALK_MS, shotAt, WALK_MS, walkFor } from './schedule';
 
 describe('shotAt: цикл камеры на стене (комнаты 25 с → герои 12 с → группа 18 с → прогулка 30 с)', () => {
   test('начало цикла — комнаты, слайд правой доски 0', () => {
@@ -50,5 +50,18 @@ describe('walkFor: сколько гулять, если кадр «прогул
   test('застали под конец — прогулку не начинаем', () => {
     expect(walkFor(WALK_MS - MIN_WALK_MS)).toBeGreaterThan(0);
     expect(walkFor(WALK_MS - MIN_WALK_MS + 1)).toBe(0);
+  });
+});
+
+describe('careTurn: визиты заботы с 12 с кадра «комнаты» нумеруются подряд через все проходы цикла', () => {
+  test('до 12 с кадра и в других кадрах визитов нет', () => {
+    expect(careTurn(11_999)).toBeNull();
+    expect(careTurn(25_000)).toBeNull();
+  });
+
+  test('два визита по 6,5 с за проход, следующий проход продолжает счёт — по кругу видны все, кому нужна помощь', () => {
+    const cycle = 85_000;
+    const at = [12_000, 18_499, 18_500, 24_999, cycle + 12_000, cycle + 18_500, 2 * cycle + 12_000];
+    expect(at.map(careTurn)).toEqual([0, 0, 1, 1, 2, 3, 4]);
   });
 });

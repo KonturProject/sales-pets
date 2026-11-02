@@ -323,6 +323,9 @@ try {
   check(await page.$eval('.tv', (e) => e.dataset.party ?? '') === '', 'праздник: показан при загрузке страницы');
   const snapshotNow = await (await fetch(mock.url)).json();
   const sr3Today = snapshotNow.provisional.find((p) => p.date === '2026-11-12' && p.group === 'СР3')?.count ?? 0;
+  // перед оплатой зритель выбрал день на панели: праздник перебивает удержание, после него у героев снова день по умолчанию
+  await page.$eval('.dock-days button[aria-label="Предыдущий день"]', (b) => b.click());
+  check(await valueOf('[data-block="heroes"]', (e) => e.dataset.day) === '2026-11-10', 'праздник: выбор дня перед оплатой не применился');
   const paid = await post({ action: 'setProvisional', pin: MOCK_ADMIN_PIN, date: '2026-11-12', group: 'СР3', count: sr3Today + 1 });
   check(paid.ok === true, `праздник: setProvisional: ${paid.error}`);
   const party = await page.waitForSelector('.tv[data-party="СР3"]', { timeout: 6_000 }).catch(() => null);
@@ -336,6 +339,7 @@ try {
   await page.waitForTimeout(2_500);
   check(await page.$$eval('.tv-world > .confetti, .tv-world > .hall-ball', (e) => e.length) === 0, 'праздник: после конца остались конфетти или мяч');
   check(await page.$eval('.banner', (e) => !e.classList.contains('on')), 'праздник: плашка не убралась');
+  check(await valueOf('[data-block="heroes"]', (e) => e.dataset.day) === '2026-11-11', 'праздник посреди удержания: день героев не вернулся к дню по умолчанию');
 
   // --- праздник у яйца (первые дни игры — только так): яйцо не выходит в зал, звезда и конфетти над ним
   // повторяются весь праздник, а не один раз, пока камера ещё летит на общий план

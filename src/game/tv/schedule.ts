@@ -39,3 +39,18 @@ export function shotAt(ms: number): { shot: Shot; slide: number; at: number } {
   }
   return { shot: CYCLE[0][0], slide: base, at: 0 };
 }
+
+/** Кадр «комнаты»: столько общий план, дальше визиты к тем, кому нужна помощь, по `CARE_MS`. */
+const CARE_FROM = 12_000;
+const CARE_MS = 6_500;
+const CARE_PER_PASS = Math.ceil(((CYCLE.find(([s]) => s === 'rooms')?.[1] ?? 0) - CARE_FROM) / CARE_MS);
+
+/**
+ * Сквозной номер визита заботы через `ms` от начала цикла: следующий проход продолжает счёт,
+ * так что по кругу камера доходит до каждого, кому нужна помощь; null — не время визитов.
+ */
+export function careTurn(ms: number): number | null {
+  const { shot, at } = shotAt(ms);
+  if (shot !== 'rooms' || at < CARE_FROM) return null;
+  return Math.floor(ms / CYCLE_MS) * CARE_PER_PASS + Math.floor((at - CARE_FROM) / CARE_MS);
+}
