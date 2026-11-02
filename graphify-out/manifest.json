@@ -427,15 +427,15 @@
     "semantic_hash": ""
   },
   "CREDITS.md": {
-    "mtime": 1793545603.9287677,
-    "seen": 1793547331.4275415,
-    "ast_hash": "1e7ce1aa7b815e3b1d2556707e88233e",
+    "mtime": 1793594230.340241,
+    "seen": 1793594611.9429731,
+    "ast_hash": "6ce50ead27121fac18577389b259acfe",
     "semantic_hash": ""
   },
   "PLAN.md": {
-    "mtime": 1793592853.5626879,
-    "seen": 1793592872.5022483,
-    "ast_hash": "b0023f11269b83cb35d49698f437857f",
+    "mtime": 1793594230.3412378,
+    "seen": 1793594611.942974,
+    "ast_hash": "ac3971b156e8a3350a1459d17d9ada58",
     "semantic_hash": ""
   },
   "README.assets.md": {
@@ -1246,6 +1246,24 @@
     "mtime": 1793561755.9990668,
     "seen": 1793561956.8363738,
     "ast_hash": "848798d2d363fec0e930a09e0eb6f3dc",
+    "semantic_hash": ""
+  },
+  "tools/trailer/music.py": {
+    "mtime": 1793593991.2386,
+    "seen": 1793594611.9429348,
+    "ast_hash": "53b7fd6e0a8a526d10515f05e90ed709",
+    "semantic_hash": ""
+  },
+  "tools/trailer/render.mjs": {
+    "mtime": 1793594434.9754758,
+    "seen": 1793594611.9429367,
+    "ast_hash": "a8984d410f88711b0e5eecb169af0b11",
+    "semantic_hash": ""
+  },
+  "tools/trailer/trailer.html": {
+    "mtime": 1793594040.1180065,
+    "seen": 1793594611.9429958,
+    "ast_hash": "34682ef97a091a07f3e3327d6356385e",
     "semantic_hash": ""
   }
 }
