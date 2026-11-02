@@ -1,6 +1,6 @@
 import { workingDaysBetween } from '@/engine/calendar';
 import { defaultConfig, type Config } from '@/engine/config';
-import { evaluateDay, type FunnelDay } from '@/engine/evaluate';
+import { evaluateDay, groupPlan, type FunnelDay } from '@/engine/evaluate';
 import type { GroupFacts } from '@/engine/pet';
 import type { Absence, Employee } from '@/engine/staff';
 import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
@@ -67,5 +67,6 @@ export function groupFacts(demo: Demo, group: GroupCode, asOf: DateStr): GroupFa
       evaluateDay(group, date, demo.staff, demo.absences, demo.funnel, demo.cfg),
     ]),
   );
-  return { group, paymentsByDay: demo.paymentsByGroup[group], results, overrides: [] };
+  const plan = groupPlan(group, asOf, demo.staff, demo.absences, () => demo.cfg, demo.cfg);
+  return { group, paymentsByDay: demo.paymentsByGroup[group], results, overrides: [], plan };
 }

@@ -1,6 +1,6 @@
 import { prevWorkingDay, workingDaysBetween } from './calendar';
 import type { Config } from './config';
-import type { DayResult } from './evaluate';
+import type { DayResult, GroupPlan } from './evaluate';
 import type { DateStr, GroupCode } from './types';
 
 export interface Override {
@@ -17,8 +17,8 @@ export interface GroupFacts {
   /** оценка выполнения норм по дням */
   results: Record<DateStr, DayResult>;
   overrides: Override[];
-  /** дневная норма оплат группы (среднее прошлого месяца) — только для сытости */
-  dailyNorm?: number;
+  /** план оплат группы (сумма личных норм): на игру — для стадий роста, на день — для сытости */
+  plan?: GroupPlan;
 }
 
 export type Phase = 'egg0' | 'egg1' | 'egg2' | 'pet';
@@ -29,8 +29,10 @@ export interface PetState {
   generation: number;
   totalPayments: number;
   phase: Phase;
-  /** 0..15 после вылупления */
+  /** 0 — яйцо; 1 — вылупление; 2..5 — по проценту плана оплат группы на игру */
   stage: number;
+  /** оплат с начала поколения в процентах плана группы на игру (вниз до целого); null — плана нет */
+  planPercent: number | null;
   medkits: number;
   toys: number;
   piles: number;
@@ -162,7 +164,9 @@ export function simulate(facts: GroupFacts, asOf: DateStr, cfg: Config, cfgOn: (
   else if (lastDay !== undefined) lastCompleted = payments.get(days.length - 1) ?? 0;
 
   const phase = phaseOf(total);
-  const stage = phase === 'pet' ? cfg.stageThresholds.filter((t) => t <= total).length : 0;
+  const gameCents = facts.plan?.gameCents ?? 0;
+  const planPercent = gameCents > 0 ? Math.floor((total * 10000) / gameCents) : null;
+  const stage = phase !== 'pet' ? 0 : 1 + (planPercent === null ? 0 : cfg.stageThresholds.filter((t) => planPercent >= t).length);
 
   let mood: Mood = 'ok';
   if (!alive) mood = 'dead';
@@ -174,10 +178,10 @@ export function simulate(facts: GroupFacts, asOf: DateStr, cfg: Config, cfgOn: (
     else if (!toyToday && bored) mood = 'bored';
   }
 
-  const norm = Math.max(1, facts.dailyNorm ?? 1);
+  const dayCents = Math.max(100, facts.plan?.dayCents ?? 100);
   return {
-    alive, generation, totalPayments: total, phase, stage, medkits, toys, piles, mood,
-    satiety: Math.min(1, todayP / norm),
+    alive, generation, totalPayments: total, phase, stage, planPercent, medkits, toys, piles, mood,
+    satiety: Math.min(1, (todayP * 100) / dayCents),
   };
 }
 

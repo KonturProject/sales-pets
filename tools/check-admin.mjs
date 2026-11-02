@@ -570,11 +570,14 @@ try {
     await admin.waitForSelector('[data-field="norm-experienced-quality"]', { timeout: 8_000 });
     const field = (name) => admin.inputValue(`[data-field="${name}"]`);
     check(await field('norm-experienced-quality') === '5' && await field('norm-rookie1-quality') === '1', 'нормы не предзаполнены текущими значениями');
-    check(await field('maxPiles') === '5' && await field('threshold-1') === '6', 'пороги не предзаполнены текущими значениями');
-    check(await admin.locator('[data-field^="threshold-"]').count() === 15, 'порогов стадий не 15');
+    check(await field('maxPiles') === '5' && await field('threshold-1') === '25', 'пороги не предзаполнены текущими значениями');
+    check(await admin.locator('[data-field^="threshold-"]').count() === 4, 'порогов стадий не 4');
+    check(await field('norm-experienced-payments') === '0,4', `норма оплат опытных не предзаполнена: «${await field('norm-experienced-payments')}»`);
+    check(await admin.getAttribute('[data-field="norm-experienced-payments"]', 'inputmode') === 'decimal', 'у нормы оплат нет дробной клавиатуры');
 
     // факты мока ровно равны норме опытных, поэтому смену видно только при повышении нормы: игрушки перестают копиться
     await admin.fill('[data-field="norm-experienced-quality"]', '50');
+    await admin.fill('[data-field="norm-experienced-payments"]', '0,5'); // с запятой, как пишут по-русски
     const v0 = (await publicSnapshot(mock)).version;
     await admin.click('[data-save="config"]');
     // правка переписывает всю историю: сначала предпросмотр «было → станет», на сервер пока ничего не уходит
@@ -590,6 +593,7 @@ try {
     check((await waitForText(admin, '[data-status="config"]', 'Сохранено')).includes('Сохранено'), `норма не сохранена: «${await textOf(admin, '[data-alert="config"]')}»`);
     const config = (await publicSnapshot(mock)).config;
     check(config.norms?.experienced?.quality === 50, 'норма опытных не записана на сервер');
+    check(config.norms?.experienced?.payments === 0.5, `норма оплат опытных не записана: ${config.norms?.experienced?.payments}`);
     check(config.norms?.experienced?.long === configBefore.norms?.experienced?.long && config.maxPiles === configBefore.maxPiles, 'на сервер ушло неизменённое');
     check(await field('norm-experienced-quality') === '50', 'после записи форма не перечитана');
 
@@ -626,11 +630,11 @@ try {
     await admin.fill('[data-field="maxPiles"]', '5');
     await admin.fill('[data-field="threshold-2"]', '5');
     await save();
-    check((await alert()).includes('Порог 2'), `пороги не по возрастанию: «${await alert()}»`);
+    check((await alert()).includes('Стадия 3'), `пороги не по возрастанию: «${await alert()}»`);
     check(await version() === v0, 'клиентская ошибка дошла до сервера');
 
     // диапазон проверяет сервер: его отказ показан человеческим текстом, состояние не меняется
-    await admin.fill('[data-field="threshold-2"]', '10');
+    await admin.fill('[data-field="threshold-2"]', '50');
     await admin.fill('[data-field="maxPiles"]', '99');
     await save();
     check((await alert()).includes('Сервер отклонил запрос'), `значение вне диапазона: «${await alert()}»`);
@@ -692,8 +696,8 @@ try {
     // будущая дата: ничего не меняется сегодня, но запись сохраняется
     await setDate('2026-11-20');
     await admin.fill('[data-field="maxPiles"]', '3');
-    const future = await preview('сегодня ничего не изменится');
-    check(future.includes('сегодня ничего не изменится'), `будущая дата без пояснения: «${future}»`);
+    const future = await preview('оценки дней сегодня не меняются');
+    check(future.includes('оценки дней сегодня не меняются') && future.includes('стадии, запасы и кучки сегодня те же'), `будущая дата без пояснения: «${future}»`);
     await admin.click('[data-cancel="config"]');
     check((await snapshot()).configChanges.length === 1, 'отмена будущей правки что-то записала');
 
@@ -830,7 +834,7 @@ try {
 
     await loginAs('СР1');
     check(await rg.locator('[data-group]').count() === 1 && await rg.locator('[data-group="СР1"]').count() === 1, 'после входа видна не только СР1');
-    check(/^(стадия \d+ из 15|яйцо)/.test(await textOf(rg, '[data-stage-text]')), `подпись стадии: «${await textOf(rg, '[data-stage-text]')}»`);
+    check(/^(стадия \d+ из 5|яйцо)/.test(await textOf(rg, '[data-stage-text]')), `подпись стадии: «${await textOf(rg, '[data-stage-text]')}»`);
     check(await rg.locator('button[data-use="medkit"]').count() === 1, 'нет предмета «Аптечка»');
     // остаток читаем с бейджа предмета; скрытый `[data-count]` питомца остаётся в DOM для сверки
     const stock = (kind) => rg.$eval(`[data-stock="${kind}"]`, (e) => Number(e.textContent)).catch(() => NaN);

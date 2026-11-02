@@ -1,8 +1,7 @@
 import { describe, expect, test } from 'vitest';
-import { defaultConfig } from '@/engine/config';
-import { configFormOf, configPatch, type ConfigCurrent, type ConfigForm } from './configForm';
+import { defaultConfig as current } from '@/engine/config';
+import { configFormOf, configPatch, type ConfigForm } from './configForm';
 
-const current: ConfigCurrent = { ...defaultConfig, dailyNorm: 4 };
 
 const patch = (over: Partial<ConfigForm> = {}) => configPatch({ ...configFormOf(current), ...over }, current);
 
@@ -10,10 +9,9 @@ describe('configFormOf', () => {
   test('поля заполнены текущими значениями строками', () => {
     const form = configFormOf(current);
     expect(form.maxPiles).toBe('5');
-    expect(form.dailyNorm).toBe('4');
-    expect(form.norms.experienced).toEqual({ quality: '5', long: '3' });
-    expect(form.stageThresholds).toHaveLength(15);
-    expect(form.stageThresholds[0]).toBe('6');
+    expect(form).not.toHaveProperty('dailyNorm');
+    expect(form.norms.experienced).toEqual({ quality: '5', long: '3', payments: '0,4' });
+    expect(form.stageThresholds).toEqual(['25', '50', '75', '100']);
   });
 });
 
@@ -22,8 +20,8 @@ describe('configPatch с датой', () => {
 
   test('в пределах дат игры уходит то же, что и без даты', () => {
     expect(at('2026-11-09', { maxPiles: '3' })).toEqual({ maxPiles: 3 });
-    expect(at(defaultConfig.startDate, { maxPiles: '3' })).toEqual({ maxPiles: 3 });
-    expect(at(defaultConfig.endDate, { maxPiles: '3' })).toEqual({ maxPiles: 3 });
+    expect(at(current.startDate, { maxPiles: '3' })).toEqual({ maxPiles: 3 });
+    expect(at(current.endDate, { maxPiles: '3' })).toEqual({ maxPiles: 3 });
   });
 
   test('дата не в формате yyyy-MM-dd или вне дат игры — ошибка', () => {
@@ -34,7 +32,7 @@ describe('configPatch с датой', () => {
 
   test('пороги стадий с датой не меняются: ошибка про всю игру', () => {
     const thresholds = configFormOf(current).stageThresholds.slice();
-    thresholds[14] = '160';
+    thresholds[3] = '160';
     expect(at('2026-11-09', { stageThresholds: thresholds })).toMatchObject({ error: expect.stringContaining('всю игру') });
   });
 
@@ -50,43 +48,55 @@ describe('configPatch', () => {
 
   test('уходит только изменённое поле', () => {
     expect(patch({ maxPiles: '6' })).toEqual({ maxPiles: 6 });
-    expect(patch({ dailyNorm: '6', sickPilesAbove: '3' })).toEqual({ dailyNorm: 6, sickPilesAbove: 3 });
+    expect(patch({ boredomBelow: '2', sickPilesAbove: '3' })).toEqual({ boredomBelow: 2, sickPilesAbove: 3 });
   });
 
   test('нормы: только изменённые поля изменённых уровней', () => {
     const form = configFormOf(current);
-    expect(patch({ norms: { ...form.norms, experienced: { quality: '1', long: '3' } } })).toEqual({
+    expect(patch({ norms: { ...form.norms, experienced: { ...form.norms.experienced, quality: '1' } } })).toEqual({
       norms: { experienced: { quality: 1 } },
     });
     expect(patch({
-      norms: { ...form.norms, rookie1: { quality: '1', long: '2' }, rookie2: { quality: '3', long: '1' } },
+      norms: { ...form.norms, rookie1: { ...form.norms.rookie1, long: '2' }, rookie2: { ...form.norms.rookie2, quality: '3' } },
     })).toEqual({ norms: { rookie1: { long: 2 }, rookie2: { quality: 3 } } });
   });
 
-  test('пороги стадий: при изменении уходят все 15', () => {
+  test('норма оплат в день: запятая или точка, до двух знаков', () => {
+    const form = configFormOf(current);
+    const pays = (text: string) => patch({ norms: { ...form.norms, experienced: { ...form.norms.experienced, payments: text } } });
+    expect(pays('0,5')).toEqual({ norms: { experienced: { payments: 0.5 } } });
+    expect(pays(' 0.57 ')).toEqual({ norms: { experienced: { payments: 0.57 } } });
+    expect(pays('2')).toEqual({ norms: { experienced: { payments: 2 } } });
+    expect(pays('0.4')).toEqual({ error: 'Ничего не изменено' });
+    for (const bad of ['', 'x', '0,123', '-1', '1,2,3']) {
+      expect(pays(bad), bad).toMatchObject({ error: expect.stringContaining('Опытный, оплат в день') });
+    }
+  });
+
+  test('пороги стадий: при изменении уходят все 4', () => {
     const thresholds = configFormOf(current).stageThresholds.slice();
-    thresholds[14] = '160';
-    expect(patch({ stageThresholds: thresholds })).toEqual({ stageThresholds: [...defaultConfig.stageThresholds.slice(0, 14), 160] });
+    thresholds[3] = '160';
+    expect(patch({ stageThresholds: thresholds })).toEqual({ stageThresholds: [25, 50, 75, 160] });
   });
 
   test('пороги не по возрастанию — ошибка с номером порога, равные тоже', () => {
     const equal = configFormOf(current).stageThresholds.slice();
-    equal[0] = '10';
-    expect(patch({ stageThresholds: equal })).toMatchObject({ error: expect.stringContaining('Порог 2') });
+    equal[0] = '50';
+    expect(patch({ stageThresholds: equal })).toMatchObject({ error: 'Стадия 3: процент должен быть больше, чем у стадии 2' });
     const down = configFormOf(current).stageThresholds.slice();
-    down[7] = '40';
-    expect(patch({ stageThresholds: down })).toMatchObject({ error: expect.stringContaining('Порог 8') });
+    down[3] = '40';
+    expect(patch({ stageThresholds: down })).toMatchObject({ error: expect.stringContaining('Стадия 5') });
   });
 
   test('не целое число или пусто — ошибка с названием поля', () => {
     for (const bad of ['', '  ', 'abc', '2.5', '1e3', '--1']) {
       expect(patch({ maxPiles: bad }), JSON.stringify(bad)).toMatchObject({ error: expect.stringContaining('Кучек') });
     }
-    expect(patch({ norms: { ...configFormOf(current).norms, rookie2: { quality: 'x', long: '1' } } }))
+    expect(patch({ norms: { ...configFormOf(current).norms, rookie2: { quality: 'x', long: '1', payments: '0,2' } } }))
       .toMatchObject({ error: expect.stringContaining('Новичок 2') });
     const thresholds = configFormOf(current).stageThresholds.slice();
     thresholds[3] = '';
-    expect(patch({ stageThresholds: thresholds })).toMatchObject({ error: expect.stringContaining('Порог 4') });
+    expect(patch({ stageThresholds: thresholds })).toMatchObject({ error: 'Стадия 5, %: введите целое число' });
   });
 
   test('пробелы по краям не мешают; диапазон проверяет сервер, клиент его пропускает', () => {

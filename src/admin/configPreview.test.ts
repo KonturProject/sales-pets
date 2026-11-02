@@ -6,18 +6,19 @@ const snap = (over: Partial<Snapshot> = {}): Snapshot => ({
   version: 1, serverNow: '2026-11-12T10:00:00+03:00', funnelThrough: null, paymentsImportedThrough: null,
   config: {}, configChanges: [], staff: [], absences: [], payments: [], provisional: [], funnel: [], overrides: [], ...over,
 });
-/** У СР1 12 оплат на сегодня (по умолчанию это стадия 2: пороги 6 и 10), у остальных групп пусто. */
+const person = (id: string) => ({ id, name: `Тест ${id}`, shortName: id, group: 'СР1' as const, hireDate: null, fireDate: null, baseLevel: 'experienced' as const, hiddenFromRating: false, transfers: [] });
+/** У СР1 три опытных (план 16.8 оплаты на игру) и 12 оплат на сегодня — 71 %, по умолчанию стадия 3; у остальных групп пусто. */
 const withTwelve = (over: Partial<Snapshot> = {}) =>
-  snap({ provisional: [{ date: '2026-11-12', group: 'СР1', count: 12 }], ...over });
+  snap({ staff: ['a', 'b', 'c'].map(person), provisional: [{ date: '2026-11-12', group: 'СР1', count: 12 }], ...over });
 
 describe('mergeConfig', () => {
   test('скаляры заменяются, нормы сливаются по уровню и полю, пороги заменяются целиком', () => {
     const raw = { maxPiles: 3, norms: { rookie1: { quality: 2, long: 1 } } };
-    const patch = { dailyNorm: 7, norms: { rookie1: { long: 4 }, experienced: { quality: 9 } }, stageThresholds: [1, 2] };
+    const patch = { boredomBelow: 7, norms: { rookie1: { long: 4, payments: 0.5 }, experienced: { quality: 9 } }, stageThresholds: [1, 2] };
     expect(mergeConfig(raw, patch)).toEqual({
       maxPiles: 3,
-      dailyNorm: 7,
-      norms: { rookie1: { quality: 2, long: 4 }, experienced: { quality: 9 } },
+      boredomBelow: 7,
+      norms: { rookie1: { quality: 2, long: 4, payments: 0.5 }, experienced: { quality: 9 } },
       stageThresholds: [1, 2],
     });
   });
@@ -32,11 +33,10 @@ describe('mergeConfig', () => {
 describe('configPreview', () => {
   test('поднятые пороги стадий опускают питомца: группа попадает в список со стадиями «было → станет»', () => {
     const s = withTwelve();
-    const t = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160];
-    const { asOf, changes } = configPreview(s, { stageThresholds: t });
+    const { asOf, changes } = configPreview(s, { stageThresholds: [80, 90, 95, 100] });
     expect(asOf).toBe('2026-11-12');
     expect(changes).toHaveLength(1);
-    expect(changes[0]).toMatchObject({ group: 'СР1', before: { alive: true, stage: 2 }, after: { alive: true, stage: 0 } });
+    expect(changes[0]).toMatchObject({ group: 'СР1', before: { alive: true, stage: 3 }, after: { alive: true, stage: 1 } });
   });
 
   test('запасы меняются без смены стадии: повышенная норма отнимает аптечку и игрушку, группа в списке', () => {
@@ -51,6 +51,12 @@ describe('configPreview', () => {
     expect(changes[0]).toMatchObject({ group: 'СР1', before: { medkits: 1, toys: 1 }, after: { medkits: 0, toys: 0 } });
   });
 
+  test('норма оплат меняет процент плана без смены стадии — это видно в предпросмотре', () => {
+    // три опытных: план 16.8 → 18.9 оплаты на игру, 12 оплат — 71 % → 63 %, стадия 3 остаётся
+    const { changes } = configPreview(withTwelve(), { norms: { experienced: { payments: 0.45 } } });
+    expect(changes).toEqual([expect.objectContaining({ group: 'СР1', before: expect.objectContaining({ stage: 3, planPercent: 71 }), after: expect.objectContaining({ stage: 3, planPercent: 63 }) })]);
+  });
+
   test('правка, после которой у всех всё так же, даёт пустой список', () => {
     expect(configPreview(withTwelve(), { maxPiles: 5 }).changes).toEqual([]);
   });
@@ -62,7 +68,7 @@ describe('configPreview', () => {
   test('снимок не меняется и кэш движка не подменяется', () => {
     const s = withTwelve();
     const before = JSON.stringify(s);
-    configPreview(s, { stageThresholds: [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160] });
+    configPreview(s, { stageThresholds: [80, 90, 95, 100] });
     expect(JSON.stringify(s)).toBe(before);
   });
 });
@@ -96,7 +102,7 @@ describe('applyPatch / removeChange (клиентское зеркало зап�
       { from: '2026-11-12', config: { sickDaysNoPay: 3 } },
     ]);
     expect(applyPatch(first, { norms: { experienced: { quality: 3 } } }).configChanges).toEqual([{ from: '2026-11-12', config: { sickDaysNoPay: 3 } }]);
-    expect(applyPatch(s, { stageThresholds: Array.from({ length: 15 }, (_, i) => i + 1) }).configChanges).toEqual(s.configChanges);
+    expect(applyPatch(s, { stageThresholds: [1, 2, 3, 4] }).configChanges).toEqual(s.configChanges);
   });
 
   test('removeChange убирает запись по дате; исходное состояние не меняется', () => {
@@ -178,24 +184,37 @@ describe('removalPreview', () => {
     const s = snap({ configChanges: [{ from: '2026-11-20', config: { maxPiles: 2 } }] });
     expect(removalPreview(s, '2026-11-20')).toMatchObject({ future: true, changes: [] });
   });
+
+  test('норма оплат с будущей даты меняет план на игру: стадия видна сегодня, и при «Убрать» тоже', () => {
+    const low = { norms: { experienced: { payments: 0.1 } } };
+    const p = configPreview(withTwelve(), low, '2026-11-16');
+    expect(p.future).toBe(true);
+    expect(p.changes[0]).toMatchObject({ group: 'СР1', before: { stage: 3 }, after: { stage: 4 } });
+    const s = withTwelve({ configChanges: [{ from: '2026-11-16', config: low }] });
+    expect(removalPreview(s, '2026-11-16').changes[0]).toMatchObject({ group: 'СР1', before: { stage: 4 }, after: { stage: 3 } });
+  });
 });
 
 describe('describeEntry', () => {
   test('дата, затем поля в порядке формы: скаляры, потом нормы по уровням', () => {
-    expect(describeEntry({ from: '2026-11-10', config: { norms: { rookie1: { long: 1 }, experienced: { quality: 2, long: 4 } }, maxPiles: 2, dailyNorm: 6 } }))
-      .toBe('с 10.11.2026: Дневная норма оплат 6; Кучек (максимум) 2; Опытный — качественные 2, длинные 4; Новичок 1 — длинные 1');
+    expect(describeEntry({ from: '2026-11-10', config: { norms: { rookie1: { long: 1 }, experienced: { quality: 2, long: 4, payments: 0.5 } }, maxPiles: 2 } }))
+      .toBe('с 10.11.2026: Кучек (максимум) 2; Опытный — качественные 2, длинные 4, оплат в день 0,5; Новичок 1 — длинные 1');
   });
 });
 
 describe('describeChange', () => {
   const live =(stage: number, phase: 'pet' | 'egg0' = 'pet') => ({
-    alive: true, phase, stage, totalPayments: 0, medkits: 0, toys: 0, piles: 0,
+    alive: true, phase, stage, planPercent: null, totalPayments: 0, medkits: 0, toys: 0, piles: 0,
   });
 
   test('стадия, смерть и «яйцо» читаются по-человечески', () => {
     expect(describeChange({ group: 'СР1', before: live(7), after: live(5) })).toBe('СР1: стадия 7 → стадия 5');
     expect(describeChange({ group: 'СР2', before: live(2), after: live(0, 'egg0') })).toBe('СР2: стадия 2 → яйцо');
     expect(describeChange({ group: 'СР3', before: live(3), after: { ...live(3), alive: false } })).toBe('СР3: стадия 3 → погиб');
+  });
+
+  test('процент плана называется, если изменился, даже при той же стадии', () => {
+    expect(describeChange({ group: 'СР1', before: { ...live(3), planPercent: 71 }, after: { ...live(3), planPercent: 63 } })).toBe('СР1: план 71 % → 63 %');
   });
 
   test('запасы и кучки называются, только если изменились', () => {

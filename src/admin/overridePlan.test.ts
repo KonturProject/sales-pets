@@ -3,7 +3,7 @@ import type { PetState } from '@/engine/pet';
 import { overrideDelta, parseAmount, splitDelta } from './overridePlan';
 
 const state = (over: Partial<PetState> = {}): PetState => ({
-  alive: true, generation: 0, totalPayments: 12, phase: 'pet', stage: 2, medkits: 2, toys: 3, piles: 4, mood: 'ok', satiety: 0.5,
+  alive: true, generation: 0, totalPayments: 12, phase: 'pet', stage: 2, planPercent: 30, medkits: 2, toys: 3, piles: 4, mood: 'ok', satiety: 0.5,
   ...over,
 });
 

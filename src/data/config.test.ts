@@ -21,15 +21,22 @@ describe('configOf', () => {
   test('нормы сливаются по уровням и по полям: нетронутое остаётся умолчанием', () => {
     const cfg = configOf({ norms: { rookie1: { quality: 3 }, experienced: { long: 0 } } });
     expect(cfg.norms).toEqual({
-      experienced: { quality: 5, long: 0 },
-      rookie1: { quality: 3, long: 0 },
-      rookie2: { quality: 2, long: 1 },
+      experienced: { quality: 5, long: 0, payments: 0.4 },
+      rookie1: { quality: 3, long: 0, payments: 0 },
+      rookie2: { quality: 2, long: 1, payments: 0.2 },
     });
   });
 
-  test('пороги стадий: ровно 15 строго возрастающих — принимаются', () => {
-    const thresholds = Array.from({ length: 15 }, (_, i) => (i + 1) * 5);
-    expect(configOf({ stageThresholds: thresholds }).stageThresholds).toEqual(thresholds);
+  test('норма оплат в день — дробная, до двух знаков', () => {
+    for (const payments of [0, 0.29, 0.57, 1.15, 50]) {
+      expect(configOf({ norms: { experienced: { payments } } }).norms.experienced.payments).toBe(payments);
+    }
+  });
+
+  test('пороги стадий 2–5: ровно 4 строго возрастающих процента до 1000 — принимаются', () => {
+    for (const thresholds of [[10, 30, 50, 70], [50, 100, 200, 1000]]) {
+      expect(configOf({ stageThresholds: thresholds }).stageThresholds).toEqual(thresholds);
+    }
   });
 
   test('календарь не берётся из config, даже если он там есть', () => {
@@ -39,16 +46,22 @@ describe('configOf', () => {
 
   test('испорченное значение игнорируется по полю, годное рядом остаётся', () => {
     const bad = [
-      { stageThresholds: Array.from({ length: 14 }, (_, i) => i + 1) },
-      { stageThresholds: [6, 10, 10, ...defaultConfig.stageThresholds.slice(3)] },
+      { stageThresholds: [6, 10, 15, 21, 28, 36, 45, 55, 66, 78, 91, 105, 120, 136, 153] },
+      { stageThresholds: [25, 50, 75] },
+      { stageThresholds: [25, 50, 50, 100] },
+      { stageThresholds: [25, 50, 75, 1001] },
       { stageThresholds: 'x' },
       { maxPiles: -1 },
       { maxPiles: 21 },
       { maxPiles: 2.5 },
       { maxPiles: '5' },
       { boredomBelow: NaN },
-      { dailyNorm: 0 },
       { norms: { experienced: { quality: 'x' } } },
+      { norms: { experienced: { payments: 0.123 } } },
+      { norms: { experienced: { payments: NaN } } },
+      { norms: { experienced: { payments: '0.4' } } },
+      { norms: { experienced: { payments: -0.1 } } },
+      { norms: { experienced: { payments: 50.01 } } },
       { norms: { experienced: { quality: 51 } } },
       { norms: { unknown: { quality: 1 } } },
       { norms: 'x' },
@@ -60,7 +73,7 @@ describe('configOf', () => {
 
   test('одно испорченное поле нормы не отбрасывает исправное в том же уровне', () => {
     const raw = { norms: { experienced: { quality: 'x', long: 2 } } } as unknown as SnapshotConfig;
-    expect(configOf(raw).norms.experienced).toEqual({ quality: 5, long: 2 });
+    expect(configOf(raw).norms.experienced).toEqual({ quality: 5, long: 2, payments: 0.4 });
   });
 
   test('не объект (null, число, строка, массив) — умолчания', () => {
@@ -77,7 +90,7 @@ describe('configOf', () => {
 
   test('умолчания не изменяются разбором', () => {
     const before = JSON.stringify(defaultConfig);
-    configOf({ maxPiles: 7, norms: { rookie1: { quality: 9 } }, stageThresholds: Array.from({ length: 15 }, (_, i) => i + 1) });
+    configOf({ maxPiles: 7, norms: { rookie1: { quality: 9, payments: 1 } }, stageThresholds: [1, 2, 3, 4] });
     expect(JSON.stringify(defaultConfig)).toBe(before);
   });
 });
@@ -97,9 +110,9 @@ describe('timelineOf', () => {
 
   test('запись меняет нормы с своей даты: до даты база, с даты — новое значение, нетронутое остаётся', () => {
     const t = tl({}, [change('2026-11-09', { norms: { experienced: { quality: 2 } } })]);
-    expect(t.at('2026-11-06').norms.experienced).toEqual({ quality: 5, long: 3 });
-    expect(t.at('2026-11-09').norms.experienced).toEqual({ quality: 2, long: 3 });
-    expect(t.at('2026-11-20').norms.experienced).toEqual({ quality: 2, long: 3 });
+    expect(t.at('2026-11-06').norms.experienced).toEqual({ quality: 5, long: 3, payments: 0.4 });
+    expect(t.at('2026-11-09').norms.experienced).toEqual({ quality: 2, long: 3, payments: 0.4 });
+    expect(t.at('2026-11-20').norms.experienced).toEqual({ quality: 2, long: 3, payments: 0.4 });
     expect(t.at('2026-11-09').maxPiles).toBe(defaultConfig.maxPiles);
   });
 
@@ -112,7 +125,7 @@ describe('timelineOf', () => {
   });
 
   test('пороги стадий в записи по дате игнорируются', () => {
-    const t = tl({}, [change('2026-11-09', { maxPiles: 2, stageThresholds: Array.from({ length: 15 }, (_, i) => i + 1) })]);
+    const t = tl({}, [change('2026-11-09', { maxPiles: 2, stageThresholds: [1, 2, 3, 4] })]);
     expect(t.at('2026-11-10').stageThresholds).toEqual(defaultConfig.stageThresholds);
     expect(t.at('2026-11-10').maxPiles).toBe(2);
   });
@@ -145,12 +158,14 @@ describe('timelineOf', () => {
     expect(JSON.stringify(defaultConfig)).toBe(before);
   });
 
-  test('dailyNormAt: база, затем записи; испорченное значение оставляет унаследованное', () => {
-    const t = tl({ dailyNorm: 6 }, [change('2026-11-09', { dailyNorm: 8 }), change('2026-11-12', { dailyNorm: 0 })]);
-    expect(t.dailyNormAt('2026-11-06')).toBe(6);
-    expect(t.dailyNormAt('2026-11-09')).toBe(8);
-    expect(t.dailyNormAt('2026-11-12')).toBe(8);
-    expect(tl({}, []).dailyNormAt('2026-11-12')).toBeUndefined();
+  test('норма оплат «с даты»: до даты база, с даты новая; испорченная оставляет унаследованную', () => {
+    const t = tl({ norms: { experienced: { payments: 0.6 } } }, [
+      change('2026-11-09', { norms: { experienced: { payments: 0.8 } } }),
+      change('2026-11-12', { norms: { experienced: { payments: 0.123 } } }),
+    ]);
+    expect(t.at('2026-11-06').norms.experienced.payments).toBe(0.6);
+    expect(t.at('2026-11-09').norms.experienced.payments).toBe(0.8);
+    expect(t.at('2026-11-12').norms.experienced.payments).toBe(0.8);
   });
 
   test('один и тот же снимок — один и тот же Timeline', () => {

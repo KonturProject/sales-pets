@@ -7,16 +7,16 @@ import type { GroupCode } from '@/engine/types';
 import { dayLine, freshLine, groupFunnel, partyBanner, paymentGains, tickerItems } from './metrics';
 
 const state = (o: Partial<PetState> = {}): PetState => ({
-  alive: true, generation: 0, totalPayments: 0, phase: 'egg0', stage: 0,
+  alive: true, generation: 0, totalPayments: 0, phase: 'egg0', stage: 0, planPercent: null,
   medkits: 0, toys: 0, piles: 0, mood: 'ok', satiety: 0, ...o,
 });
 
 describe('tickerItems: цифры табло комнаты', () => {
-  test('питомец: стадия, оплаты, качественные и длинные', () => {
-    const items = tickerItems(state({ phase: 'pet', stage: 7, totalPayments: 45 }), { quality: 132, long: 41 });
+  test('питомец: стадия из пяти, оплаты с процентом плана, качественные и длинные', () => {
+    const items = tickerItems(state({ phase: 'pet', stage: 4, totalPayments: 45, planPercent: 81 }), { quality: 132, long: 41 });
     expect(items).toEqual([
-      { label: 'Стадия', value: '7', unit: '/ 15' },
-      { label: 'Оплат', value: '45' },
+      { label: 'Стадия', value: '4', unit: '/ 5' },
+      { label: 'Оплат', value: '45', unit: '81 % плана' },
       { label: 'Качественных счетов', value: '132' },
       { label: 'Длинных презентаций', value: '41' },
     ]);
@@ -24,6 +24,10 @@ describe('tickerItems: цифры табло комнаты', () => {
 
   test('питомец без данных воронки: только стадия и оплаты', () => {
     expect(tickerItems(state({ phase: 'pet', stage: 1, totalPayments: 6 })).map((i) => i.label)).toEqual(['Стадия', 'Оплат']);
+  });
+
+  test('плана нет (штата нет) — процент не показывается', () => {
+    expect(tickerItems(state({ phase: 'pet', stage: 1, totalPayments: 6 }))[1]).toEqual({ label: 'Оплат', value: '6' });
   });
 
   test('яйцо: сколько оплат из пяти до вылупления', () => {

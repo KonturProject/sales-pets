@@ -14,8 +14,6 @@ import { newUses } from '@/game/uses';
 
 /** Дата витрины по умолчанию: середина игры, видны все состояния. */
 const DEMO_AS_OF: DateStr = '2026-11-12';
-/** Дневная норма оплат группы для сытости; в бою придёт из среднего прошлого месяца. */
-const DEMO_DAILY_NORM = 4;
 
 const params = new URLSearchParams(location.search);
 const root = document.getElementById('app')!;
@@ -23,7 +21,7 @@ const root = document.getElementById('app')!;
 function demoStates(asOf: DateStr): Record<GroupCode, PetState> {
   const demo = buildDemo(asOf);
   return Object.fromEntries(
-    GROUPS.map((g) => [g, simulate({ ...groupFacts(demo, g, asOf), dailyNorm: DEMO_DAILY_NORM }, asOf, defaultConfig)]),
+    GROUPS.map((g) => [g, simulate(groupFacts(demo, g, asOf), asOf, defaultConfig)]),
   ) as Record<GroupCode, PetState>;
 }
 

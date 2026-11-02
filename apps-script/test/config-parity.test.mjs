@@ -11,13 +11,13 @@ const STEPS = [
   { patch: { sickDaysNoPay: 3, norms: { experienced: { quality: 2 } } }, from: '2026-11-12' },
   { patch: { maxPiles: 2, norms: { experienced: { quality: 1, long: 1 } } }, from: '2026-11-09' },
   { patch: { norms: { experienced: { long: 2 } } }, from: '2026-11-12' },
-  { patch: { dailyNorm: 7 }, from: '2026-11-16' },
+  { patch: { norms: { rookie2: { payments: 0.35 } } }, from: '2026-11-16' },
   { patch: { norms: { experienced: { quality: 7 } } } },
   { patch: { maxPiles: 6 } },
   { remove: '2026-11-12' },
-  { patch: { stageThresholds: Array.from({ length: 15 }, (_, i) => (i + 1) * 5) } },
+  { patch: { stageThresholds: [10, 30, 50, 70] } },
   { patch: { norms: { experienced: { long: 5 } } } },
-  { patch: { dailyNorm: 3 } },
+  { patch: { norms: { rookie2: { payments: 0.2 } } } },
 ];
 
 describe('клиентское зеркало setConfig / removeConfigChange', () => {

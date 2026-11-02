@@ -21,7 +21,6 @@ const HIDDEN_REASON_MAX = 200;
 
 /** Допустимые правки config (целые, включительно); календарь (startDate, endDate, nonWorking) не правится. */
 const CONFIG_RANGES = {
-  dailyNorm: [1, 1000],
   maxPiles: [1, 20],
   boredomBelow: [0, 100],
   sickDaysNoPay: [1, 30],
@@ -30,10 +29,12 @@ const CONFIG_RANGES = {
 };
 /** Правок «с даты» (configChanges) не больше: ячейка листа не безразмерна. */
 const CONFIG_CHANGES_MAX = 30;
-const NORM_FIELDS = ['quality', 'long'];
+/** Личные нормы по уровню: воронка за день (целые) и оплат в день (дробное, до сотых). */
+const NORM_FIELDS = ['quality', 'long', 'payments'];
 const NORM_MAX = 50;
-const STAGE_COUNT = 15;
-const STAGE_THRESHOLD_MAX = 100000;
+/** Пороги стадий 2..5 — проценты плана оплат группы на игру. */
+const STAGE_COUNT = 4;
+const STAGE_THRESHOLD_MAX = 1000;
 const OVERRIDE_KINDS = ['piles', 'medkits', 'toys'];
 const OVERRIDE_DELTA_MAX = 20;
 /** Предмет, который тратит РГ → вид строки в Overrides (тот же `kind`, что у движка). */
@@ -95,6 +96,11 @@ function isCount_(v) {
 
 function isIntIn_(v, min, max) {
   return typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
+}
+
+/** Норма оплат в день: 0…NORM_MAX, не больше двух знаков после запятой (так же проверяет клиент). */
+function isPaymentsNorm_(v) {
+  return typeof v === 'number' && v >= 0 && v <= NORM_MAX && Math.round(v * 100) / 100 === v;
 }
 
 function isPlainObject_(v) {
@@ -664,7 +670,7 @@ function validThresholds_(v) {
   return true;
 }
 
-/** Сливает частичные нормы по уровням в сохранённые; пустой уровень или поле вне quality|long — bad_request. */
+/** Сливает частичные нормы по уровням в сохранённые; пустой уровень или поле вне quality|long|payments — bad_request. */
 function mergeNorms_(base, patch) {
   if (!isPlainObject_(patch) || Object.keys(patch).length === 0) fail_();
   const out = isPlainObject_(base) ? base : {};
@@ -673,7 +679,8 @@ function mergeNorms_(base, patch) {
     if (LEVELS.indexOf(level) < 0 || fields.length === 0) fail_();
     const norm = isPlainObject_(out[level]) ? out[level] : {};
     fields.forEach(function (f) {
-      if (NORM_FIELDS.indexOf(f) < 0 || !isIntIn_(patch[level][f], 0, NORM_MAX)) fail_();
+      const v = patch[level][f];
+      if (NORM_FIELDS.indexOf(f) < 0 || !(f === 'payments' ? isPaymentsNorm_(v) : isIntIn_(v, 0, NORM_MAX))) fail_();
       norm[f] = patch[level][f];
     });
     out[level] = norm;

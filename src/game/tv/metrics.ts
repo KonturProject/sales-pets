@@ -25,7 +25,7 @@ export function tickerItems(s: PetState, funnel?: FunnelTotal): TickerItem[] {
   if (s.phase !== 'pet') return [{ label: 'До вылупления', value: String(s.totalPayments), unit: `из ${HATCH_AT} оплат` }];
   return [
     { label: 'Стадия', value: String(s.stage), unit: `/ ${MAX_STAGE}` },
-    { label: 'Оплат', value: String(s.totalPayments) },
+    s.planPercent === null ? { label: 'Оплат', value: String(s.totalPayments) } : { label: 'Оплат', value: String(s.totalPayments), unit: `${s.planPercent} % плана` },
     ...(funnel ? [
       { label: 'Качественных счетов', value: String(funnel.quality) },
       { label: 'Длинных презентаций', value: String(funnel.long) },

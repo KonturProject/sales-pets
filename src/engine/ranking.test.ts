@@ -14,7 +14,7 @@ const from = '2026-11-02';
 const to = '2026-11-12';
 
 describe('герои дня: нормы по датам', () => {
-  const lowered = { ...cfg, norms: { ...cfg.norms, experienced: { quality: 2, long: 0 } } };
+  const lowered = { ...cfg, norms: { ...cfg.norms, experienced: { quality: 2, long: 0, payments: 0.4 } } };
   const funnelOn = (date: string) => ({ employeeId: 'a', date, quality: 2, long: 0 });
 
   test('оценивается нормой дня: со смены нормы тот же факт даёт 100%', () => {

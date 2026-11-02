@@ -3,26 +3,25 @@ import type { Config } from '@/engine/config';
 import type { Level } from '@/engine/types';
 import { ruDate } from './dom';
 
-/** Настройки игры вместе с дневной нормой оплат: в `Config` её нет, она живёт в снимке отдельно. */
-export type ConfigCurrent = Config & { dailyNorm: number };
-
 export interface ConfigForm {
-  dailyNorm: string;
   maxPiles: string;
   boredomBelow: string;
   sickDaysNoPay: string;
   sickPilesAbove: string;
   deathDaysNoPay: string;
-  norms: Record<Level, { quality: string; long: string }>;
+  norms: Record<Level, { quality: string; long: string; payments: string }>;
   stageThresholds: string[];
 }
 
 export const LEVELS: readonly Level[] = ['experienced', 'rookie1', 'rookie2'];
 export const LEVEL_TITLE: Record<Level, string> = { experienced: 'Опытный', rookie1: 'Новичок 1', rookie2: 'Новичок 2' };
-export const NORM_FIELD_TITLE = { quality: 'качественные', long: 'длинные' } as const;
+export const NORM_FIELD_TITLE = { quality: 'качественные', long: 'длинные', payments: 'оплат в день' } as const;
+export const NORM_FIELDS = ['quality', 'long', 'payments'] as const;
+
+/** Норма оплат в форме — с запятой, как пишут по-русски. */
+export const ruNumber = (n: number): string => String(n).replace('.', ',');
 
 export const SCALARS = {
-  dailyNorm: 'Дневная норма оплат',
   maxPiles: 'Кучек (максимум)',
   boredomBelow: 'Скука: оплат за вчера меньше',
   sickDaysNoPay: 'Болезнь: дней без оплат',
@@ -32,13 +31,12 @@ export const SCALARS = {
 export type Scalar = keyof typeof SCALARS;
 export const SCALAR_KEYS = Object.keys(SCALARS) as Scalar[];
 
-export function configFormOf(current: ConfigCurrent): ConfigForm {
+export function configFormOf(current: Config): ConfigForm {
   const norms = Object.fromEntries(LEVELS.map((l) => [
     l,
-    { quality: String(current.norms[l].quality), long: String(current.norms[l].long) },
+    { quality: String(current.norms[l].quality), long: String(current.norms[l].long), payments: ruNumber(current.norms[l].payments) },
   ])) as ConfigForm['norms'];
   return {
-    dailyNorm: String(current.dailyNorm),
     maxPiles: String(current.maxPiles),
     boredomBelow: String(current.boredomBelow),
     sickDaysNoPay: String(current.sickDaysNoPay),
@@ -50,12 +48,14 @@ export function configFormOf(current: ConfigCurrent): ConfigForm {
 }
 
 const whole = (text: string): number | null => (/^-?\d+$/.test(text.trim()) ? Number(text.trim()) : null);
+/** Не больше двух знаков после запятой или точки: так же проверяет сервер. */
+const hundredths = (text: string): number | null => (/^\d+([.,]\d{1,2})?$/.test(text.trim()) ? Number(text.trim().replace(',', '.')) : null);
 
 /**
- * Что отправить в `setConfig`: только изменённое. Что это целое число, проверяется здесь, а диапазоны —
- * на сервере (его сообщение админ увидит как есть); порядок порогов стадий проверяется здесь, он нужен для всех 15.
+ * Что отправить в `setConfig`: только изменённое. Что это число нужного вида, проверяется здесь, а диапазоны —
+ * на сервере (его сообщение админ увидит как есть); порядок порогов стадий проверяется здесь, он нужен для всех четырёх.
  */
-export function configPatch(form: ConfigForm, current: ConfigCurrent, from?: string): SnapshotConfig | { error: string } {
+export function configPatch(form: ConfigForm, current: Config, from?: string): SnapshotConfig | { error: string } {
   if (from !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(from) || from < current.startDate || from > current.endDate)) {
     return { error: `Дата правки: выберите день игры, с ${ruDate(current.startDate)} по ${ruDate(current.endDate)}` };
   }
@@ -74,14 +74,18 @@ export function configPatch(form: ConfigForm, current: ConfigCurrent, from?: str
       if (n === null) return { error: `${LEVEL_TITLE[level]}, ${NORM_FIELD_TITLE[field]}: введите целое число` };
       if (n !== current.norms[level][field]) norms[level] = { ...norms[level], [field]: n };
     }
+    const pays = hundredths(form.norms[level].payments);
+    if (pays === null) return { error: `${LEVEL_TITLE[level]}, ${NORM_FIELD_TITLE.payments}: число, например 0,4 (не больше двух знаков после запятой)` };
+    if (pays !== current.norms[level].payments) norms[level] = { ...norms[level], payments: pays };
   }
   if (Object.keys(norms).length) out.norms = norms;
 
   const thresholds: number[] = [];
   for (const [i, text] of form.stageThresholds.entries()) {
     const n = whole(text);
-    if (n === null) return { error: `Порог ${i + 1}: введите целое число` };
-    if (i > 0 && n <= thresholds[i - 1]!) return { error: `Порог ${i + 1} должен быть больше порога ${i}` };
+    // поля подписаны «Стадия 2, %» … «Стадия 5, %»: ошибка называет поле так же
+    if (n === null) return { error: `Стадия ${i + 2}, %: введите целое число` };
+    if (i > 0 && n <= thresholds[i - 1]!) return { error: `Стадия ${i + 2}: процент должен быть больше, чем у стадии ${i + 1}` };
     thresholds.push(n);
   }
   if (thresholds.some((n, i) => n !== current.stageThresholds[i])) {

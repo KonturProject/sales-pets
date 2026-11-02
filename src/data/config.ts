@@ -10,15 +10,18 @@ const INT_RANGES = {
   sickPilesAbove: [0, 20],
   deathDaysNoPay: [1, 30],
 } as const;
-const DAILY_NORM_RANGE = [1, 1000] as const;
 const NORM_MAX = 50;
-const STAGE_COUNT = 15;
-const STAGE_THRESHOLD_MAX = 100_000;
+/** пороги стадий 2..5 — проценты плана оплат группы на игру */
+const STAGE_COUNT = 4;
+const STAGE_THRESHOLD_MAX = 1000;
 const LEVELS = Object.keys(defaultConfig.norms) as Level[];
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isIntIn = (v: unknown, lo: number, hi: number): v is number =>
   typeof v === 'number' && Number.isInteger(v) && v >= lo && v <= hi;
+/** Норма оплат в день: 0…50, не больше двух знаков после запятой (так же проверяет сервер). */
+const isPaymentsNorm = (v: unknown): v is number =>
+  typeof v === 'number' && v >= 0 && v <= NORM_MAX && Math.round(v * 100) / 100 === v;
 
 const validThresholds = (v: unknown): v is number[] =>
   Array.isArray(v) &&
@@ -61,6 +64,7 @@ function applyValid(out: Config, raw: Record<string, unknown>, withThresholds: b
       for (const field of ['quality', 'long'] as const) {
         if (isIntIn(norm[field], 0, NORM_MAX)) { out.norms[level][field] = norm[field]; changed = true; }
       }
+      if (isPaymentsNorm(norm.payments)) { out.norms[level].payments = norm.payments; changed = true; }
     }
   }
 
@@ -74,15 +78,9 @@ function parse(raw: Record<string, unknown>): Config {
   return applyValid(out, raw, true) ? out : defaultConfig;
 }
 
-/** Дневная норма оплат из снимка, если она годная; иначе `undefined` — вызывающий берёт умолчание. */
-export function dailyNormOf(raw: SnapshotConfig): number | undefined {
-  return isObject(raw) && isIntIn(raw.dailyNorm, ...DAILY_NORM_RANGE) ? raw.dailyNorm : undefined;
-}
-
 /** Настройки игры по датам: база («вся игра») и правки, действующие с даты. Пороги стадий от даты не зависят. */
 export interface Timeline {
   at(date: DateStr): Config;
-  dailyNormAt(date: DateStr): number | undefined;
 }
 
 const timelines = new WeakMap<object, Timeline>();
@@ -97,19 +95,16 @@ export function timelineOf(s: Pick<Snapshot, 'config' | 'configChanges'>): Timel
   if (hit) return hit;
 
   const base = configOf(s.config);
-  const baseNorm = dailyNormOf(s.config);
   const entries = (Array.isArray(s.configChanges) ? s.configChanges : [])
     .filter((e): e is ConfigChange => isObject(e) && isDateStr(e.from) && isObject(e.config))
     .sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
 
   let cfg = base;
-  let norm = baseNorm;
   const steps = entries.map((e) => {
     const next = cloneConfig(cfg);
     applyValid(next, e.config as Record<string, unknown>, false);
     cfg = next;
-    if (isIntIn(e.config.dailyNorm, ...DAILY_NORM_RANGE)) norm = e.config.dailyNorm;
-    return { from: e.from, cfg, norm };
+    return { from: e.from, cfg };
   });
   const last = (date: DateStr) => {
     let found: (typeof steps)[number] | undefined;
@@ -122,7 +117,6 @@ export function timelineOf(s: Pick<Snapshot, 'config' | 'configChanges'>): Timel
 
   const timeline: Timeline = {
     at: (date) => last(date)?.cfg ?? base,
-    dailyNormAt: (date) => (last(date) ? last(date)!.norm : baseNorm),
   };
   timelines.set(s, timeline);
   return timeline;

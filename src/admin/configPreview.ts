@@ -4,14 +4,14 @@ import { buildFacts } from '@/data/facts';
 import { workingDaysBetween } from '@/engine/calendar';
 import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
 import type { PetState } from '@/engine/pet';
-import { LEVELS, LEVEL_TITLE, NORM_FIELD_TITLE, SCALAR_KEYS, SCALARS } from './configForm';
+import { LEVELS, LEVEL_TITLE, NORM_FIELD_TITLE, NORM_FIELDS, ruNumber, SCALAR_KEYS, SCALARS } from './configForm';
 import { ruDate } from './dom';
 
-export type PetLine = Pick<PetState, 'alive' | 'phase' | 'stage' | 'totalPayments' | 'medkits' | 'toys' | 'piles'>;
+export type PetLine = Pick<PetState, 'alive' | 'phase' | 'stage' | 'planPercent' | 'totalPayments' | 'medkits' | 'toys' | 'piles'>;
 export interface GroupChange { group: GroupCode; before: PetLine; after: PetLine }
 
-const lineOf = ({ alive, phase, stage, totalPayments, medkits, toys, piles }: PetState): PetLine => ({
-  alive, phase, stage, totalPayments, medkits, toys, piles,
+const lineOf = ({ alive, phase, stage, planPercent, totalPayments, medkits, toys, piles }: PetState): PetLine => ({
+  alive, phase, stage, planPercent, totalPayments, medkits, toys, piles,
 });
 
 /** Так же, как `setConfig` на сервере: скаляры заменяются, нормы сливаются по уровню и полю, пороги стадий заменяются целиком. */
@@ -46,7 +46,7 @@ function stripFields(changes: ConfigChange[], patch: SnapshotConfig): ConfigChan
           const fields = patch.norms[level];
           const norm = config.norms[level];
           if (!fields || !norm) continue;
-          for (const f of ['quality', 'long'] as const) if (f in fields) delete norm[f];
+          for (const f of NORM_FIELDS) if (f in fields) delete norm[f];
           if (!Object.keys(norm).length) delete config.norms[level];
         }
         if (!Object.keys(config.norms).length) delete config.norms;
@@ -78,7 +78,7 @@ export function removeChange(state: ConfigState, from: DateStr): ConfigState {
 export interface ConfigPreview {
   /** «сегодня» по серверу (R23) */
   asOf: DateStr;
-  /** правка с даты, которая ещё не наступила: сегодня ничего не меняется */
+  /** правка с даты, которая ещё не наступила: оценки дней сегодня не меняются, но норма оплат меняет план на игру */
   future: boolean;
   /** рабочие дни от даты правки (без даты — с начала игры) до последнего дня с загруженной воронкой: у них пересчитывается оценка */
   evaluatedDays: number;
@@ -99,14 +99,13 @@ function compare(s: Snapshot, next: ConfigState, from: DateStr | undefined, eras
   const asOf = serverToday(s);
   const future = from !== undefined && from > asOf;
   const { days, through } = evaluated(s, from ?? configOf(s.config).startDate, asOf);
+  // и для будущей даты: норма оплат с неё меняет план группы на всю игру, а значит стадии уже сегодня
   const changes: GroupChange[] = [];
-  if (!future) {
-    const before = buildFacts(s, asOf).states;
-    const after = buildFacts({ ...s, config: next.config, configChanges: next.configChanges }, asOf).states;
-    for (const group of GROUPS) {
-      const change = { group, before: lineOf(before[group]), after: lineOf(after[group]) };
-      if (differences(change).length) changes.push(change);
-    }
+  const before = buildFacts(s, asOf).states;
+  const after = buildFacts({ ...s, config: next.config, configChanges: next.configChanges }, asOf).states;
+  for (const group of GROUPS) {
+    const change = { group, before: lineOf(before[group]), after: lineOf(after[group]) };
+    if (differences(change).length) changes.push(change);
   }
   return { asOf, future, evaluatedDays: days, evaluatedThrough: through, changes, erased };
 }
@@ -136,6 +135,8 @@ const COUNTS = [['medkits', 'аптечки'], ['toys', 'игрушки'], ['pil
 function differences({ before, after }: GroupChange): string[] {
   const parts: string[] = [];
   if (looks(before) !== looks(after)) parts.push(`${looks(before)} → ${looks(after)}`);
+  // процент плана виден на табло ТВ: его смена — тоже последствие, даже при той же стадии
+  if (before.planPercent !== after.planPercent) parts.push(`план ${before.planPercent ?? '—'} % → ${after.planPercent ?? '—'} %`);
   for (const [key, title] of COUNTS) if (before[key] !== after[key]) parts.push(`${title} ${before[key]} → ${after[key]}`);
   return parts;
 }
@@ -150,7 +151,7 @@ export function describeEntry({ from, config }: ConfigChange): string {
   for (const level of LEVELS) {
     const norm = config.norms?.[level];
     if (!norm) continue;
-    const fields = (['quality', 'long'] as const).filter((f) => norm[f] !== undefined).map((f) => `${NORM_FIELD_TITLE[f]} ${norm[f]}`);
+    const fields = NORM_FIELDS.filter((f) => norm[f] !== undefined).map((f) => `${NORM_FIELD_TITLE[f]} ${ruNumber(norm[f]!)}`);
     if (fields.length) parts.push(`${LEVEL_TITLE[level]} — ${fields.join(', ')}`);
   }
   return `с ${ruDate(from)}: ${parts.join('; ')}`;

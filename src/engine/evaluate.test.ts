@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { defaultConfig as cfg } from './config';
-import { evaluateDay, type FunnelDay } from './evaluate';
+import { evaluateDay, groupPlan, paymentPlanCents, type FunnelDay } from './evaluate';
 import type { Absence, Employee } from './staff';
 
 const emp = (id: string, o: Partial<Employee> = {}): Employee => ({
@@ -64,5 +64,47 @@ describe('evaluateDay', () => {
     expect(r.longRequired).toBe(false);
     expect(r.longMet).toBe(false);
     expect(r.qualityMet).toBe(true);
+  });
+});
+
+describe('план оплат группы: сумма личных норм «оплат в день» по уровню', () => {
+  const staff = [
+    emp('a'),
+    emp('b', { baseLevel: 'rookie2' }),
+    emp('c', { baseLevel: 'rookie1' }),
+    emp('d', { group: 'СР2' }),
+    emp('e', { fireDate: '2026-11-03' }),
+  ];
+  const away: Absence[] = [{ employeeId: 'a', from: '2026-11-05', to: '2026-11-05', kind: 'sick' }];
+
+  test('день: присутствующие сотрудники группы, в сотых оплаты', () => {
+    expect(paymentPlanCents('СР1', D, staff, [], cfg)).toBe(40 + 20 + 0);
+    expect(paymentPlanCents('СР1', '2026-11-02', staff, [], cfg)).toBe(40 + 20 + 0 + 40);
+    expect(paymentPlanCents('СР1', '2026-11-05', staff, away, cfg)).toBe(20);
+    expect(paymentPlanCents('СР2', D, staff, [], cfg)).toBe(40);
+  });
+
+  test('игра: все рабочие дни 02–20.11 (14), и план на день asOf', () => {
+    const one = [emp('a')];
+    expect(groupPlan('СР1', D, one, [], () => cfg, cfg)).toEqual({ gameCents: 14 * 40, dayCents: 40 });
+  });
+
+  test('правка нормы «с даты» меняет план только с этой даты', () => {
+    const later = { ...cfg, norms: { ...cfg.norms, experienced: { ...cfg.norms.experienced, payments: 0.5 } } };
+    const cfgOn = (d: string) => (d >= '2026-11-16' ? later : cfg);
+    // 9 рабочих дней до 16.11 по 0.4 и 5 дней с 16.11 по 0.5
+    expect(groupPlan('СР1', '2026-11-17', [emp('a')], [], cfgOn, cfg)).toEqual({ gameCents: 9 * 40 + 5 * 50, dayCents: 50 });
+  });
+
+  test('перевод между группами: дни до перевода — в план старой группы, после — новой', () => {
+    const moved = [emp('a', { transfers: [{ date: '2026-11-09', group: 'СР2' }] })];
+    // 4 рабочих дня до 09.11 (02, 03, 05, 06) — СР1, остальные 10 — СР2
+    expect(groupPlan('СР1', D, moved, [], () => cfg, cfg).gameCents).toBe(4 * 40);
+    expect(groupPlan('СР2', D, moved, [], () => cfg, cfg).gameCents).toBe(10 * 40);
+  });
+
+  test('дробные нормы складываются без ошибок округления', () => {
+    const ten = Array.from({ length: 10 }, (_, i) => emp(`p${i}`));
+    expect(groupPlan('СР1', D, ten, [], () => cfg, cfg).gameCents).toBe(14 * 400);
   });
 });

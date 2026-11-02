@@ -23,9 +23,9 @@ describe('демо-данные', () => {
   });
 
   test('шесть групп в шести разных состояниях', () => {
-    expect(stateOf('СР1', asOf)).toMatchObject({ phase: 'pet', mood: 'ok', stage: 7, alive: true });
+    expect(stateOf('СР1', asOf)).toMatchObject({ phase: 'pet', mood: 'ok', stage: 5, planPercent: 133, alive: true });
     expect(stateOf('СР2', asOf)).toMatchObject({ phase: 'egg2', mood: 'ok' });
-    expect(stateOf('СР3', asOf)).toMatchObject({ phase: 'pet', mood: 'ok', stage: 1 });
+    expect(stateOf('СР3', asOf)).toMatchObject({ phase: 'pet', mood: 'ok', stage: 2 });
     expect(stateOf('СР5', asOf)).toMatchObject({ phase: 'pet', mood: 'bored', piles: 0 });
     expect(stateOf('СР6', asOf)).toMatchObject({ phase: 'pet', mood: 'sick', piles: 5 });
     expect(stateOf('СР9', asOf)).toMatchObject({ phase: 'egg0', alive: true, generation: 1 });

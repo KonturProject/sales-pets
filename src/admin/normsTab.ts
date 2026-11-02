@@ -1,20 +1,21 @@
 import type { ConfigChange, Snapshot, SnapshotConfig } from '@/data/api';
-import { configOf, dailyNormOf, timelineOf } from '@/data/config';
-import { DEFAULT_DAILY_NORM } from '@/data/facts';
+import { configOf, timelineOf } from '@/data/config';
+import type { Config } from '@/engine/config';
 import type { DateStr } from '@/engine/types';
-import {
-  configFormOf, configPatch, LEVELS, LEVEL_TITLE, NORM_FIELD_TITLE, SCALAR_KEYS, SCALARS, type ConfigCurrent,
-} from './configForm';
+import { configFormOf, configPatch, LEVELS, LEVEL_TITLE, NORM_FIELD_TITLE, NORM_FIELDS, SCALAR_KEYS, SCALARS } from './configForm';
 import { configPreview, describeChange, describeEntry, removalPreview, type ConfigPreview } from './configPreview';
 import type { AdminCtx } from './ctx';
 import { errorText, h, ruDate } from './dom';
 
 /** Что действует на дату `from` (без даты — «вся игра», то есть база): с этих значений начинается форма. */
-function currentAt(s: Snapshot, from: DateStr | undefined): ConfigCurrent {
-  if (from === undefined) return { ...configOf(s.config), dailyNorm: dailyNormOf(s.config) ?? DEFAULT_DAILY_NORM };
-  const timeline = timelineOf(s);
-  return { ...timeline.at(from), dailyNorm: timeline.dailyNormAt(from) ?? DEFAULT_DAILY_NORM };
+function currentAt(s: Snapshot, from: DateStr | undefined): Config {
+  return from === undefined ? configOf(s.config) : timelineOf(s).at(from);
 }
+
+/** Правка трогает только нормы оплат: оценки дней (воронку) она не пересчитывает. */
+const paymentsOnly = (patch: SnapshotConfig): boolean =>
+  Object.keys(patch).every((k) => k === 'norms') &&
+  LEVELS.every((l) => Object.keys(patch.norms?.[l] ?? {}).every((f) => f === 'payments'));
 
 const changesOf = (s: Snapshot): ConfigChange[] => s.configChanges ?? [];
 
@@ -67,12 +68,10 @@ export async function normsTab(ctx: AdminCtx): Promise<HTMLElement> {
       'div',
       { 'data-preview': 'config', role: 'group', 'aria-label': 'Что изменится' },
       ...intro.map((t) => h('p', {}, t)),
-      ...(p.future ? [] : [
-        h('p', {}, `У питомцев сегодня (${p.asOf}) изменится:`),
-        p.changes.length
-          ? h('ul', {}, ...p.changes.map((c) => h('li', {}, describeChange(c))))
-          : h('p', {}, 'ничего: стадии, запасы и кучки сегодня те же.'),
-      ]),
+      h('p', {}, `У питомцев сегодня (${p.asOf}) изменится:`),
+      p.changes.length
+        ? h('ul', {}, ...p.changes.map((c) => h('li', {}, describeChange(c))))
+        : h('p', {}, 'ничего: стадии, запасы и кучки сегодня те же.'),
       apply,
       h('button', { type: 'button', 'data-cancel': 'config', onclick: () => previewBox.replaceChildren() }, 'Отмена'),
     ));
@@ -88,7 +87,7 @@ export async function normsTab(ctx: AdminCtx): Promise<HTMLElement> {
     const start = configFormOf(current);
     const inputs = new Map<string, HTMLInputElement>();
     const input = (key: string, value: string, disabled = false) => {
-      const el = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off', 'data-field': key, value, disabled });
+      const el = h('input', { type: 'text', inputmode: key.endsWith('-payments') ? 'decimal' : 'numeric', autocomplete: 'off', 'data-field': key, value, disabled });
       inputs.set(key, el);
       return el;
     };
@@ -99,9 +98,9 @@ export async function normsTab(ctx: AdminCtx): Promise<HTMLElement> {
       'fieldset',
       {},
       h('legend', {}, LEVEL_TITLE[level]),
-      ...(['quality', 'long'] as const).map((f) => h('label', {}, `${NORM_FIELD_TITLE[f]} `, input(`norm-${level}-${f}`, start.norms[level][f]))),
+      ...NORM_FIELDS.map((f) => h('label', {}, `${NORM_FIELD_TITLE[f]} `, input(`norm-${level}-${f}`, start.norms[level][f]))),
     ));
-    const thresholds = start.stageThresholds.map((t, i) => h('label', {}, `Порог ${i + 1} `, input(`threshold-${i + 1}`, t, from !== undefined)));
+    const thresholds = start.stageThresholds.map((t, i) => h('label', {}, `Стадия ${i + 2}, % `, input(`threshold-${i + 1}`, t, from !== undefined)));
 
     const save = (ev: Event) => {
       ev.preventDefault();
@@ -114,7 +113,7 @@ export async function normsTab(ctx: AdminCtx): Promise<HTMLElement> {
       }
       const form = structuredClone(start);
       for (const k of SCALAR_KEYS) form[k] = val(k);
-      for (const level of LEVELS) for (const f of ['quality', 'long'] as const) form.norms[level][f] = val(`norm-${level}-${f}`);
+      for (const level of LEVELS) for (const f of NORM_FIELDS) form.norms[level][f] = val(`norm-${level}-${f}`);
       form.stageThresholds = form.stageThresholds.map((_, i) => val(`threshold-${i + 1}`));
       const patch = configPatch(form, current, from);
       if ('error' in patch) {
@@ -137,11 +136,13 @@ export async function normsTab(ctx: AdminCtx): Promise<HTMLElement> {
       h('p', { 'data-warning': 'config' }, from === undefined
         ? 'Правка действует на всю историю игры: пересчитаются все прошлые дни. Перед записью покажем, что изменится у питомцев.'
         : `Правка действует с ${ruDate(from)}: дни до неё остаются как были. Перед записью покажем, что изменится у питомцев.`),
-      h('h2', {}, 'Нормы оплат по уровням'),
+      h('h2', {}, 'Личные нормы по уровням'),
+      h('p', { class: 'muted' }, 'Воронка — за день; «оплат в день» можно дробно (0,4). План группы — сумма норм тех, кто работает в этот день.'),
       ...norms,
       h('h2', {}, 'Пороги'),
       ...scalars,
-      h('h2', {}, 'Стадии: оплат до каждой'),
+      h('h2', {}, 'Стадии 2–5: % плана оплат группы на всю игру'),
+      h('p', { class: 'muted' }, 'Стадия 1 — вылупление (5-я оплата). Пороги — процент выполнения плана с начала игры.'),
       from !== undefined && h('p', {}, 'Пороги стадий меняются только на всю игру: очистите дату, чтобы их править.'),
       h('div', { class: 'thresholds' }, ...thresholds),
       h('button', { type: 'submit', 'data-save': 'config' }, 'Сохранить'),
@@ -155,9 +156,11 @@ export async function normsTab(ctx: AdminCtx): Promise<HTMLElement> {
         'Правка пересчитает всю историю игры, а не только дни после неё.',
         ...(p.erased.length ? [`Записи по датам, в которых те же поля: ${p.erased.map(ruDate).join(', ')} — эти поля из них уберутся, иначе правка на всю игру не действовала бы после них.`] : []),
       ]
-      : p.future
-        ? [`Вступит в силу с ${ruDate(from)}, сегодня ничего не изменится.`]
-        : [evaluatedLine(p, from)];
+      : paymentsOnly(patch)
+        ? [`Норма оплат с ${ruDate(from)}: пересчитается план группы на игру, а от него стадии и «% плана».`]
+        : p.future
+          ? [`Вступит в силу с ${ruDate(from)}: оценки дней сегодня не меняются.`]
+          : [evaluatedLine(p, from)];
     showPreview(p, intro, () => ctx.session.call('setConfig', from === undefined ? { config: patch } : { config: patch, from }));
   }
 
@@ -169,7 +172,11 @@ export async function normsTab(ctx: AdminCtx): Promise<HTMLElement> {
       (snapshot) => {
         snap = snapshot;
         const p = removalPreview(snap, from);
-        const intro = [`Запись с ${ruDate(from)} будет убрана: с этой даты вернётся то, что действует до неё.`, ...(p.future ? ['Дата ещё не наступила, сегодня ничего не изменится.'] : [evaluatedLine(p, from)])];
+        const entry = changesOf(snap).find((e) => e.from === from);
+        const detail = entry && paymentsOnly(entry.config)
+          ? 'Запись меняет только норму оплат: пересчитается план группы на игру, оценки дней не меняются.'
+          : p.future ? 'Дата ещё не наступила: оценки дней сегодня не меняются.' : evaluatedLine(p, from);
+        const intro = [`Запись с ${ruDate(from)} будет убрана: с этой даты вернётся то, что действует до неё.`, detail];
         showPreview(p, intro, () => ctx.session.call('removeConfigChange', { from }));
       },
       (e) => { alert.textContent = errorText(e); },

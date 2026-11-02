@@ -1,7 +1,7 @@
 import { ART } from '@/art/manifest';
 import type { Mood, PetState } from '@/engine/pet';
 import type { GroupCode } from '@/engine/types';
-import { petScale } from '@/game/PetView';
+import { petScale, stageSprite } from '@/game/PetView';
 import { EMOTE, type Emote } from './art';
 import type { RoomView } from './RoomView';
 
@@ -78,7 +78,7 @@ export class PetActor {
     const kind: Kind = !s.alive ? 'grave' : s.phase === 'pet' ? 'pet' : 'egg';
     const src = kind === 'grave' ? ART.grave
       : kind === 'egg' ? ART.eggs[this.group][Number(s.phase.slice(3))]
-      : ART.pets[this.group][Math.min(s.stage, ART.pets[this.group].length - 1)];
+      : stageSprite(ART.pets[this.group], s.stage);
     if (this.sprite.getAttribute('src') !== src) this.sprite.src = src;
     const size = kind === 'pet' ? Math.round(PET_SIZE * petScale(s.stage)) : kind === 'egg' ? EGG_SIZE : GRAVE_SIZE;
     this.el.style.setProperty('--size', `${size}px`);

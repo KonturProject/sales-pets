@@ -13,8 +13,9 @@ export interface Config {
   sickPilesAbove: number;
   /** смерть: рабочих дней подряд без оплат */
   deathDaysNoPay: number;
-  norms: Record<Level, { quality: number; long: number }>;
-  /** накопленные оплаты, при которых наступает стадия 1..15 */
+  /** личные нормы по уровню: воронка за день и оплат в день (дробное, до 0.01) — план группы = сумма по присутствующим */
+  norms: Record<Level, { quality: number; long: number; payments: number }>;
+  /** процент плана оплат группы на всю игру, с которого наступают стадии 2..5 (стадия 1 — вылупление) */
   stageThresholds: number[];
 }
 
@@ -28,10 +29,10 @@ export const defaultConfig: Config = {
   sickPilesAbove: 4,
   deathDaysNoPay: 5,
   norms: {
-    experienced: { quality: 5, long: 3 },
-    rookie1: { quality: 1, long: 0 },
-    rookie2: { quality: 2, long: 1 },
+    // оплат в день — заглушки до плана продаж
+    experienced: { quality: 5, long: 3, payments: 0.4 },
+    rookie1: { quality: 1, long: 0, payments: 0 },
+    rookie2: { quality: 2, long: 1, payments: 0.2 },
   },
-  // заглушки до плана продаж: 15 порогов
-  stageThresholds: [6, 10, 15, 21, 28, 36, 45, 55, 66, 78, 91, 105, 120, 136, 153],
+  stageThresholds: [25, 50, 75, 100],
 };

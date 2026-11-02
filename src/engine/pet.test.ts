@@ -21,12 +21,11 @@ describe('яйцо', () => {
     expect(total(3).phase).toBe('egg2');
     expect(total(4).phase).toBe('egg2');
     expect(total(5).phase).toBe('pet');
-    expect(total(5).stage).toBe(0);
+    expect(total(5).stage).toBe(1);
+    expect(total(4).stage).toBe(0);
   });
-  test('стадии роста по порогам', () => {
-    expect(total(6).stage).toBe(1);
-    expect(total(153).stage).toBe(15);
-    expect(total(1000).stage).toBe(15);
+  test('без плана оплат питомец остаётся на стадии 1, процента нет', () => {
+    expect(total(1000)).toMatchObject({ stage: 1, planPercent: null });
   });
   test('оплаты накапливаются за дни и за выходные', () => {
     const s = simulate(facts({ paymentsByDay: { '2026-11-02': 2, '2026-11-03': 1, '2026-11-07': 2 } }), '2026-11-08', cfg);
@@ -160,11 +159,45 @@ describe('скука, болезнь, смерть', () => {
   });
 });
 
+describe('стадии 2–5 по проценту плана оплат группы на игру', () => {
+  const at = (n: number, gameCents: number, c = cfg) =>
+    simulate(facts({ paymentsByDay: { '2026-11-02': n }, plan: { gameCents, dayCents: 100 } }), '2026-11-02', c);
+
+  test('25 / 50 / 75 / 100 % — стадии 2…5; вылупление — стадия 1', () => {
+    expect(at(5, 2000)).toMatchObject({ stage: 2, planPercent: 25 });
+    expect(at(9, 2000)).toMatchObject({ stage: 2, planPercent: 45 });
+    expect(at(10, 2000)).toMatchObject({ stage: 3, planPercent: 50 });
+    expect(at(15, 2000)).toMatchObject({ stage: 4, planPercent: 75 });
+    expect(at(20, 2000)).toMatchObject({ stage: 5, planPercent: 100 });
+    expect(at(1000, 2000).stage).toBe(5);
+    expect(at(4, 2000)).toMatchObject({ phase: 'egg2', stage: 0 });
+  });
+
+  test('граница ровно на пороге: план 56 оплат, 14 оплат — 25 %', () => {
+    expect(at(14, 5600)).toMatchObject({ stage: 2, planPercent: 25 });
+    expect(at(13, 5600)).toMatchObject({ stage: 1, planPercent: 23 });
+  });
+
+  test('пороги больше 100 % согласованы с процентом', () => {
+    const c = { ...cfg, stageThresholds: [25, 50, 100, 500] };
+    expect(at(11, 220, c)).toMatchObject({ stage: 5, planPercent: 500 });
+  });
+
+  test('после гибели процент считается от оплат с нового яйца', () => {
+    const s = simulate(facts({ paymentsByDay: { '2026-11-02': 20, '2026-11-11': 6 }, plan: { gameCents: 2000, dayCents: 100 } }), '2026-11-11', cfg);
+    expect(s).toMatchObject({ generation: 1, totalPayments: 6, planPercent: 30, stage: 2 });
+  });
+});
+
 describe('сытость', () => {
-  test('доля дневной нормы оплат, не больше 1', () => {
-    const f = facts({ paymentsByDay: { '2026-11-02': 2 }, dailyNorm: 4 });
+  test('доля плана оплат группы на день, не больше 1', () => {
+    const f = facts({ paymentsByDay: { '2026-11-02': 2 }, plan: { gameCents: 5600, dayCents: 400 } });
     expect(simulate(f, '2026-11-02', cfg).satiety).toBe(0.5);
     expect(simulate({ ...f, paymentsByDay: { '2026-11-02': 9 } }, '2026-11-02', cfg).satiety).toBe(1);
+  });
+  test('план на день меньше одной оплаты: одна оплата — полная сытость', () => {
+    const f = facts({ paymentsByDay: { '2026-11-02': 1 }, plan: { gameCents: 560, dayCents: 40 } });
+    expect(simulate(f, '2026-11-02', cfg).satiety).toBe(1);
   });
 });
 

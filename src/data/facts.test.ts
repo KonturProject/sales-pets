@@ -3,7 +3,7 @@ import { defaultConfig } from '@/engine/config';
 import type { Absence, Employee } from '@/engine/staff';
 import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
 import type { Snapshot, SnapshotOverride } from './api';
-import { buildFacts, DEFAULT_DAILY_NORM, normalizeName } from './facts';
+import { buildFacts, normalizeName } from './facts';
 
 const emp = (id: string, name: string, group: GroupCode = 'СР1', extra: Partial<Employee> = {}): Employee => ({
   id, name, shortName: name, group, hireDate: null, fireDate: null, baseLevel: 'experienced',
@@ -159,20 +159,21 @@ describe('buildFacts', () => {
       .toMatchObject({ piles: 1, medkits: 1, toys: 1 });
   });
 
-  test('дневная норма для сытости: из config, иначе по умолчанию', () => {
-    const payments = [pay('2026-11-12', 'СР1', 'Тест Иванов', 'A-1'), pay('2026-11-12', 'СР1', 'Тест Иванов', 'A-2')];
-    const staff = [emp('e1', 'Тест Иванов')];
-    expect(DEFAULT_DAILY_NORM).toBe(4);
-    expect(buildFacts(snap({ staff, payments }), '2026-11-12').states.СР1.satiety).toBe(2 / DEFAULT_DAILY_NORM);
-    expect(buildFacts(snap({ staff, payments, config: { dailyNorm: 2 } }), '2026-11-12').states.СР1.satiety).toBe(1);
+  const ten = Array.from({ length: 10 }, (_, i) => emp(`e${i}`, `Тест ${i}`));
+
+  test('сытость — от плана группы на день: сумма норм «оплат в день» присутствующих', () => {
+    const payments = [pay('2026-11-12', 'СР1', 'Тест 0', 'A-1'), pay('2026-11-12', 'СР1', 'Тест 0', 'A-2')];
+    // 10 опытных по 0.4 — план 4 в день
+    expect(buildFacts(snap({ staff: ten, payments }), '2026-11-12').states.СР1.satiety).toBe(0.5);
+    const config = { norms: { experienced: { payments: 1 } } };
+    expect(buildFacts(snap({ staff: ten, payments, config }), '2026-11-12').states.СР1.satiety).toBe(0.2);
   });
 
-  test('испорченная дневная норма в config заменяется умолчанием, а не делит на ноль', () => {
-    const payments = [pay('2026-11-12', 'СР1', 'Тест Иванов', 'A-1'), pay('2026-11-12', 'СР1', 'Тест Иванов', 'A-2')];
-    const staff = [emp('e1', 'Тест Иванов')];
-    for (const dailyNorm of [0, -3, 2.5, 'x', 1001]) {
-      const config = { dailyNorm } as unknown as Snapshot['config'];
-      expect(buildFacts(snap({ staff, payments, config }), '2026-11-12').states.СР1.satiety).toBe(2 / DEFAULT_DAILY_NORM);
+  test('испорченная норма оплат в config заменяется заглушкой', () => {
+    const payments = [pay('2026-11-12', 'СР1', 'Тест 0', 'A-1'), pay('2026-11-12', 'СР1', 'Тест 0', 'A-2')];
+    for (const bad of [-3, 0.123, 'x', 51]) {
+      const config = { norms: { experienced: { payments: bad } } } as unknown as Snapshot['config'];
+      expect(buildFacts(snap({ staff: ten, payments, config }), '2026-11-12').states.СР1.satiety).toBe(0.5);
     }
   });
 
@@ -193,12 +194,25 @@ describe('buildFacts', () => {
     expect(buildFacts(lowered, '2026-11-03').states.СР1).toMatchObject({ piles: 0, medkits: 1, toys: 1 });
   });
 
-  test('пороги стадий снимка меняют стадию', () => {
+  test('стадия — по проценту плана группы на игру; пороги снимка её меняют', () => {
     const payments = Array.from({ length: 7 }, (_, i) => pay('2026-11-03', 'СР1', 'Тест Иванов', `A-${i}`));
     const staff = [emp('e1', 'Тест Иванов')];
-    expect(buildFacts(snap({ staff, payments }), '2026-11-03').states.СР1.stage).toBe(1); // порог 6
-    const thresholds = Array.from({ length: 15 }, (_, i) => 5 + (i + 1) * 5);
-    expect(buildFacts(snap({ staff, payments, config: { stageThresholds: thresholds } }), '2026-11-03').states.СР1.stage).toBe(0);
+    // один опытный: 0.4 × 14 рабочих дней = 5.6 оплаты; 7 оплат — 125 %
+    expect(buildFacts(snap({ staff, payments }), '2026-11-03').states.СР1).toMatchObject({ stage: 5, planPercent: 125 });
+    const config = { stageThresholds: [130, 140, 150, 160] };
+    expect(buildFacts(snap({ staff, payments, config }), '2026-11-03').states.СР1.stage).toBe(1);
+  });
+
+  test('люди, добавленные в штат, поднимают план: стадия пересчитывается вниз', () => {
+    const payments = Array.from({ length: 7 }, (_, i) => pay('2026-11-03', 'СР1', 'Тест 0', `A-${i}`));
+    // один опытный: 5.6 оплаты на игру, 7 оплат — 125 %; три опытных: 16.8, те же 7 оплат — 41 %
+    expect(buildFacts(snap({ staff: ten.slice(0, 1), payments }), '2026-11-03').states.СР1).toMatchObject({ stage: 5, planPercent: 125 });
+    expect(buildFacts(snap({ staff: ten.slice(0, 3), payments }), '2026-11-03').states.СР1).toMatchObject({ stage: 2, planPercent: 41 });
+  });
+
+  test('без штата плана нет: вылупившийся питомец на стадии 1, процента нет', () => {
+    const payments = Array.from({ length: 7 }, (_, i) => pay('2026-11-03', 'СР1', 'Кто-то', `A-${i}`));
+    expect(buildFacts(snap({ payments }), '2026-11-03').states.СР1).toMatchObject({ phase: 'pet', stage: 1, planPercent: null });
   });
 
   test('ручная правка кучек на день попадает в состояние группы', () => {
@@ -281,11 +295,11 @@ describe('buildFacts', () => {
       expect(buildFacts(weekend, '2026-11-10').states).toEqual(buildFacts(monday, '2026-11-10').states);
     });
 
-    test('дневная норма для сытости берётся на дату asOf', () => {
-      const staff = [emp('e1', 'Тест Иванов')];
-      const payments = ['2026-11-09', '2026-11-12'].flatMap((d) => [pay(d, 'СР1', 'Тест Иванов', `${d}-1`), pay(d, 'СР1', 'Тест Иванов', `${d}-2`)]);
-      const s = snap({ staff, payments, configChanges: [{ from: '2026-11-10', config: { dailyNorm: 2 } }] });
-      expect(buildFacts(s, '2026-11-09').states.СР1.satiety).toBe(2 / DEFAULT_DAILY_NORM);
+    test('план на день для сытости — по нормам даты asOf', () => {
+      const staff = Array.from({ length: 10 }, (_, i) => emp(`e${i}`, `Тест ${i}`));
+      const payments = ['2026-11-09', '2026-11-12'].flatMap((d) => [pay(d, 'СР1', 'Тест 0', `${d}-1`), pay(d, 'СР1', 'Тест 0', `${d}-2`)]);
+      const s = snap({ staff, payments, configChanges: [{ from: '2026-11-10', config: { norms: { experienced: { payments: 0.1 } } } }] });
+      expect(buildFacts(s, '2026-11-09').states.СР1.satiety).toBe(0.5);
       expect(buildFacts(s, '2026-11-12').states.СР1.satiety).toBe(1);
     });
 

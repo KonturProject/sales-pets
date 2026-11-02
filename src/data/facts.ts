@@ -1,5 +1,5 @@
 import { workingDaysBetween } from '@/engine/calendar';
-import { evaluateDay } from '@/engine/evaluate';
+import { evaluateDay, groupPlan } from '@/engine/evaluate';
 import { simulate, type PetState } from '@/engine/pet';
 import { uniqueInvoices, type PaymentRow, type RankData } from '@/engine/ranking';
 import { normalizeName } from '@/engine/staff';
@@ -8,9 +8,6 @@ import type { Snapshot } from './api';
 import { timelineOf } from './config';
 
 export { normalizeName };
-
-/** Дневная норма оплат группы для сытости, пока админка не задала свою (R9). */
-export const DEFAULT_DAILY_NORM = 4;
 
 export interface Facts {
   states: Record<GroupCode, PetState>;
@@ -69,7 +66,6 @@ function compute(s: Snapshot, asOf: DateStr): Facts {
   const through = s.funnelThrough;
   const funnel = through === null ? [] : s.funnel.filter((f) => f.date <= through);
   const evalDays = through === null ? [] : workingDaysBetween(cfg.startDate, through < asOf ? through : asOf, cfg);
-  const dailyNorm = timeline.dailyNormAt(asOf) ?? DEFAULT_DAILY_NORM;
   // правки одного дня движок применяет по порядку, а порядок — это id
   const byId = [...s.overrides].sort((a, b) => a.id - b.id);
 
@@ -79,7 +75,8 @@ function compute(s: Snapshot, asOf: DateStr): Facts {
         evalDays.map((date) => [date, evaluateDay(group, date, s.staff, s.absences, funnel, timeline.at(date))]),
       );
       const overrides = byId.filter((o) => o.group === group).map(({ date, kind, delta }) => ({ date, kind, delta }));
-      return [group, simulate({ group, paymentsByDay: paymentsByDay[group], results, overrides, dailyNorm }, asOf, cfg, timeline.at)];
+      const plan = groupPlan(group, asOf, s.staff, s.absences, timeline.at, cfg);
+      return [group, simulate({ group, paymentsByDay: paymentsByDay[group], results, overrides, plan }, asOf, cfg, timeline.at)];
     }),
   ) as Record<GroupCode, PetState>;
 

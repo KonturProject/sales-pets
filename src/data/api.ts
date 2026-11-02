@@ -15,13 +15,12 @@ export interface SnapshotOverride {
 
 /** Настройки, которые админ меняет через `setConfig`; чего нет — берётся из `defaultConfig`. Календарь игры не правится. */
 export interface SnapshotConfig {
-  dailyNorm?: number;
   maxPiles?: number;
   boredomBelow?: number;
   sickDaysNoPay?: number;
   sickPilesAbove?: number;
   deathDaysNoPay?: number;
-  norms?: Partial<Record<Level, { quality?: number; long?: number }>>;
+  norms?: Partial<Record<Level, { quality?: number; long?: number; payments?: number }>>;
   stageThresholds?: number[];
 }
 

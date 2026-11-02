@@ -603,21 +603,21 @@ describe('причина исключения из рейтинга', () => {
 
 describe('setConfig', () => {
   const setConfig = (b, config) => admin(b, 'setConfig', { config });
-  const thresholds = Array.from({ length: 15 }, (_, i) => (i + 1) * 5);
+  const thresholds = [25, 50, 75, 100];
 
   test('до первой правки GET отдаёт {}; частичные правки сливаются, соседние поля не стираются, версия растёт', () => {
     const b = loadBackend();
     expect(b.get().config).toEqual({});
     const v0 = b.get().version;
-    const r1 = setConfig(b, { dailyNorm: 5, maxPiles: 3 });
-    expect(r1).toEqual({ ok: true, version: v0 + 1, config: { dailyNorm: 5, maxPiles: 3 }, configChanges: [] });
+    const r1 = setConfig(b, { boredomBelow: 5, maxPiles: 3 });
+    expect(r1).toEqual({ ok: true, version: v0 + 1, config: { boredomBelow: 5, maxPiles: 3 }, configChanges: [] });
     const r2 = setConfig(b, { maxPiles: 4, norms: { rookie1: { quality: 2 } } });
-    expect(r2.config).toEqual({ dailyNorm: 5, maxPiles: 4, norms: { rookie1: { quality: 2 } } });
-    const r3 = setConfig(b, { norms: { rookie1: { long: 1 }, experienced: { quality: 6, long: 7 } }, stageThresholds: thresholds });
+    expect(r2.config).toEqual({ boredomBelow: 5, maxPiles: 4, norms: { rookie1: { quality: 2 } } });
+    const r3 = setConfig(b, { norms: { rookie1: { long: 1 }, experienced: { quality: 6, long: 7, payments: 0.4 } }, stageThresholds: thresholds });
     expect(r3.config).toEqual({
-      dailyNorm: 5,
+      boredomBelow: 5,
       maxPiles: 4,
-      norms: { rookie1: { quality: 2, long: 1 }, experienced: { quality: 6, long: 7 } },
+      norms: { rookie1: { quality: 2, long: 1 }, experienced: { quality: 6, long: 7, payments: 0.4 } },
       stageThresholds: thresholds,
     });
     expect(r3.version).toBe(v0 + 3);
@@ -629,26 +629,33 @@ describe('setConfig', () => {
   test('границы диапазонов принимаются', () => {
     const b = loadBackend();
     const edge = {
-      dailyNorm: 1000,
       maxPiles: 1,
       boredomBelow: 0,
       sickDaysNoPay: 30,
       sickPilesAbove: 0,
       deathDaysNoPay: 1,
-      norms: { rookie2: { quality: 0, long: 50 } },
-      stageThresholds: [...thresholds.slice(0, 14), 100000],
+      norms: { rookie2: { quality: 0, long: 50, payments: 0 } },
+      stageThresholds: [1, 2, 3, 1000],
     };
     expect(setConfig(b, edge).config).toEqual(edge);
-    expect(setConfig(b, { dailyNorm: 1, maxPiles: 20, boredomBelow: 100, sickDaysNoPay: 1, sickPilesAbove: 20, deathDaysNoPay: 30 }).ok).toBe(true);
+    expect(setConfig(b, { maxPiles: 20, boredomBelow: 100, sickDaysNoPay: 1, sickPilesAbove: 20, deathDaysNoPay: 30 }).ok).toBe(true);
+  });
+
+  test('норма оплат в день — дробная, не больше двух знаков после запятой, до 50', () => {
+    const b = loadBackend();
+    for (const payments of [0.29, 0.57, 1.15, 0.4, 2, 50]) {
+      expect(setConfig(b, { norms: { experienced: { payments } } }).config.norms.experienced.payments, String(payments)).toBe(payments);
+    }
   });
 
   test('вне диапазона, дробные, не числа, неизвестные поля, календарь и пустая правка — bad_request, ничего не пишется', () => {
     const b = loadBackend();
-    setConfig(b, { dailyNorm: 4 });
+    setConfig(b, { maxPiles: 4 });
     const before = b.get();
     const bad = [
       {},
-      { dailyNorm: 0 }, { dailyNorm: 1001 }, { dailyNorm: 4.5 }, { dailyNorm: '4' }, { dailyNorm: null },
+      { dailyNorm: 4 },
+      { maxPiles: 4.5 }, { maxPiles: '4' }, { maxPiles: null },
       { maxPiles: 0 }, { maxPiles: 21 },
       { boredomBelow: -1 }, { boredomBelow: 101 },
       { sickDaysNoPay: 0 }, { sickDaysNoPay: 31 },
@@ -657,20 +664,26 @@ describe('setConfig', () => {
       { norms: { experienced: { quality: -1 } } },
       { norms: { experienced: { long: 51 } } },
       { norms: { rookie1: { quality: 1.5 } } },
+      { norms: { experienced: { payments: 0.123 } } },
+      { norms: { experienced: { payments: '0.4' } } },
+      { norms: { experienced: { payments: null } } },
+      { norms: { experienced: { payments: -0.1 } } },
+      { norms: { experienced: { payments: 50.01 } } },
       { norms: { senior: { quality: 1 } } },
       { norms: { rookie2: { speed: 1 } } },
       { norms: { rookie1: 3 } },
       { norms: [] },
       { norms: {} },
       { stageThresholds: thresholds.slice(1) },
-      { stageThresholds: [...thresholds, 99] },
-      { stageThresholds: [...thresholds.slice(0, 14), thresholds[13]] },
-      { stageThresholds: [0, ...thresholds.slice(1)] },
-      { stageThresholds: [...thresholds.slice(0, 14), 100001] },
-      { stageThresholds: [...thresholds.slice(0, 14), 74.5] },
+      { stageThresholds: [...thresholds, 125] },
+      { stageThresholds: [6, 10, 15, 21, 28, 36, 45, 55, 66, 78, 91, 105, 120, 136, 153] },
+      { stageThresholds: [25, 50, 50, 100] },
+      { stageThresholds: [0, 50, 75, 100] },
+      { stageThresholds: [25, 50, 75, 1001] },
+      { stageThresholds: [25, 50, 75, 99.5] },
       { stageThresholds: 'x' },
       { startDate: '2026-11-02' }, { endDate: '2026-11-30' }, { nonWorking: [] },
-      { unknown: 1 }, { dailyNorm: 5, unknown: 1 }, { __proto__: null, hasOwnProperty: 1 },
+      { unknown: 1 }, { maxPiles: 5, unknown: 1 }, { __proto__: null, hasOwnProperty: 1 },
     ];
     for (const config of bad) expect(setConfig(b, config), JSON.stringify(config)).toEqual({ ok: false, error: 'bad_request' });
     for (const config of [null, [], 'x', 5, undefined]) expect(setConfig(b, config), JSON.stringify(config)).toEqual({ ok: false, error: 'bad_request' });
@@ -680,14 +693,14 @@ describe('setConfig', () => {
   test('админ-PIN обязателен: без PIN и с PIN группы — invalid_pin', () => {
     const b = loadBackend();
     const { groupPins } = admin(b, 'setGroupPins');
-    expect(b.post({ action: 'setConfig', config: { dailyNorm: 5 } })).toEqual({ ok: false, error: 'invalid_pin' });
-    expect(b.post({ action: 'setConfig', group: 'СР1', groupPin: groupPins['СР1'], config: { dailyNorm: 5 } })).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.post({ action: 'setConfig', config: { maxPiles: 5 } })).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.post({ action: 'setConfig', group: 'СР1', groupPin: groupPins['СР1'], config: { maxPiles: 5 } })).toEqual({ ok: false, error: 'invalid_pin' });
     expect(b.get().config).toEqual({});
   });
 
   test('испорченная руками ячейка config читается как {}, а следующая правка её чинит', () => {
     const b = loadBackend();
-    setConfig(b, { dailyNorm: 5 });
+    setConfig(b, { maxPiles: 5 });
     const cell = b.sheet('Settings').rows.find((r) => r[0] === 'config');
     for (const garbage of ['не json', '[1,2]', '"x"', '5', 'null']) {
       cell[1] = garbage;
@@ -701,8 +714,8 @@ describe('setConfig', () => {
     const { b } = withStaff();
     admin(b, 'importFunnel', { through: '2026-11-10', rows: [] });
     admin(b, 'importPayments', { from: '2026-11-09', to: '2026-11-10', rows: [] });
-    setConfig(b, { dailyNorm: 6 });
-    expect(b.get()).toMatchObject({ funnelThrough: '2026-11-10', paymentsImportedThrough: '2026-11-10', config: { dailyNorm: 6 } });
+    setConfig(b, { maxPiles: 6 });
+    expect(b.get()).toMatchObject({ funnelThrough: '2026-11-10', paymentsImportedThrough: '2026-11-10', config: { maxPiles: 6 } });
   });
 });
 
@@ -710,7 +723,7 @@ describe('настройки по датам (setConfig с from, removeConfigCha
   const setAt = (b, from, config) => admin(b, 'setConfig', { config, from });
   const setAll = (b, config) => admin(b, 'setConfig', { config });
   const remove = (b, from) => admin(b, 'removeConfigChange', { from });
-  const thresholds = Array.from({ length: 15 }, (_, i) => (i + 1) * 5);
+  const thresholds = [25, 50, 75, 100];
 
   test('правка с датой не трогает config, пишется в configChanges; повтор той же даты сливает', () => {
     const b = loadBackend();
@@ -723,8 +736,8 @@ describe('настройки по датам (setConfig с from, removeConfigCha
       config: { maxPiles: 4 },
       configChanges: [{ from: '2026-11-09', config: { norms: { experienced: { quality: 2 } } } }],
     });
-    const r2 = setAt(b, '2026-11-09', { norms: { experienced: { long: 1 } }, dailyNorm: 6 });
-    expect(r2.configChanges).toEqual([{ from: '2026-11-09', config: { norms: { experienced: { quality: 2, long: 1 } }, dailyNorm: 6 } }]);
+    const r2 = setAt(b, '2026-11-09', { norms: { experienced: { long: 1, payments: 0.57 } }, sickDaysNoPay: 6 });
+    expect(r2.configChanges).toEqual([{ from: '2026-11-09', config: { norms: { experienced: { quality: 2, long: 1, payments: 0.57 } }, sickDaysNoPay: 6 } }]);
     expect(b.get().config).toEqual({ maxPiles: 4 });
     expect(b.get().configChanges).toEqual(r2.configChanges);
   });
@@ -757,7 +770,7 @@ describe('настройки по датам (setConfig с from, removeConfigCha
     const b = loadBackend();
     setAt(b, '2026-11-09', { maxPiles: 2 });
     const before = b.get();
-    for (const config of [{}, { maxPiles: 0 }, { dailyNorm: 1001 }, { norms: { experienced: { quality: 51 } } }, { norms: {} }, { unknown: 1 }, { startDate: '2026-11-02' }]) {
+    for (const config of [{}, { maxPiles: 0 }, { dailyNorm: 4 }, { norms: { experienced: { payments: 0.123 } } }, { norms: { experienced: { quality: 51 } } }, { norms: {} }, { unknown: 1 }, { startDate: '2026-11-02' }]) {
       expect(setAt(b, '2026-11-12', config), JSON.stringify(config)).toEqual({ ok: false, error: 'bad_request' });
     }
     expect(b.get()).toEqual(before);

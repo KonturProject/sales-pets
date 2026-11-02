@@ -21,7 +21,7 @@ description: Устройство этого проекта игры — стр�
 |---|---|
 | `src/engine/` | чистая логика без DOM: календарь игры (`calendar.ts`, Москва, 14 рабочих дней), штат и отсутствия (`staff.ts`), оценка дня (`evaluate.ts`), симуляция питомца (`pet.ts`: `simulate()` → `PetState`), рейтинги (`ranking.ts`), типы и группы (`types.ts`: `GROUPS`, `GroupCode`, `DateStr`), конфиг по умолчанию (`config.ts`) |
 | `src/data/` | связь с бэкендом: `api.ts` (GET снимка, POST действий, `resolveBackend`, `resolvePollMs`), `store.ts` (опрос раз в 15 с, `since`/`unchanged`), `facts.ts` (`buildFacts`: снимок → состояния питомцев и рейтинги на дату), `config.ts` (таймлайн норм «с даты») |
-| `src/game/` | `tv/` — экран ТВ (макет `rooms-and-walk.html`): `TvScreen.ts` (`mountTv`: сцена 1920×1080, мир, доски, камера), `RoomView.ts` (комната `[data-group]`), `PetActor.ts` (питомец в слое мира: блуждание, `hold`/`release` для зала), `Hall.ts` (прогулка и праздник: выход в зал, встречи, конфетти, возвращение), `layout.ts`/`schedule.ts`/`metrics.ts` (геометрия, цикл камеры `shotAt`, табло и строка дня — чистые, с тестами), `art.ts` (декор, SVG-эмоции); `PetView.ts` (гнездо страницы РГ, `MAX_STAGE = 15`), `RankingPanel.ts` (блоки рейтингов, `pickGroup`), `PowerSaver.ts`, `uses.ts` (рука РГ) |
+| `src/game/` | `tv/` — экран ТВ (макет `rooms-and-walk.html`): `TvScreen.ts` (`mountTv`: сцена 1920×1080, мир, доски, камера), `RoomView.ts` (комната `[data-group]`), `PetActor.ts` (питомец в слое мира: блуждание, `hold`/`release` для зала), `Hall.ts` (прогулка и праздник: выход в зал, встречи, конфетти, возвращение), `layout.ts`/`schedule.ts`/`metrics.ts` (геометрия, цикл камеры `shotAt`, табло и строка дня — чистые, с тестами), `art.ts` (декор, SVG-эмоции); `PetView.ts` (гнездо страницы РГ, `MAX_STAGE = 5`, `stageSprite` — картинка стадии 1..5), `RankingPanel.ts` (блоки рейтингов, `pickGroup`), `PowerSaver.ts`, `uses.ts` (рука РГ) |
 | `src/admin/` | админка: вкладки `*Tab.ts`, чистая логика форм и планов в `*Form.ts`/`*Plan.ts` (с тестами), `session.ts` (PIN только в памяти), `pins.ts` |
 | `src/rg/` | страница руководителя группы: вход по PIN группы, перенос предмета к питомцу (`drag.ts`), расход (`spend.ts`) |
 | `src/import/` | разбор xlsx воронки и оплат (`funnel.ts`, `payments.ts`), чанк `xlsx` грузится динамически только в админке |
@@ -41,7 +41,7 @@ description: Устройство этого проекта игры — стр�
 
 ## Ассеты
 
-- Питомцы сейчас SVG-болванки видов из спеки (`public/assets/pets/srN.svg`, делает `tools/make-art.mjs`), рендер масштабирует их по стадии (`petScale`). Финальная графика — ChatGPT по промптам из локального `docs/art/pet-prompts.md` (в `.gitignore`, не коммитить: в нём реальная фамилия, репозиторий публичный). Темы комнат — `THEME` в `src/art/manifest.ts`.
+- Питомцы сейчас SVG-болванки видов из спеки (`public/assets/pets/srN.svg`, делает `tools/make-art.mjs`), рендер масштабирует их по стадии (`petScale`). Стадий 5: 1 — вылупление, 2–5 — % плана оплат группы (`groupPlan` в `engine/evaluate.ts`, `planPercent` в `PetState`); на группу ждём 5 картинок, `ART.pets[group][stage-1]`. Финальная графика — ChatGPT по промптам из локального `docs/art/pet-prompts.md` (в `.gitignore`, не коммитить: в нём реальная фамилия, репозиторий публичный). Темы комнат — `THEME` в `src/art/manifest.ts`.
 - Новая картинка: файл в `public/assets/`, путь в `ART` (`src/art/manifest.ts`), строка в `CREDITS.md`.
 
 ## Соглашения

@@ -3,22 +3,25 @@ import type { Mood, PetState } from '@/engine/pet';
 import type { GroupCode } from '@/engine/types';
 
 export const MOOD_LABEL: Record<Mood, string> = { ok: '', bored: 'скучает', sad: 'грустит', sick: 'болеет', dead: 'погиб' };
-export const MAX_STAGE = 15;
+export const MAX_STAGE = 5;
 /** Длина анимации руки в `room.css`; следующая рука на том же гнезде ждёт, пока предыдущая уйдёт. */
 const HAND_MS = 1800;
 /** Рука убирается сама, даже если `animationend` не придёт (вкладка на паузе, анимации отключены). */
 const HAND_SAFETY_MS = 3000;
 
-/** Размер питомца: от 0.55 при вылуплении до 1 на последней стадии (пока одна картинка на группу). */
+/** Размер питомца: от 0.55 при вылуплении (стадия 1) до 1 на последней стадии (пока одна картинка на группу). */
 export function petScale(stage: number): number {
-  return 0.55 + 0.45 * Math.min(Math.max(stage, 0), MAX_STAGE) / MAX_STAGE;
+  return 0.55 + 0.45 * (Math.min(Math.max(stage, 1), MAX_STAGE) - 1) / (MAX_STAGE - 1);
 }
+
+/** Картинка стадии 1..5: своя на каждую стадию; пока картинок меньше — последняя из имеющихся. */
+export const stageSprite = (list: readonly string[], stage: number): string => list[Math.min(Math.max(stage, 1), list.length) - 1]!;
 
 function spriteFor(group: GroupCode, s: PetState): { src: string; scale: number } {
   if (!s.alive) return { src: ART.grave, scale: 0.7 };
   if (s.phase === 'pet') {
     const list = ART.pets[group];
-    return { src: list[Math.min(s.stage, list.length - 1)], scale: petScale(s.stage) };
+    return { src: stageSprite(list, s.stage), scale: petScale(s.stage) };
   }
   return { src: ART.eggs[group][Number(s.phase.slice(3))], scale: 0.62 };
 }
