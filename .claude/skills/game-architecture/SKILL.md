@@ -41,7 +41,7 @@ description: Устройство этого проекта игры — стр�
 
 ## Ассеты
 
-- Питомцы сейчас SVG-болванки видов из спеки (`public/assets/pets/srN.svg`, делает `tools/make-art.mjs`), рендер масштабирует их по стадии (`petScale`). Стадий 5: 1 — вылупление, 2–5 — % плана оплат группы (`groupPlan` в `engine/evaluate.ts`, `planPercent` в `PetState`); на группу ждём 5 картинок, `ART.pets[group][stage-1]`. Финальная графика — ChatGPT по промптам из локального `docs/art/pet-prompts.md` (в `.gitignore`, не коммитить: в нём реальная фамилия, репозиторий публичный). Темы комнат — `THEME` в `src/art/manifest.ts`.
+- Питомцы — милые версии героев РГ из ChatGPT (промпты в локальном `docs/art/pet-prompts.md`, в `.gitignore`, не коммитить: в нём реальная фамилия, репозиторий публичный). Листы «Рост» лежат в `assets/_raw/srN-rost.png`, `python tools/slice-pets.py` режет их в `public/assets/pets/srN-1..5.png` (`ART.pets[group][stage-1]`), рендер масштабирует по стадии (`petScale`). Стадий 5: 1 — вылупление, 2–5 — % плана оплат группы (`groupPlan` в `engine/evaluate.ts`, `planPercent` в `PetState`). Вид на табличке комнаты до вылупления «???». Старые `srN.svg`/`srN.png` в `pets/` больше не используются. Темы комнат — `THEME` в `src/art/manifest.ts`.
 - Новая картинка: файл в `public/assets/`, путь в `ART` (`src/art/manifest.ts`), строка в `CREDITS.md`.
 
 ## Соглашения
