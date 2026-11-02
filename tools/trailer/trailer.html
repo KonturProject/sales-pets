@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Трейлер: Питомцы отделов продаж</title>
+<link rel="icon" href="data:,">
+<!--
+  Трейлер игры, 1920×1080. Всё движение — Web Animations, остановленные на паузе:
+  window.seek(t) ставит кадр на секунду t, поэтому tools/trailer/render.mjs снимает кадры детерминированно.
+  Без ?render=1 страница просто проигрывает ролик (?t=12 — стоп-кадр на 12-й секунде).
+  Виды питомцев не раскрываем: вместо них «загадочный» зверёк со знаком вопроса.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=block" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #fff3df; }
+  body { font-family: 'Nunito', 'Segoe UI', sans-serif; color: #3b2f2a; }
+  #stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; background: #fff3df; }
+  .scene { position: absolute; inset: 0; opacity: 0; overflow: hidden; }
+  .abs { position: absolute; }
+  .cream { background: radial-gradient(ellipse at 50% 28%, #fffaf1 0%, #ffedd0 62%, #f6d6a6 100%); }
+  .txt { display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.12; }
+  .h { font-weight: 900; font-size: 64px; letter-spacing: -0.5px; }
+  .pill { display: flex; align-items: center; justify-content: center; border-radius: 999px; font-weight: 900;
+          background: #fff; box-shadow: 0 6px 18px rgba(80, 50, 20, 0.16); white-space: nowrap; }
+  .cap { position: absolute; left: 0; right: 0; top: 962px; margin: 0 auto; width: max-content; max-width: 1780px;
+         padding: 14px 44px; border-radius: 999px; background: rgba(255, 255, 255, 0.95); font-size: 42px; font-weight: 800;
+         box-shadow: 0 8px 26px rgba(80, 50, 20, 0.2); white-space: nowrap; }
+  .card { background: #fff; border-radius: 34px; box-shadow: 0 10px 30px rgba(80, 50, 20, 0.14); }
+  .coin { border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff1a8, #f2b93b 55%, #c98a1c);
+          border: 4px solid #b97a14; color: #8a5a10; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+  .petsvg { width: 100%; height: 100%; display: block; overflow: visible; }
+  .petsvg .anim { transform-box: fill-box; transform-origin: center; }
+  .clock .hand { transform-box: view-box; transform-origin: 100px 100px; }
+  img { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+'use strict';
+const T = { duration: 93, fps: 30, sfx: [], ready: false, font: false };
+window.TRAILER = T;
+const ASSET = '../../public/assets/';
+const stage = document.getElementById('stage');
+const hooks = [];
+const animated = new WeakSet();
+const EASE = 'cubic-bezier(.22,1,.36,1)';
+const BOUNCE = 'cubic-bezier(.34,1.56,.64,1)';
+const INOUT = 'ease-in-out';
+const G = [
+  { code: 'СР1', key: 'sr1', accent: '#c0675d', egg: '#c9605a' },
+  { code: 'СР2', key: 'sr2', accent: '#6f9a6a', egg: '#7fae7a' },
+  { code: 'СР3', key: 'sr3', accent: '#c99c38', egg: '#e0c067' },
+  { code: 'СР5', key: 'sr5', accent: '#555a6c', egg: '#3d3f45' },
+  { code: 'СР6', key: 'sr6', accent: '#8b6fa3', egg: '#9a82b8' },
+  { code: 'СР9', key: 'sr9', accent: '#5b86b8', egg: '#6f97c4' },
+];
+
+/* ---------- кирпичики ---------- */
+
+/** Анимация с абсолютным стартом `at` (с). Первая анимация элемента держит начальный кадр и до старта, остальные — только после. */
+function A(el, frames, at, dur, easing = EASE, extra = {}) {
+  const fill = animated.has(el) ? 'forwards' : 'both';
+  animated.add(el);
+  const a = el.animate(frames, { delay: at * 1000, duration: dur * 1000, fill, easing, ...extra });
+  a.pause();
+  return a;
+}
+const sfx = (t, kind) => T.sfx.push({ t: Math.round(t * 1000) / 1000, kind });
+const px = (n) => `${n}px`;
+
+function mk(parent, tag, cls, css, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (css) Object.assign(e.style, css);
+  if (html != null) e.innerHTML = html;
+  parent.appendChild(e);
+  return e;
+}
+/** Блок с центром (cx, cy). */
+function box(parent, cx, cy, w, h, cls = '', html, css = {}) {
+  return mk(parent, 'div', `abs ${cls}`, { left: px(cx - w / 2), top: px(cy - h / 2), width: px(w), height: px(h), ...css }, html);
+}
+function pic(parent, src, cx, cy, w, h, css = {}) {
+  const b = box(parent, cx, cy, w, h, '', null, css);
+  mk(b, 'img').src = ASSET + src;
+  return b;
+}
+function scene(a, b, cls = '') {
+  const e = mk(stage, 'div', `scene ${cls}`);
+  A(e, [{ opacity: 0 }, { opacity: 1 }], Math.max(0, a - 0.3), a === 0 ? 0.6 : 0.6, 'linear');
+  A(e, [{ opacity: 1 }, { opacity: 0 }], b - 0.6, 0.6, 'linear');
+  return e;
+}
+function room(sc, wall, floor) {
+  mk(sc, 'div', 'abs', { inset: '0', background: `linear-gradient(180deg, ${wall[0]}, ${wall[1]})` });
+  mk(sc, 'div', 'abs', { left: '0', right: '0', top: '790px', bottom: '0', background: floor });
+  mk(sc, 'div', 'abs', { left: '0', right: '0', top: '782px', height: '14px', background: 'rgba(0,0,0,.13)' });
+}
+const fadeIn = (e, at, dur = 0.6, dy = 30) =>
+  A(e, [{ opacity: 0, transform: `translateY(${dy}px)` }, { opacity: 1, transform: 'translateY(0)' }], at, dur);
+const slideIn = (e, at, dx = 140) =>
+  A(e, [{ opacity: 0, transform: `translateX(${dx}px)` }, { opacity: 1, transform: 'translateX(0)' }], at, 0.6);
+const popIn = (e, at, dur = 0.55) =>
+  A(e, [{ opacity: 0, transform: 'scale(.2)' }, { opacity: 1, transform: 'scale(1)' }], at, dur, BOUNCE);
+const fadeOut = (e, at, dur = 0.4) => A(e, [{ opacity: 1 }, { opacity: 0 }], at, dur, 'linear');
+const show = (e, at, dur = 0.35) => A(e, [{ opacity: 0 }, { opacity: 1 }], at, dur, 'linear');
+const hide = (e, at, dur = 0.35) => A(e, [{ opacity: 1 }, { opacity: 0 }], at, dur, 'linear');
+const pulse = (e, at, k = 1.12) =>
+  A(e, [{ transform: 'scale(1)' }, { transform: `scale(${k})`, offset: 0.4 }, { transform: 'scale(1)' }], at, 0.5, INOUT);
+const wobble = (e, at, dur = 0.9) =>
+  A(e, [0, -9, 8, -5, 3, 0].map((d) => ({ transform: `rotate(${d}deg)` })), at, dur, INOUT);
+function header(sc, at, html, color = '#3b2f2a') {
+  const e = box(sc, 960, 118, 1840, 110, 'txt h', html, { color });
+  fadeIn(e, at, 0.6, -24);
+  return e;
+}
+function caption(sc, at, html) {
+  const e = mk(sc, 'div', 'cap', null, html);
+  fadeIn(e, at, 0.5, 30);
+  return e;
+}
+/** Текст, который меняется по времени: fn(t) → строка. */
+function live(e, fn) {
+  let last = null;
+  hooks.push((t) => {
+    const v = fn(t);
+    if (v !== last) { e.innerHTML = v; last = v; }
+  });
+}
+function coinFly(sc, tx, ty, arrive) {
+  const c = box(sc, tx, ty, 84, 84, 'coin', '₽', { fontSize: '46px' });
+  A(c, [
+    { opacity: 0, transform: 'translate(-780px,-430px) scale(.9)', offset: 0 },
+    { opacity: 1, transform: 'translate(-760px,-430px) scale(.9)', offset: 0.08 },
+    { opacity: 1, transform: 'translate(-380px,-540px) scale(1)', offset: 0.5 },
+    { opacity: 1, transform: 'translate(0,0) scale(.55)', offset: 0.94 },
+    { opacity: 0, transform: 'translate(0,0) scale(.3)', offset: 1 },
+  ], arrive - 0.75, 0.75, 'ease-in');
+  sfx(arrive, 'coin');
+}
+const HEART = '<svg viewBox="0 0 40 36" width="100%" height="100%"><path d="M20 34 C8 25 1 18 1 10.5 A9.5 9.5 0 0 1 20 6 A9.5 9.5 0 0 1 39 10.5 C39 18 32 25 20 34Z" fill="#f06c8a"/></svg>';
+const STAR = '<svg viewBox="0 0 40 40" width="100%" height="100%"><path d="M20 0 L24 16 L40 20 L24 24 L20 40 L16 24 L0 20 L16 16Z" fill="#ffd34d"/></svg>';
+function burst(sc, cx, cy, at, svg, n = 7, r = 190, size = 46, up = 0) {
+  for (let i = 0; i < n; i++) {
+    const ang = (i / n) * Math.PI * 2 - Math.PI / 2 + 0.3;
+    const dx = Math.round(Math.cos(ang) * r), dy = Math.round(Math.sin(ang) * r * 0.75) - up;
+    const s = box(sc, cx, cy, size, size, '', svg);
+    A(s, [
+      { opacity: 0, transform: 'translate(0,0) scale(.2)' },
+      { opacity: 1, transform: `translate(${dx * 0.7}px,${dy * 0.7}px) scale(1.1)`, offset: 0.45 },
+      { opacity: 0, transform: `translate(${dx}px,${dy - 40}px) scale(.7)` },
+    ], at + i * 0.03, 1.0, 'ease-out');
+  }
+}
+function cursor(sc) {
+  return mk(sc, 'div', 'abs', { left: '0', top: '0', width: '64px', height: '64px', zIndex: 5 },
+    '<svg viewBox="0 0 32 32" width="64" height="64"><path d="M4 2 L4 26 L10 20 L14 30 L18 28 L14 18 L23 18 Z" fill="#fff" stroke="#2a2420" stroke-width="2.2" stroke-linejoin="round"/></svg>');
+}
+
+/* ---------- загадочный питомец (вид — сюрприз) ---------- */
+const PET_SVG = `<svg class="petsvg" viewBox="-30 -40 260 260">
+  <defs><radialGradient id="pb" cx="40%" cy="32%" r="75%"><stop offset="0" stop-color="#8a77b4"/><stop offset="1" stop-color="#3b3160"/></radialGradient></defs>
+  <ellipse cx="100" cy="212" rx="74" ry="11" fill="#000" opacity=".16"/>
+  <ellipse cx="64" cy="202" rx="24" ry="12" fill="#3b3160"/><ellipse cx="136" cy="202" rx="24" ry="12" fill="#3b3160"/>
+  <circle cx="58" cy="44" r="19" fill="#4a3f74"/><circle cx="142" cy="44" r="19" fill="#4a3f74"/>
+  <path d="M100 24 C152 24 182 74 182 128 C182 182 146 206 100 206 C54 206 18 182 18 128 C18 74 48 24 100 24Z" fill="url(#pb)"/>
+  <path class="sick" opacity="0" d="M100 24 C152 24 182 74 182 128 C182 182 146 206 100 206 C54 206 18 182 18 128 C18 74 48 24 100 24Z" fill="#86b86a"/>
+  <ellipse cx="56" cy="134" rx="12" ry="7" fill="#ff8fb0" opacity=".5"/><ellipse cx="144" cy="134" rx="12" ry="7" fill="#ff8fb0" opacity=".5"/>
+  <g class="eyes-open anim">
+    <ellipse cx="74" cy="104" rx="15" ry="18" fill="#fff"/><circle cx="77" cy="108" r="8.5" fill="#1d1830"/><circle cx="80.5" cy="103.5" r="3" fill="#fff"/>
+    <ellipse cx="126" cy="104" rx="15" ry="18" fill="#fff"/><circle cx="129" cy="108" r="8.5" fill="#1d1830"/><circle cx="132.5" cy="103.5" r="3" fill="#fff"/>
+  </g>
+  <g class="eyes-happy" opacity="0" stroke="#fff" stroke-width="7" fill="none" stroke-linecap="round">
+    <path d="M60 110 Q74 90 88 110"/><path d="M112 110 Q126 90 140 110"/>
+  </g>
+  <g class="eyes-sick" opacity="0" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round">
+    <path d="M61 102 Q74 112 87 102"/><path d="M113 102 Q126 112 139 102"/>
+  </g>
+  <text x="100" y="182" text-anchor="middle" font-family="Nunito, Segoe UI, sans-serif" font-size="64" font-weight="900" fill="#ffd86b">?</text>
+  <g class="thermo" opacity="0"><g transform="rotate(-38 150 150)"><rect x="146" y="118" width="10" height="46" rx="5" fill="#fff" stroke="#c9605a" stroke-width="2.5"/><circle cx="151" cy="166" r="9" fill="#e05a4f"/></g></g>
+  <path class="tear" opacity="0" d="M70 124 Q62 140 70 148 Q78 140 70 124Z" fill="#7fc4ff"/>
+  <g class="zz anim" opacity="0" font-family="Nunito, Segoe UI, sans-serif" font-weight="900" fill="#efe6d6" stroke="#3b2f2a" stroke-width="1.5">
+    <text x="170" y="26" font-size="44">Z</text><text x="200" y="-6" font-size="32">z</text>
+  </g>
+</svg>`;
+function pet(sc, cx, bottom, size) {
+  const root = mk(sc, 'div', 'abs', { left: px(cx - size / 2), top: px(bottom - size), width: px(size), height: px(size), transformOrigin: '50% 92%' });
+  const bob = mk(root, 'div', '', { width: '100%', height: '100%', transformOrigin: '50% 92%' }, PET_SVG);
+  return { root, bob, q: (s) => root.querySelector(s) };
+}
+function idle(p, from) {
+  A(p.bob, [
+    { transform: 'translateY(0) scale(1,1)' },
+    { transform: 'translateY(-10px) scale(1.03,.97)' },
+    { transform: 'translateY(0) scale(1,1)' },
+  ], from, 1.4, INOUT, { iterations: Infinity });
+  A(p.q('.eyes-open'), [
+    { transform: 'scaleY(1)', offset: 0 }, { transform: 'scaleY(1)', offset: 0.9 },
+    { transform: 'scaleY(.1)', offset: 0.95 }, { transform: 'scaleY(1)', offset: 1 },
+  ], from + 0.7, 3.2, 'linear', { iterations: Infinity });
+}
+
+/* ---------- 1. Титр и шесть яиц (0–9) ---------- */
+{
+  const s = scene(0, 9, 'cream');
+  const title = box(s, 960, 225, 1840, 150, 'txt', 'Питомцы отделов продаж', { fontSize: '116px', fontWeight: 900, letterSpacing: '-1px' });
+  fadeIn(title, 1.9, 0.8, 40);
+  sfx(1.9, 'whoosh');
+  const sub = box(s, 960, 338, 1840, 70, 'txt', 'Игра для шести групп · 2–20 ноября', { fontSize: '50px', fontWeight: 800, color: '#8a6a4f' });
+  fadeIn(sub, 2.7);
+  G.forEach((g, i) => {
+    const cx = 960 + (i - 2.5) * 280;
+    fadeIn(pic(s, 'nest.svg', cx, 728, 230, 86), 0.2 + i * 0.08, 0.5, 20);
+    const egg = pic(s, `eggs/${g.key}-0.svg`, cx, 612, 160, 208, { transformOrigin: '50% 92%' });
+    const at = 0.45 + i * 0.22;
+    A(egg, [{ transform: 'translateY(-900px)' }, { transform: 'translateY(0)' }], at, 0.55, 'cubic-bezier(.5,0,.75,0)');
+    A(egg, [{ transform: 'scale(1.16,.84)' }, { transform: 'scale(1,1)' }], at + 0.55, 0.4, BOUNCE);
+    sfx(at + 0.55, 'pop');
+    wobble(egg, 4.3 + i * 0.12);
+    popIn(box(s, cx, 812, 140, 58, 'pill', g.code, { background: g.accent, color: '#fff', fontSize: '34px' }), at + 0.7);
+  });
+  caption(s, 5.0, 'У каждой группы своё яйцо. Кто из него вылупится — секрет!');
+}
+
+/* ---------- 2. Оплаты → трещины → вылупление (9–21) ---------- */
+{
+  const s = scene(9, 21);
+  room(s, ['#f6e7bb', '#e9cf8e'], '#c9a66b');
+  header(s, 9.3, 'Оплаты группы кормят питомца');
+  pic(s, 'nest.svg', 600, 772, 380, 142);
+  const P = [10.6, 11.8, 13.0, 14.2, 15.4];
+  const eggWrap = box(s, 600, 575, 280, 364, '', null, { transformOrigin: '50% 92%' });
+  const e = [0, 1, 2].map((ph) => {
+    const b = mk(eggWrap, 'div', 'abs', { inset: '0' });
+    mk(b, 'img').src = `${ASSET}eggs/sr3-${ph}.svg`;
+    return b;
+  });
+  hide(e[0], P[0], 0.08); show(e[1], P[0], 0.08); hide(e[1], P[2], 0.08); show(e[2], P[2], 0.08);
+  P.slice(0, 4).forEach((p) => wobble(eggWrap, p, 0.6));
+  P.forEach((p) => coinFly(s, 600, 560, p));
+  // вылупление
+  const hatch = P[4];
+  A(eggWrap, [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(1.3)' }], hatch, 0.3, 'ease-out');
+  const flash = box(s, 600, 560, 360, 360, '', null, { borderRadius: '50%', background: 'radial-gradient(circle, #fff 0%, rgba(255,255,255,.85) 40%, rgba(255,255,255,0) 70%)' });
+  A(flash, [{ opacity: 0, transform: 'scale(.2)' }, { opacity: 1, transform: 'scale(1.6)', offset: 0.35 }, { opacity: 0, transform: 'scale(2.6)' }], hatch, 0.8, 'ease-out');
+  for (let i = 0; i < 8; i++) {
+    const ang = (i / 8) * Math.PI * 2;
+    const sh = box(s, 600, 560, 54, 46, '', null, { background: G[2].egg, clipPath: 'polygon(0 100%, 50% 0, 100% 70%)' });
+    A(sh, [
+      { opacity: 1, transform: 'translate(0,0) rotate(0)' },
+      { opacity: 0, transform: `translate(${Math.round(Math.cos(ang) * 320)}px,${Math.round(Math.sin(ang) * 220 + 120)}px) rotate(${i % 2 ? 260 : -240}deg)` },
+    ], hatch, 0.9, 'cubic-bezier(.2,.7,.4,1)');
+  }
+  sfx(hatch, 'hatch');
+  const p = pet(s, 600, 800, 380);
+  popIn(p.root, hatch + 0.12, 0.65);
+  idle(p, hatch + 0.8);
+  burst(s, 600, 520, hatch + 0.2, STAR, 8, 230, 50);
+  const st = box(s, 600, 365, 330, 66, 'pill', 'Стадия 1 из 5', { fontSize: '36px' });
+  popIn(st, hatch + 0.7);
+  const cnt = box(s, 600, 884, 290, 70, 'pill', '', { fontSize: '40px' });
+  fadeIn(cnt, 9.6);
+  live(cnt, (t) => `Оплат: ${P.filter((x) => t >= x).length}`);
+  const rows = [
+    ['1', '1-я оплата — трещинка', P[0]],
+    ['3', '3-я оплата — большая трещина', P[2]],
+    ['5', '5-я оплата — питомец вылупился!', P[4]],
+  ];
+  rows.forEach(([n, label, at], i) => {
+    const outer = box(s, 1320, 400 + i * 150, 920, 120);
+    fadeIn(outer, 9.7 + i * 0.25, 0.6, 20);
+    const inner = mk(outer, 'div', 'card abs', { inset: '0', display: 'flex', alignItems: 'center', gap: '28px', padding: '0 34px', fontSize: '40px', fontWeight: 800, whiteSpace: 'nowrap' });
+    mk(inner, 'div', 'coin', { width: '76px', height: '76px', flex: '0 0 76px', fontSize: '40px' }, n);
+    mk(inner, 'div', '', null, label);
+    A(inner, [{ opacity: 0.38, transform: 'scale(1)' }, { opacity: 1, transform: 'scale(1.07)', offset: 0.4 }, { opacity: 1, transform: 'scale(1)' }], at, 0.55, INOUT);
+  });
+  caption(s, 16.6, 'Какой питомец у вашей группы — увидите на экране!');
+}
+
+/* ---------- 3. Рост: 5 стадий по % плана оплат (21–33) ---------- */
+{
+  const s = scene(21, 33);
+  room(s, ['#d6e4ef', '#b7cde0'], '#86a2bb');
+  header(s, 21.3, 'Питомец растёт, пока группа выполняет план оплат');
+  pic(s, 'nest.svg', 960, 702, 460, 172);
+  const p = pet(s, 960, 735, 440);
+  const SC = [0.55, 0.6625, 0.775, 0.8875, 1];
+  A(p.root, [{ transform: `scale(${SC[0]})` }, { transform: `scale(${SC[0]})` }], 21, 0.01);
+  idle(p, 21);
+  const F0 = 22.4, FD = 7;
+  const UP = [0.25, 0.5, 0.75, 1].map((k) => F0 + FD * k);
+  UP.forEach((t, i) => {
+    A(p.root, [{ transform: `scale(${SC[i]})` }, { transform: `scale(${SC[i + 1] * 1.1})`, offset: 0.55 }, { transform: `scale(${SC[i + 1]})` }], t, 0.5);
+    sfx(t, 'level');
+    burst(s, 960, 735 - 220 * SC[i + 1], t, STAR, 6, 160 + 60 * SC[i + 1], 40);
+  });
+  const read = box(s, 960, 222, 600, 72, 'pill', '', { fontSize: '38px' });
+  fadeIn(read, 21.6);
+  const pct = (t) => Math.floor(Math.min(Math.max((t - F0) / FD, 0), 1) * 100);
+  live(read, (t) => `Стадия ${1 + UP.filter((x) => t >= x).length} / 5 · ${pct(t)} % плана`);
+  const X0 = 360, W = 1200, Y = 862;
+  const track = box(s, 960, Y, W, 42, '', null, { borderRadius: '21px', background: 'rgba(255,255,255,.75)', overflow: 'hidden', boxShadow: 'inset 0 2px 6px rgba(0,0,0,.15)' });
+  const fill = mk(track, 'div', 'abs', { left: '0', top: '0', bottom: '0', width: '0', borderRadius: '21px', background: 'linear-gradient(90deg,#f6c453,#e8833a)' });
+  A(fill, [{ width: '0%' }, { width: '100%' }], F0, FD, 'linear');
+  fadeIn(track, 21.8, 0.5, 20);
+  [25, 50, 75, 100].forEach((k, i) => {
+    const x = X0 + (W * k) / 100;
+    const tick = box(s, x - (k === 100 ? 3 : 0), Y, 6, 62, '', null, { background: '#fff', borderRadius: '3px' });
+    fadeIn(tick, 21.9, 0.5, 20);
+    const lab = box(s, x - (k === 100 ? 40 : 0), Y - 64, 160, 46, 'txt', `${k} %`, { fontSize: '36px', fontWeight: 900, color: '#2f4a66' });
+    const st = box(s, x - (k === 100 ? 40 : 0), Y + 62, 180, 40, 'txt', `Стадия ${i + 2}`, { fontSize: '30px', fontWeight: 800, color: '#2f4a66' });
+    A(lab, [{ opacity: 0.45 }, { opacity: 0.45 }], 21, 0.01);
+    A(st, [{ opacity: 0.45 }, { opacity: 0.45 }], 21, 0.01);
+    A(lab, [{ opacity: 0.45, transform: 'scale(1)' }, { opacity: 1, transform: 'scale(1.25)', offset: 0.4 }, { opacity: 1, transform: 'scale(1)' }], UP[i], 0.5);
+    A(st, [{ opacity: 0.45 }, { opacity: 1 }], UP[i], 0.3);
+  });
+  caption(s, 29.9, 'План группы — сумма личных планов оплат всех сотрудников');
+}
+
+/* ---------- 4. Итоги воронки в 11:00 (33–45) ---------- */
+{
+  const s = scene(33, 45, 'cream');
+  header(s, 33.3, 'Каждый день в 11:00 — итоги воронки за вчера');
+  const clock = box(s, 270, 520, 300, 300, 'clock', `<svg viewBox="0 0 200 200" width="300" height="300">
+    <circle cx="100" cy="100" r="92" fill="#fff" stroke="#8a6a4f" stroke-width="10"/>
+    ${Array.from({ length: 12 }, (_, i) => `<rect x="97" y="16" width="6" height="${i % 3 ? 10 : 18}" rx="3" fill="#8a6a4f" transform="rotate(${i * 30} 100 100)"/>`).join('')}
+    <g class="hand hh"><rect x="95" y="52" width="10" height="54" rx="5" fill="#3b2f2a"/></g>
+    <g class="hand mh"><rect x="97" y="28" width="6" height="78" rx="3" fill="#c0675d"/></g>
+    <circle cx="100" cy="100" r="8" fill="#3b2f2a"/></svg>`);
+  popIn(clock, 33.4);
+  A(clock.querySelector('.hh'), [{ transform: 'rotate(270deg)' }, { transform: 'rotate(330deg)' }], 33.6, 1.2, INOUT);
+  A(clock.querySelector('.mh'), [{ transform: 'rotate(0deg)' }, { transform: 'rotate(720deg)' }], 33.6, 1.2, INOUT);
+  sfx(34.8, 'ding');
+  const time = box(s, 270, 722, 200, 66, 'pill', '11:00', { fontSize: '40px' });
+  popIn(time, 34.8);
+  const cards = [
+    { at: 35.3, cond: 'Норма длинных разговоров выполнена', sub: 'длинный разговор — от 20 минут', icon: ['medkit.svg'], res: 'аптечка, и одна какашка уходит', snd: 'ding' },
+    { at: 37.5, cond: 'Норма длинных разговоров не выполнена', sub: 'какашек в комнате — максимум 5', icon: ['pile.svg', 'flies.svg'], res: 'какашка в комнату', snd: 'splat' },
+    { at: 39.7, cond: 'Норма качественных счетов выполнена', sub: 'счета не заменяют разговоры, и наоборот', icon: ['toy.svg'], res: 'игрушка', snd: 'ding' },
+  ];
+  cards.forEach((c, i) => {
+    const cy = 335 + i * 205;
+    const card = box(s, 1170, cy, 1360, 178, 'card');
+    slideIn(card, c.at);
+    mk(card, 'div', 'abs', { left: '40px', top: '22px', width: '730px', fontSize: '36px', fontWeight: 900, lineHeight: 1.15 }, c.cond);
+    mk(card, 'div', 'abs', { left: '40px', top: '120px', width: '730px', fontSize: '28px', fontWeight: 700, color: '#8a6a4f' }, c.sub);
+    mk(card, 'div', 'abs', { left: '780px', top: '50px', fontSize: '60px', fontWeight: 900, color: '#c9a66b' }, '→');
+    const ic = box(card, 920, 89, 120, 120);
+    c.icon.forEach((src, k) => {
+      const im = mk(ic, 'div', 'abs', k === 0 ? { inset: '8px' } : { left: '0', top: '-26px', width: '120px', height: '60px' });
+      mk(im, 'img').src = ASSET + src;
+    });
+    popIn(ic, c.at + 0.45);
+    sfx(c.at + 0.45, c.snd);
+    mk(card, 'div', 'abs txt', { left: '990px', top: '0', width: '340px', height: '178px', fontSize: '32px', fontWeight: 900, justifyContent: 'flex-start', textAlign: 'left' }, c.res);
+  });
+  caption(s, 41.9, 'Норма группы — сумма личных норм всех, кто вчера работал');
+}
+
+/* ---------- 5. Без оплат: скучает → болеет → погибает (45–57) ---------- */
+{
+  const s = scene(45, 57);
+  room(s, ['#5d6480', '#474c63'], '#3c4052');
+  header(s, 45.3, 'Нет оплат — питомцу плохо', '#f6eedf');
+  pic(s, 'nest.svg', 960, 640, 400, 150);
+  const p = pet(s, 960, 672, 380);
+  idle(p, 45);
+  const D = [46.0, 47.2, 48.4, 49.6, 50.8];
+  const EGG = 52.3;
+  // скучает
+  const zz = p.q('.zz');
+  show(zz, D[0], 0.4);
+  A(zz, [{ transform: 'translateY(0)' }, { transform: 'translateY(-8px)' }, { transform: 'translateY(0)' }], D[0], 1.2, INOUT, { iterations: 3 });
+  // болеет
+  A(p.q('.sick'), [{ opacity: 0 }, { opacity: 0.62 }], D[1], 0.5, 'linear');
+  show(p.q('.thermo'), D[1]);
+  hide(p.q('.eyes-open'), D[1], 0.2);
+  show(p.q('.eyes-sick'), D[1], 0.2);
+  hide(zz, D[1] + 0.2);
+  sfx(D[1], 'sad');
+  [D[2], D[3]].forEach((t) => {
+    A(p.root, [0, -12, 10, -8, 6, 0].map((x) => ({ transform: `translateX(${x}px)` })), t, 0.45, 'linear');
+    sfx(t, 'tick');
+  });
+  // погиб → надгробие → новое яйцо
+  A(p.root, [{ opacity: 1, transform: 'translateX(0) scale(1)' }, { opacity: 0, transform: 'translateX(0) scale(.5)' }], D[4], 0.5, 'ease-in');
+  const grave = pic(s, 'grave.svg', 960, 560, 210, 262);
+  popIn(grave, D[4] + 0.4);
+  sfx(D[4] + 0.4, 'thud');
+  hide(grave, EGG - 0.3, 0.3);
+  const egg = pic(s, 'eggs/sr2-0.svg', 960, 545, 190, 247, { transformOrigin: '50% 92%' });
+  A(egg, [{ transform: 'translateY(-900px)' }, { transform: 'translateY(0)' }], EGG, 0.5, 'cubic-bezier(.5,0,.75,0)');
+  A(egg, [{ transform: 'scale(1.16,.84)' }, { transform: 'scale(1,1)' }], EGG + 0.5, 0.4, BOUNCE);
+  sfx(EGG + 0.5, 'pop');
+  const mood = box(s, 960, 238, 620, 74, 'pill', '', { fontSize: '40px' });
+  fadeIn(mood, 45.6);
+  live(mood, (t) => t < D[0] ? 'Всё хорошо' : t < D[1] ? 'Скучает' : t < D[4] ? 'Болеет' : t < EGG ? 'Погиб' : 'Новое яйцо — всё сначала');
+  D.forEach((t, i) => {
+    const cx = 960 + (i - 2) * 236;
+    const b = box(s, cx, 860, 212, 118, 'card txt', `<div><div style="font-size:34px;font-weight:900">День ${i + 1}</div><div style="font-size:28px;font-weight:800;color:#b5453b">0 оплат</div></div>`);
+    A(b, [{ opacity: 0.3, transform: 'scale(1)' }, { opacity: 1, transform: 'scale(1.1)', offset: 0.4 }, { opacity: 1, transform: 'scale(1)' }], t, 0.5, INOUT);
+  });
+  caption(s, 53.3, 'Каждый рабочий день нужна хотя бы одна оплата группы');
+}
+
+/* ---------- 6. Руководитель группы: аптечка и игрушка (57–66) ---------- */
+{
+  const s = scene(57, 66);
+  room(s, ['#ddd2e6', '#c3b3d2'], '#8d7a6a');
+  header(s, 57.3, 'Руководитель группы лечит и радует питомца');
+  const crate = (cy, src, n0, tUse, label) => {
+    const c = box(s, 320, cy, 250, 190, '', null, { background: 'linear-gradient(180deg,#c99a6c,#a87a4f)', borderRadius: '22px', border: '6px solid #8a6240', boxShadow: '0 8px 20px rgba(0,0,0,.18)' });
+    const im = mk(c, 'div', 'abs', { left: '60px', top: '16px', width: '118px', height: '118px' });
+    mk(im, 'img').src = ASSET + src;
+    const k = box(s, 320, cy + 92, 210, 56, 'pill', '', { fontSize: '32px' });
+    live(k, (t) => `${label} ×${t >= tUse ? n0 - 1 : n0}`);
+    fadeIn(c, 57.5, 0.5, 20);
+    fadeIn(k, 57.6, 0.5, 20);
+  };
+  const HEAL = 59.4, JOY = 61.8;
+  crate(400, 'medkit.svg', 2, HEAL, 'аптечки');
+  crate(680, 'toy.svg', 1, JOY, 'игрушки');
+  pic(s, 'nest.svg', 1180, 742, 420, 156);
+  const p = pet(s, 1180, 775, 420);
+  idle(p, 57);
+  A(p.q('.sick'), [{ opacity: 0.62 }, { opacity: 0.62 }], 57, 0.01);
+  A(p.q('.thermo'), [{ opacity: 1 }, { opacity: 1 }], 57, 0.01);
+  A(p.q('.eyes-open'), [{ opacity: 0 }, { opacity: 0 }], 57, 0.01);
+  A(p.q('.eyes-sick'), [{ opacity: 1 }, { opacity: 1 }], 57, 0.01);
+  const sick = box(s, 1180, 300, 300, 62, 'pill', 'Болеет', { fontSize: '36px', color: '#4f7a3a' });
+  popIn(sick, 57.7);
+  hide(sick, HEAL, 0.3);
+  // курсор переносит аптечку, потом игрушку
+  const cur = cursor(s);
+  const at = (x, y) => `translate(${x}px,${y}px)`;
+  A(cur, [{ opacity: 0, transform: at(420, 520) }, { opacity: 1, transform: at(330, 430) }], 57.9, 0.4);
+  A(cur, [{ transform: at(330, 430) }, { transform: at(1190, 560) }], 58.3, 1.0, INOUT);
+  A(cur, [{ transform: at(1190, 560) }, { transform: at(330, 700) }], 59.7, 0.9, INOUT);
+  A(cur, [{ transform: at(330, 700) }, { transform: at(1190, 560) }], 60.7, 1.0, INOUT);
+  A(cur, [{ opacity: 1 }, { opacity: 0 }], 62.1, 0.4, 'linear');
+  const carry = (src, y0, t0, tDrop) => {
+    const it = mk(s, 'div', 'abs', { left: '0', top: '0', width: '110px', height: '110px', zIndex: 4 });
+    mk(it, 'img').src = ASSET + src;
+    A(it, [{ opacity: 0, transform: `${at(275, y0 - 55)} scale(.7)` }, { opacity: 1, transform: `${at(275, y0 - 55)} scale(1)` }], t0 - 0.2, 0.2);
+    A(it, [{ transform: `${at(275, y0 - 55)} scale(1)` }, { transform: `${at(1135, 505)} scale(1)` }], t0, 1.0, INOUT);
+    A(it, [{ opacity: 1, transform: `${at(1135, 505)} scale(1)` }, { opacity: 0, transform: `${at(1135, 505)} scale(.2)` }], tDrop - 0.1, 0.3, 'ease-in');
+  };
+  carry('medkit.svg', 430, 58.3, HEAL);
+  carry('toy.svg', 700, 60.7, JOY);
+  // аптечка лечит
+  A(p.q('.sick'), [{ opacity: 0.62 }, { opacity: 0 }], HEAL, 0.5, 'linear');
+  hide(p.q('.thermo'), HEAL, 0.3);
+  hide(p.q('.eyes-sick'), HEAL, 0.2);
+  show(p.q('.eyes-open'), HEAL, 0.2);
+  sfx(HEAL, 'heal');
+  burst(s, 1180, 560, HEAL, STAR, 7, 210, 48);
+  const l1 = box(s, 1180, 300, 420, 64, 'pill', 'Аптечка лечит', { fontSize: '36px', color: '#b5453b' });
+  popIn(l1, HEAL + 0.15);
+  hide(l1, 60.5, 0.3);
+  // грустит → игрушка радует
+  show(p.q('.tear'), 60.1, 0.3);
+  const l0 = box(s, 1180, 300, 300, 62, 'pill', 'Грустит', { fontSize: '36px', color: '#4a6fa8' });
+  popIn(l0, 60.6);
+  hide(l0, JOY, 0.3);
+  hide(p.q('.tear'), JOY, 0.3);
+  hide(p.q('.eyes-open'), JOY, 0.15);
+  show(p.q('.eyes-happy'), JOY, 0.15);
+  sfx(JOY, 'joy');
+  burst(s, 1180, 560, JOY, HEART, 7, 220, 50, 80);
+  const l2 = box(s, 1180, 300, 600, 64, 'pill', 'Игрушка радует до конца дня', { fontSize: '36px', color: '#c06a2b' });
+  popIn(l2, JOY + 0.15);
+  caption(s, 62.6, 'Предметы зарабатывает вся группа, а тратит руководитель');
+}
+
+/* ---------- 7. Рейтинги (66–73.5) ---------- */
+{
+  const s = scene(66, 73.5, 'cream');
+  header(s, 66.3, 'Рейтинги');
+  const ICONS = [
+    '<svg viewBox="0 0 60 60" width="100%" height="100%"><rect x="4" y="30" width="16" height="26" rx="3" fill="#b9c4cf"/><rect x="22" y="14" width="16" height="42" rx="3" fill="#f2b93b"/><rect x="40" y="38" width="16" height="18" rx="3" fill="#d9915a"/></svg>',
+    '<svg viewBox="0 0 60 60" width="100%" height="100%"><path d="M16 6 H44 V20 Q44 36 30 38 Q16 36 16 20Z" fill="#f2b93b"/><path d="M16 10 H6 Q6 26 18 26 M44 10 H54 Q54 26 42 26" fill="none" stroke="#f2b93b" stroke-width="4"/><rect x="26" y="38" width="8" height="10" fill="#d99a2b"/><rect x="16" y="48" width="28" height="7" rx="3" fill="#8a6a4f"/></svg>',
+    STAR,
+  ];
+  const boards = [
+    ['Рейтинг группы', 'место по вашим оплатам с начала игры', [0.92, 0.75, 0.6, 0.44]],
+    ['Топ-10', 'лучшие по оплатам из всех шести групп', [0.95, 0.83, 0.7, 0.58]],
+    ['Герои дня', '% личной нормы воронки за вчера', [1, 0.9, 0.8, 0.72]],
+  ];
+  boards.forEach(([title, sub, bars], i) => {
+    const at = 66.7 + i * 0.8;
+    const b = box(s, 380 + i * 580, 560, 530, 620, 'card');
+    popIn(b, at);
+    sfx(at, 'tick');
+    const ic = mk(b, 'div', 'abs', { left: '215px', top: '28px', width: '100px', height: '100px' }, ICONS[i]);
+    mk(b, 'div', 'abs txt', { left: '20px', right: '20px', top: '140px', height: '60px', fontSize: '46px', fontWeight: 900 }, title);
+    mk(b, 'div', 'abs txt', { left: '30px', right: '30px', top: '200px', height: '80px', fontSize: '28px', fontWeight: 700, color: '#8a6a4f' }, sub);
+    bars.forEach((v, r) => {
+      const y = 310 + r * 72;
+      mk(b, 'div', 'abs txt', { left: '34px', top: `${y}px`, width: '40px', height: '52px', fontSize: '32px', fontWeight: 900, color: '#8a6a4f' }, String(r + 1));
+      mk(b, 'div', 'abs', { left: '84px', top: `${y}px`, width: '52px', height: '52px', borderRadius: '50%', background: G[(i * 2 + r) % 6].accent });
+      const tr = mk(b, 'div', 'abs', { left: '152px', top: `${y + 12}px`, width: '330px', height: '28px', borderRadius: '14px', background: '#f1e6d6', overflow: 'hidden' });
+      const f = mk(tr, 'div', 'abs', { left: '0', top: '0', bottom: '0', width: '0', borderRadius: '14px', background: r === 0 ? '#f2b93b' : '#d9b98c' });
+      A(f, [{ width: '0%' }, { width: `${Math.round(v * 100)}%` }], at + 0.35 + r * 0.08, 0.8);
+    });
+  });
+  caption(s, 69.6, 'Каждая ваша оплата — и питомцу группы, и вам в рейтинг');
+}
+
+/* ---------- 8. Пять правил (73.5–86) ---------- */
+{
+  const s = scene(73.5, 86, 'cream');
+  header(s, 73.8, 'Пять правил, чтобы питомец вырос');
+  const rules = [
+    ['Каждый рабочий день — хотя бы одна оплата группы', 'без оплат питомец скучает, на 2-й день болеет, на 5-й погибает'],
+    ['Двигайте план оплат группы', 'каждые 25 % плана — новая стадия, 100 % — взрослый питомец'],
+    ['Выполняйте норму длинных разговоров', 'это аптечка и чистая комната; недобор — какашка'],
+    ['Выполняйте норму качественных счетов', 'это игрушка: питомец не грустит и не скучает'],
+    ['Норма группы складывается из личных', 'недобор одного может оставить без аптечки всю группу'],
+  ];
+  rules.forEach(([main, sub], i) => {
+    const at = 74.4 + i * 2.0;
+    const row = box(s, 960, 248 + i * 142, 1560, 124, 'card');
+    slideIn(row, at, 160);
+    sfx(at, 'tick');
+    mk(row, 'div', 'abs txt', { left: '26px', top: '20px', width: '84px', height: '84px', borderRadius: '50%', background: G[i].accent, color: '#fff', fontSize: '50px', fontWeight: 900 }, String(i + 1));
+    mk(row, 'div', 'abs', { left: '140px', top: '14px', right: '30px', fontSize: '44px', fontWeight: 900, whiteSpace: 'nowrap' }, main);
+    mk(row, 'div', 'abs', { left: '140px', top: '70px', right: '30px', fontSize: '30px', fontWeight: 700, color: '#8a6a4f', whiteSpace: 'nowrap' }, sub);
+  });
+}
+
+/* ---------- 9. Финал: старт 2 ноября (86–93) ---------- */
+{
+  const s = scene(86, 93, 'cream');
+  const title = box(s, 960, 225, 1840, 150, 'txt', 'Старт — 2 ноября!', { fontSize: '128px', fontWeight: 900, letterSpacing: '-1px' });
+  popIn(title, 86.3, 0.7);
+  sfx(86.3, 'fanfare');
+  const sub = box(s, 960, 345, 1840, 70, 'txt', 'Растим питомцев всей группой', { fontSize: '56px', fontWeight: 800, color: '#8a6a4f' });
+  fadeIn(sub, 87.0);
+  G.forEach((g, i) => {
+    const cx = 960 + (i - 2.5) * 280;
+    pic(s, 'nest.svg', cx, 722, 230, 86);
+    const egg = pic(s, `eggs/${g.key}-0.svg`, cx, 606, 160, 208, { transformOrigin: '50% 92%' });
+    A(egg, [0, -7, 6, -4, 2, 0, 0, 0].map((d) => ({ transform: `rotate(${d}deg)` })), 86.4 + i * 0.18, 1.6, INOUT, { iterations: Infinity });
+  });
+  const url = box(s, 960, 868, 1000, 92, 'pill', 'konturproject.github.io/sales-pets', { fontSize: '50px', color: '#3b5f8c' });
+  popIn(url, 87.6);
+  sfx(87.6, 'ding');
+  const black = mk(stage, 'div', 'abs', { inset: '0', background: '#000', pointerEvents: 'none' });
+  A(black, [{ opacity: 0 }, { opacity: 1 }], 92.2, 0.8, 'linear');
+}
+
+/* ---------- время ---------- */
+window.seek = (t) => {
+  const ms = t * 1000;
+  for (const a of document.getAnimations()) a.currentTime = ms;
+  for (const h of hooks) h(t);
+};
+async function ready() {
+  const fontLoad = Promise.all(['700', '800', '900'].map((w) => document.fonts.load(`${w} 40px Nunito`, 'Питомцы ₽ 0123')));
+  await Promise.race([fontLoad.catch(() => {}), new Promise((r) => setTimeout(r, 8000))]);
+  await document.fonts.ready;
+  await Promise.all([...document.images].map((im) => im.decode().catch(() => console.error('нет картинки', im.src))));
+  T.font = document.fonts.check('900 40px Nunito', 'Питомцы');
+  T.sfx.sort((a, b) => a.t - b.t);
+  window.seek(0);
+  T.ready = true;
+}
+ready().then(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.has('render')) return;
+  if (q.has('t')) { window.seek(Number(q.get('t'))); return; }
+  const t0 = performance.now();
+  const tick = (now) => { window.seek(((now - t0) / 1000) % T.duration); requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+});
+</script>
+</body>
+</html>
