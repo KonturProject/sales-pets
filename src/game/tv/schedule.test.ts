@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { shotAt } from './schedule';
+import { MIN_WALK_MS, shotAt, WALK_MS, walkFor } from './schedule';
 
 describe('shotAt: цикл камеры на стене (комнаты 25 с → герои 12 с → группа 18 с → прогулка 30 с)', () => {
   test('начало цикла — комнаты, слайд правой доски 0', () => {
@@ -35,5 +35,20 @@ describe('shotAt: цикл камеры на стене (комнаты 25 с �
   test('отрицательное время и NaN не бросают — начало цикла', () => {
     expect(shotAt(-5)).toEqual({ shot: 'rooms', slide: 0, at: 0 });
     expect(shotAt(Number.NaN)).toEqual({ shot: 'rooms', slide: 0, at: 0 });
+  });
+});
+
+describe('walkFor: сколько гулять, если кадр «прогулка» застали в момент at (после удержания доски)', () => {
+  test('с начала кадра — весь кадр без секунды на переход к комнатам', () => {
+    expect(walkFor(0)).toBe(WALK_MS - 1_000);
+  });
+
+  test('удержание съело начало — только остаток кадра, питомцы успевают домой до смены кадра', () => {
+    expect(walkFor(15_000)).toBe(WALK_MS - 15_000 - 1_000);
+  });
+
+  test('застали под конец — прогулку не начинаем', () => {
+    expect(walkFor(WALK_MS - MIN_WALK_MS)).toBeGreaterThan(0);
+    expect(walkFor(WALK_MS - MIN_WALK_MS + 1)).toBe(0);
   });
 });

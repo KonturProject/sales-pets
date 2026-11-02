@@ -97,7 +97,8 @@ export type BlockName = 'group' | 'top' | 'heroes';
  * Три блока рейтингов: «Группа» (накопительно с начала игры), «Топ-10» (все группы) и «Герои дня»
  * (выбранный рабочий день); раскладывает их по экрану вызывающий. `update()` вызывают каждый тик: DOM
  * перерисовывается, только если сменились данные или дата, поэтому выбор не сбрасывается.
- * Выбор приходит снаружи (нижняя панель, листание на стене): `pickGroup`, `stepDay`; `picked()` — что показано.
+ * Выбор приходит снаружи (нижняя панель, листание на стене): `pickGroup`, `stepDay`, `resetDay` (снова день по умолчанию);
+ * `picked()` — что показано.
  */
 export function mountRanking(
   get: () => RankData,
@@ -107,6 +108,7 @@ export function mountRanking(
   update(): void;
   pickGroup(g: GroupCode): void;
   stepDay(delta: number): void;
+  resetDay(): void;
   picked(): { group: GroupCode; day: DateStr | null; days: readonly DateStr[] };
 } {
   const groupBlock = block('group', 'Группа', 'Оплат', false, 'group');
@@ -153,12 +155,18 @@ export function mountRanking(
     pickedDay = stepDay(days, day, delta);
     if (shown) renderHeroes(shown);
   };
+  const resetDay = () => {
+    if (pickedDay === null) return;
+    pickedDay = null;
+    if (shown) renderHeroes(shown);
+  };
   update();
   return {
     blocks: { group: groupBlock.el, top: topBlock.el, heroes: heroesBlock.el },
     update,
     pickGroup,
     stepDay: step,
+    resetDay,
     picked: () => ({ group, day, days }),
   };
 }

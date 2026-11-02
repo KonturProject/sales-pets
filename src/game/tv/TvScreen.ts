@@ -13,7 +13,7 @@ import { dayLine, groupFunnel, partyBanner, paymentGains, type FunnelTotal } fro
 import { careRooms, growthMoments, MAX_MOMENTS, type RoomMoment } from './moments';
 import { PetActor } from './PetActor';
 import { RoomView } from './RoomView';
-import { shotAt, WALK_MS, type Shot } from './schedule';
+import { shotAt, walkFor, type Shot } from './schedule';
 
 export interface TvOptions {
   states: () => Record<GroupCode, PetState>;
@@ -242,7 +242,12 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
       setShot(hold.shot);
       return;
     }
-    hold = null;
+    if (hold) {
+      // выбор зрителя живёт, пока длится удержание: дальше у героев снова день по умолчанию
+      hold = null;
+      ranking?.resetDay();
+      syncDock();
+    }
     if (moment && now >= moment.until) moment = null;
     if (!moment && moments.length) moment = { ...moments.shift()!, until: now + MOMENT_MS };
     if (moment) return focusRoom(moment);
@@ -251,11 +256,11 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     const care = next === 'rooms' && at >= CARE_FROM && states ? careRooms(states) : [];
     if (care.length) return focusRoom(care[(Math.floor((at - CARE_FROM) / CARE_MS) + slide) % care.length]);
     focusRoom(null);
-    const walk = next === 'walk' && (walking || walkers().length >= MIN_WALKERS);
+    const walk = next === 'walk' && (walking || (walkFor(at) > 0 && walkers().length >= MIN_WALKERS));
     setShot(next === 'walk' && !walk ? 'rooms' : next);
     if (walk && !walking) {
       walking = true;
-      hall.start(walkers(), WALK_MS - 1000);
+      hall.start(walkers(), walkFor(at));
       showBanner('Прогулка · все гуляют в общем зале');
     } else if (!walk) endWalk();
     if (next !== 'group' || !ranking) return;

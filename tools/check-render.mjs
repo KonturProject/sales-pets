@@ -259,6 +259,32 @@ try {
   check(await valueOf('.dock [aria-pressed="true"]', (e) => e.dataset.pick) === 'СР2', 'нижняя панель: СР2 не отмечена');
   check(await valueOf('[data-block="heroes"]', (e) => e.dataset.day) === '2026-11-10', 'выбор дня сбросился после тика обновления');
 
+  // удержание доски (часы Playwright): выбор дня в конце кадра «группа» (54 с цикла) держит доску 15 с и съедает
+  // начало прогулки — прогулка короче, но питомцы дома до смены кадра (а не телепортом); после удержания у героев
+  // снова день по умолчанию
+  {
+    const hp = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+    await hp.clock.install();
+    await hp.goto(live, { waitUntil: 'networkidle' });
+    await hp.clock.runFor(1_000);
+    const shot = () => hp.$eval('.tv', (e) => e.dataset.shot);
+    const heroDay = () => hp.$eval('[data-block="heroes"]', (e) => e.dataset.day);
+    const home = () => hp.$$eval('.pet[data-kind="pet"]', (els) => els.map((e) => {
+      const m = e.style.transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([\d.]+)\)/);
+      return m ? Number(m[2]) <= 940 && Number(m[3]) === 1 : false;
+    }));
+    await hp.clock.fastForward(53_000);
+    await hp.$eval('.dock-days button[aria-label="Предыдущий день"]', (b) => b.click());
+    check(await shot() === 'heroes' && await heroDay() === '2026-11-10', `удержание: кадр ${await shot()}, день ${await heroDay()}`);
+    await hp.clock.fastForward(16_000);
+    check(await shot() === 'walk', `после удержания: кадр ${await shot()}, ожидался walk (остаток прогулки)`);
+    check(await heroDay() === '2026-11-11', `после удержания: день героев ${await heroDay()}, ожидался 2026-11-11`);
+    await hp.clock.runFor(14_500);
+    const atEnd = await home();
+    check(atEnd.length >= 2 && atEnd.every(Boolean), `поздняя прогулка: к концу кадра не все дома ${JSON.stringify(atEnd)}`);
+    await hp.close();
+  }
+
   // --- рука РГ (R20, R24): расход предмета подхватывает опрос; первый снимок после загрузки молчит.
   // Запасы читаются из DOM, абсолютные числа не предполагаются; PIN группы в вывод не попадает.
   const post = async (body) => (await fetch(mock.url, {
