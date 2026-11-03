@@ -3,7 +3,7 @@ import type { DateStr, GroupCode } from '@/engine/types';
 import type { AdminCtx } from './ctx';
 import { errorText, h } from './dom';
 import { correctionItems, correctionViews, dayResults, defaultResultsDay, resultsDays, type EmployeeLine, type Kind } from './results';
-import { INTERRUPTED_TEXT, STALE_TEXT, WriteRefused, createResultsFlow } from './resultsFlow';
+import { INTERRUPTED_TEXT, STALE_TEXT, WriteRefused, type FlowView } from './resultsFlow';
 import { KIND_WORD, dayLabel, shortDate, signed, staleText } from './resultsText';
 import { renderResults } from './resultsView';
 
@@ -13,10 +13,17 @@ import { renderResults } from './resultsView';
  * группы и выбранный день остаются. Пока идёт запись (правка или отмена), вся вкладка недоступна (`inert`), а вкладки
  * админки и «Выйти» отключены: ни второй редактор, ни раскрытие, ни смена дня, ни «Отменить» не мешают записи и не
  * теряют введённое. Если после записи свежие данные прочитать не удалось, таблица и список закрыты, пока «Обновить» не
- * получит их: правка, посчитанная от устаревшей таблицы, задвоила бы или исказила запись. Если от прошлого открытия
- * вкладки остался запрос правки без ответа, вкладка открывается «устаревшей» и сразу повторяет его (см. `resultsFlow`).
+ * получит их: правка, посчитанная от устаревшей таблицы, задвоила бы или исказила запись.
+ *
+ * Вкладка только рисует: состояние записи (занято, устарело, неотвеченный запрос, идущая проверка) лежит в общем
+ * потоке `ctx.resultsFlow`, один на всю страницу. При открытии вкладка сначала просит у потока проверить потерянную
+ * запись (одна проверка на все открытия, второго повтора нет) и лишь после неё читает первый снимок: снимок до проверки
+ * не показывался бы как свежий. Вид подключается только у самого нового открытия.
  */
 export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
+  const flow = ctx.resultsFlow;
+  const opening = flow.begin();
+  const checked = await opening.open();
   let snapshot: Snapshot = await ctx.snapshot();
   const first = defaultResultsDay(snapshot);
   if (first === null) return h('div', {}, h('p', {}, 'Игра ещё не началась — итогов пока нет'));
@@ -37,25 +44,21 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
   const listBox = h('section', { 'data-corrections': true });
   const refreshButton = h('button', { type: 'button', 'data-refresh': true, onclick: () => void reload() }, 'Обновить');
   const staleBox = h('p', { role: 'alert', class: 'results-stale', 'data-stale': true, hidden: true }, `${STALE_TEXT} `, refreshButton);
-  const flow = createResultsFlow<Snapshot>({
-    send: (items, ref) => ctx.session.call('addCorrections', { items, ref }),
-    remove: (id) => ctx.session.call('removeCorrection', { id }),
-    load: () => ctx.snapshot(),
+  /** Что поток делает с этой вкладкой: свежие данные, «занято» (вся вкладка inert), «устарело» (таблица и список закрыты). */
+  const view: FlowView<Snapshot> = {
     apply: (fresh) => {
       snapshot = fresh;
       paint();
     },
-    pending: ctx.pendingCorrection,
     setBusy: (busy) => {
       root.inert = busy;
-      ctx.lockNav(busy);
     },
     setStale: (stale) => {
       staleBox.hidden = !stale;
       tableBox.inert = stale;
       listBox.inert = stale;
     },
-  });
+  };
 
   /** «Сохранить» в редакторе. Ошибка запроса уходит редактору (он её показывает), итог записи — вкладке. */
   async function correct(line: EmployeeLine, wanted: Record<Kind, number>): Promise<void> {
@@ -151,6 +154,9 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
     ),
     listBox,
   );
-  if (flow.stale) void reload(); // от прошлого открытия остался запрос без ответа
+  if (!opening.attach(view)) return h('div'); // открытие успели сменить более новым: этот экземпляр на экран не попадёт
+  // вид получил «устарело» и «занято» от потока уже при подключении, то есть с первого кадра
+  if (checked?.error) alert.textContent = `Обновить не удалось: ${errorText(checked.error)}`;
+  else if (checked?.checked) alert.textContent = INTERRUPTED_TEXT;
   return root;
 }

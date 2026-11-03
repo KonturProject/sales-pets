@@ -29,7 +29,9 @@ function setup(over: Over = {}, pending?: PendingHolder) {
     setBusy: over.setBusy ?? vi.fn(),
     setStale: over.setStale ?? vi.fn(),
   };
-  return { flow: createResultsFlow<number>({ ...mocks, newRef: refs(), pending }), ...mocks };
+  const flow = createResultsFlow<number>({ send: mocks.send, remove: mocks.remove, load: mocks.load, newRef: refs(), pending });
+  flow.begin().attach({ apply: mocks.apply, setBusy: mocks.setBusy, setStale: mocks.setStale });
+  return { flow, ...mocks };
 }
 
 describe('createResultsFlow: запись и перечитывание', () => {
@@ -288,7 +290,8 @@ describe('createResultsFlow: пока снимок после записи не 
  * Сервер, как Apps Script: запись идёт под замком, повтор с тем же `ref` ничего не пишет (пока строки с ним есть), строки
  * удаляются по номеру, а чтение (doGet) замка не берёт и недописанного не видит. Первый запрос клиент «не дождался»
  * (таймаут 30 с, холодный старт до 35 с): либо сервер его ещё пишет и допишет, когда до замка дойдёт следующий запрос
- * (`lateFirst`), либо запись дошла, а ответ потерян (`landedFirst`).
+ * (`lateFirst`), либо запись дошла, а ответ потерян (`landedFirst`). `gate` задерживает запросы (медленный повтор),
+ * `events` — порядок: `send:<ref>` в момент, когда запись обработана, и `load`.
  */
 function fakeServer() {
   let rows: Array<{ id: number; ref: string; delta: number }> = [];
@@ -301,11 +304,14 @@ function fakeServer() {
     down: false,
     lateFirst: true,
     landedFirst: false,
+    gate: null as Promise<void> | null,
+    events: [] as string[],
     sent: [] as Array<{ items: CorrectionItem[]; ref: string }>,
     removed: [] as number[],
     total: () => rows.reduce((sum, r) => sum + r.delta, 0),
     send: async (items: CorrectionItem[], ref: string): Promise<unknown> => {
       server.sent.push({ items, ref });
+      if (server.gate) await server.gate;
       if (server.lateFirst) {
         server.lateFirst = false;
         writing = { items, ref };
@@ -317,6 +323,7 @@ function fakeServer() {
         writing = null;
       }
       write(items, ref);
+      server.events.push(`send:${ref}`);
       if (server.landedFirst) {
         server.landedFirst = false;
         throw new ApiError('network', 'Нет связи');
@@ -328,27 +335,55 @@ function fakeServer() {
       rows = rows.filter((r) => r.id !== id);
       return { ok: true };
     },
-    load: async (): Promise<number> => server.total(),
+    load: async (): Promise<number> => {
+      server.events.push('load');
+      return server.total();
+    },
   };
   return server;
 }
 
-/** Вкладка «Итоги» поверх сервера; `seen` — последняя нарисованная сумма. */
+/** Вид вкладки: что ему последним пришло от потока. */
+function fakeView() {
+  const view = {
+    total: 0,
+    stale: false,
+    busy: false,
+    attached: false,
+    apply: (total: number) => { view.total = total; },
+    setBusy: (busy: boolean) => { view.busy = busy; },
+    setStale: (stale: boolean) => { view.stale = stale; },
+  };
+  return view;
+}
+
+/** Одна вкладка «Итоги» поверх сервера; `seen` — последняя нарисованная сумма. */
 function openTab(server: ReturnType<typeof fakeServer>, pending: PendingHolder, newRef: () => string) {
   const seen = { total: 0 };
   const setStale = vi.fn();
-  const flow = createResultsFlow<number>({
-    send: server.send,
-    remove: server.remove,
-    load: server.load,
-    apply: (total) => { seen.total = total; },
-    setBusy: vi.fn(),
-    setStale,
-    newRef,
-    pending,
-  });
+  const flow = createResultsFlow<number>({ send: server.send, remove: server.remove, load: server.load, newRef, pending });
+  flow.begin().attach({ apply: (total) => { seen.total = total; }, setBusy: vi.fn(), setStale });
   return { flow, seen, setStale };
 }
+
+/**
+ * Страница админки: ОДИН поток записи на все открытия вкладки. `render` — то, что делает вкладка при открытии:
+ * общая проверка потерянной записи, и только потом первый снимок и показ (подключение вида).
+ */
+function openPage(server: ReturnType<typeof fakeServer>, pending: PendingHolder = { current: null }) {
+  const flow = createResultsFlow<number>({ send: server.send, remove: server.remove, load: server.load, newRef: refs(), pending });
+  async function render() {
+    const opening = flow.begin();
+    const checked = await opening.open();
+    const view = fakeView();
+    view.total = await server.load();
+    view.attached = opening.attach(view);
+    return { view, checked };
+  }
+  return { flow, render };
+}
+
+const lostPlus7 = (): PendingHolder => ({ current: { items: [item(7)], ref: 'ref-0' } }); // +7 потерян и до сервера не дошёл
 
 describe('createResultsFlow: потерянная запись проверяется повтором с тем же ключом, а не перечитыванием', () => {
   test('+7 клиент не дождался, сервер ещё пишет; админ вводит 8: на сервере в итоге 8, а не 15', async () => {
@@ -387,59 +422,163 @@ describe('createResultsFlow: потерянная запись проверяе�
     expect(server.total()).toBe(8);
   });
 
-  test('смена вкладки админки: новая вкладка начинает «устаревшей» и повторяет запрос прежде любой записи', async () => {
+  test('смена вкладки админки: новое открытие проверяет запись до первого снимка и показывается не «устаревшим»', async () => {
     const server = fakeServer();
-    const pending: PendingHolder = { current: null };
-    const newRef = refs();
-    const first = openTab(server, pending, newRef);
-    await expect(first.flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
-    const second = openTab(server, pending, newRef); // вкладку закрыли и открыли снова
-    expect(second.flow.stale).toBe(true);
-    expect(second.setStale.mock.calls).toEqual([[true]]);
-    await expect(second.flow.correct([item(1)])).rejects.toThrow(STALE_TEXT);
-    await expect(second.flow.remove(5)).rejects.toThrow(STALE_TEXT);
-    expect(server.sent).toHaveLength(1);
-    expect(await second.flow.reload()).toEqual({ checked: true, error: null });
+    const page = openPage(server);
+    await page.render();
+    await expect(page.flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
+    const reopened = await page.render(); // вкладку закрыли и открыли снова
+    expect(reopened.checked).toEqual({ checked: true, error: null });
     expect(server.sent[1]).toEqual({ items: [item(7)], ref: 'ref-1' });
-    expect(second.seen.total).toBe(7);
-    expect(second.setStale.mock.calls).toEqual([[true], [false]]);
-    expect(await second.flow.correct([item(1)])).toMatchObject({ result: 'saved' });
+    expect(reopened.view.total).toBe(7); // первый снимок уже после проверки
+    expect(reopened.view.stale).toBe(false);
+    expect(await page.flow.correct([item(1)])).toMatchObject({ result: 'saved' });
     expect(server.total()).toBe(8);
   });
 
-  test('без неотвеченной записи новая вкладка не «устаревшая» и ничего не повторяет', async () => {
+  test('смена вкладки, повтор не прошёл: вид подключается «устаревшим» с первого кадра, записи закрыты', async () => {
+    const server = fakeServer();
+    const page = openPage(server);
+    await page.render();
+    await expect(page.flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
+    server.down = true;
+    const reopened = await page.render();
+    expect(reopened.checked?.error).toMatchObject({ code: 'network' });
+    expect(reopened.view.stale).toBe(true);
+    await expect(page.flow.correct([item(1)])).rejects.toThrow(STALE_TEXT);
+    await expect(page.flow.remove(5)).rejects.toThrow(STALE_TEXT);
+    expect(server.sent).toHaveLength(2);
+    server.down = false;
+    expect(await page.flow.reload()).toEqual({ checked: true, error: null });
+    expect(reopened.view.stale).toBe(false);
+    expect(await page.flow.correct([item(1)])).toMatchObject({ result: 'saved' });
+  });
+
+  test('без неотвеченной записи открытие ничего не повторяет: только свой снимок', async () => {
     const server = fakeServer();
     server.lateFirst = false;
-    const { flow, setStale } = openTab(server, { current: null }, refs());
-    expect(flow.stale).toBe(false);
-    expect(setStale).not.toHaveBeenCalled();
-    expect(await flow.reload()).toEqual({ checked: false, error: null });
+    const page = openPage(server);
+    const opened = await page.render();
+    expect(opened.checked).toBeNull();
+    expect(opened.view.stale).toBe(false);
     expect(server.sent).toHaveLength(0);
+    expect(server.events).toEqual(['load']);
   });
 
   test('+7 дошёл, ответ потерян; «Отменить» на чужой строке проверяет запись, а отменённая +7 потом не воскресает', async () => {
     const server = fakeServer();
     server.lateFirst = false;
     server.landedFirst = true;
-    const pending: PendingHolder = { current: null };
-    const newRef = refs();
-    const { flow, seen } = openTab(server, pending, newRef);
-    await expect(flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
+    const page = openPage(server);
+    const { view } = await page.render();
+    await expect(page.flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
     expect(server.total()).toBe(7);
     // «Отменить» на строке, которой в таблице ещё нет +7: сначала выясняется потерянная запись, ничего не удаляется
-    expect(await flow.remove(99)).toEqual({ removed: false, refreshError: null });
+    expect(await page.flow.remove(99)).toEqual({ removed: false, refreshError: null });
     expect(server.removed).toEqual([]);
-    expect(seen.total).toBe(7);
+    expect(view.total).toBe(7);
     expect(server.sent).toHaveLength(2); // потерянный запрос и его повтор («уже есть»)
     // на свежих данных отмена +7 (строка 1) обычная
-    expect(await flow.remove(1)).toEqual({ removed: true, refreshError: null });
+    expect(await page.flow.remove(1)).toEqual({ removed: true, refreshError: null });
     expect(server.total()).toBe(0);
-    // ни «Обновить», ни другая правка, ни новая вкладка +7 не воскрешают: повторять больше нечего
-    expect(await flow.reload()).toEqual({ checked: false, error: null });
-    expect(await flow.correct([item(3)])).toMatchObject({ result: 'saved' });
-    const later = openTab(server, pending, newRef);
-    expect(later.flow.stale).toBe(false);
+    // ни «Обновить», ни другая правка, ни новое открытие +7 не воскрешают: повторять больше нечего
+    expect(await page.flow.reload()).toEqual({ checked: false, error: null });
+    expect(await page.flow.correct([item(3)])).toMatchObject({ result: 'saved' });
+    const later = await page.render();
+    expect(later.checked).toBeNull();
+    expect(later.view.stale).toBe(false);
     expect(server.total()).toBe(3);
     expect(server.sent.filter((x) => x.ref === 'ref-1')).toHaveLength(2);
+  });
+});
+
+describe('createResultsFlow: одно состояние записи на всю админку', () => {
+  test('(a) два открытия подряд при медленном повторе: повтор один, отменённая +7 потом не воскресает', async () => {
+    const server = fakeServer();
+    server.lateFirst = false;
+    const gate = hold();
+    server.gate = gate.promise; // повтор медленный: холодный старт или очередь на замок
+    const page = openPage(server, lostPlus7());
+    const hidden = page.render(); // первое открытие, пользователь успел уйти
+    const visible = page.render(); // и вернулся
+    gate.resolve();
+    const [h, v] = await Promise.all([hidden, visible]);
+    expect(server.sent).toEqual([{ items: [item(7)], ref: 'ref-0' }]); // ровно один повтор на двоих
+    expect(h.checked).toEqual({ checked: true, error: null });
+    expect(v.checked).toEqual({ checked: true, error: null });
+    expect(v.view.attached).toBe(true);
+    expect(h.view.attached).toBe(false); // более старое открытие вид не подключило
+    expect(v.view.total).toBe(7);
+    // админ отменяет +7 на свежих данных
+    expect(await page.flow.remove(1)).toEqual({ removed: true, refreshError: null });
+    expect(server.total()).toBe(0);
+    // позднего повтора от скрытого открытия нет: на сервере по-прежнему 0
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(server.total()).toBe(0);
+    expect(server.sent).toHaveLength(1);
+  });
+
+  test('(b) второе открытие читает первый снимок только после общей проверки: таблица с +7, повторный ввод не даёт +14', async () => {
+    const server = fakeServer();
+    server.lateFirst = false;
+    const gate = hold();
+    server.gate = gate.promise;
+    const page = openPage(server, lostPlus7());
+    const hidden = page.render();
+    const visible = page.render();
+    gate.resolve();
+    const [, v] = await Promise.all([hidden, visible]);
+    expect(server.events[0]).toBe('send:ref-0'); // ни одного чтения до проверки
+    expect(server.events.slice(1).every((e) => e === 'load')).toBe(true);
+    expect(v.view.stale).toBe(false);
+    expect(v.view.total).toBe(7); // таблица уже с +7
+    // админ хочет 10: от свежей таблицы это +3, а не +10 поверх невидимой +7
+    expect(await page.flow.correct([item(10 - v.view.total)])).toMatchObject({ result: 'saved' });
+    expect(server.total()).toBe(10);
+  });
+
+  test('«Обновить» во время общей проверки получает тот же результат, а не второй повтор', async () => {
+    const server = fakeServer();
+    server.lateFirst = false;
+    const gate = hold();
+    server.gate = gate.promise;
+    const page = openPage(server, lostPlus7());
+    const opening = page.flow.begin().open();
+    const reload = page.flow.reload();
+    const again = page.flow.begin().open();
+    gate.resolve();
+    expect(await Promise.all([opening, reload, again])).toEqual(Array(3).fill({ checked: true, error: null }));
+    expect(server.sent).toHaveLength(1);
+  });
+
+  test('вид подключает только самое новое открытие; более старое, закончившее позже, не отбирает поток', async () => {
+    const flow = createResultsFlow<number>({ send: vi.fn(), remove: vi.fn(), load: vi.fn(async () => 1) });
+    const [viewA, viewB] = [fakeView(), fakeView()];
+    const older = flow.begin();
+    const newer = flow.begin();
+    expect(newer.attach(viewB)).toBe(true);
+    expect(older.attach(viewA)).toBe(false);
+    await flow.reload();
+    expect(viewB.total).toBe(1);
+    expect(viewA.total).toBe(0);
+    expect(viewA.busy).toBe(false);
+  });
+
+  test('вид, подключённый к «устаревшему» или занятому потоку, сразу получает его состояние', async () => {
+    const gate = hold<unknown>();
+    const flow = createResultsFlow<number>({ send: vi.fn().mockReturnValue(gate.promise), remove: vi.fn(), load: vi.fn(async () => 1), pending: lostPlus7() });
+    const stale = fakeView();
+    flow.begin().attach(stale);
+    expect(stale.stale).toBe(true);
+    expect(stale.busy).toBe(false);
+    const reloading = flow.reload(); // повтор висит: поток занят
+    const busy = fakeView();
+    flow.begin().attach(busy);
+    expect(busy.busy).toBe(true);
+    expect(busy.stale).toBe(true);
+    gate.resolve({ ok: true });
+    await reloading;
+    expect(busy.busy).toBe(false);
+    expect(busy.stale).toBe(false);
   });
 });

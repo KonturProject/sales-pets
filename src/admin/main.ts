@@ -1,7 +1,6 @@
 import './admin.css';
-import { api } from '@/data/api';
+import { api, type Snapshot } from '@/data/api';
 import { h, tabs, errorText, newVersionSlot } from './dom';
-import type { PendingHolder } from './correctionSaver';
 import type { AdminCtx } from './ctx';
 import { importTab } from './importTab';
 import { createNavLock } from './navLock';
@@ -9,6 +8,7 @@ import { normsTab } from './normsTab';
 import { overridesTab } from './overridesTab';
 import { paymentsTab } from './payments';
 import { pinsTab } from './pins';
+import { createResultsFlow } from './resultsFlow';
 import { resultsTab } from './resultsTab';
 import { createSession, type Session } from './session';
 import { staffTab } from './staffTab';
@@ -37,12 +37,20 @@ const tracked: Session = {
   },
 };
 /** Смена вкладки или выход посреди записи убрали бы вкладку из-под неё, а новая прочла бы данные раньше записи. */
-const lockNav: AdminCtx['lockNav'] = createNavLock((locked) => {
+const lockNav = createNavLock((locked) => {
   for (const b of root.querySelectorAll<HTMLButtonElement>('header button, [role="tablist"] button')) b.disabled = locked;
 });
-/** Правка «Итогов», на которую не пришёл ответ: переживает смену вкладки админки (см. `PendingHolder`). */
-const pendingCorrection: PendingHolder = { current: null };
-const ctx: AdminCtx = { session: tracked, snapshot, lockNav, pendingCorrection };
+/**
+ * Поток записи правок «Итогов» — один на всю страницу, вместе с неотвеченным запросом и идущей проверкой (см.
+ * `createResultsFlow`): они переживают смену вкладки, а экземпляры вкладки только рисуют.
+ */
+const resultsFlow = createResultsFlow<Snapshot>({
+  send: (items, ref) => tracked.call('addCorrections', { items, ref }),
+  remove: (id) => tracked.call('removeCorrection', { id }),
+  load: snapshot,
+  lockNav,
+});
+const ctx: AdminCtx = { session: tracked, snapshot, resultsFlow };
 
 const updateSlot = newVersionSlot();
 

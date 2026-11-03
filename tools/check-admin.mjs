@@ -1317,17 +1317,29 @@ try {
   await scenario('итоги: потерянная запись проверяется повтором с тем же ключом, а не перечитыванием', async ({ mock, newPage, check, urls }) => {
     const admin = await newPage();
     const adds = []; // тела запросов addCorrections, дошедших до страницы-перехватчика
+    const gets = []; // время каждого чтения снимка
     let mode = 'normal';
     let down = false;
+    let slowReplay = 0; // задержка следующего запроса addCorrections, мс
+    let replayStart = 0;
     const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     await admin.route(`${mock.url}**`, async (route) => {
       const request = route.request();
-      if (request.method() !== 'POST') return route.continue();
+      if (request.method() !== 'POST') {
+        gets.push(Date.now());
+        return route.continue();
+      }
       const text = request.postData() ?? '{}';
       const body = JSON.parse(text);
       if (body.action !== 'addCorrections') return route.continue();
       adds.push(body);
       if (down) return route.fulfill({ status: 200, contentType: 'text/plain', body: 'timeout' });
+      if (slowReplay > 0 && mode === 'normal') {
+        replayStart = Date.now();
+        await pause(slowReplay);
+        slowReplay = 0;
+        return route.continue();
+      }
       if (mode === 'late') {
         // клиент не дождался, а сервер ещё пишет (холодный старт Apps Script): запрос дойдёт позже
         mode = 'normal';
@@ -1404,6 +1416,27 @@ try {
     await admin.click('[data-save="correction"]');
     await waitForText(admin, `tr[data-employee-row="${idB}"]`, 'правки +6');
     check(JSON.stringify(await serverDeltas()) === '[7,1,5,1]', `после «Обновить» правка шла не от свежего значения: ${JSON.stringify(await serverDeltas())}`);
+
+    // 3. открытие вкладки: первый снимок читается только после проверки потерянной записи (она нарочно медленная)
+    mode = 'lost';
+    adds.length = 0;
+    await open(idB, 9);
+    await admin.click('[data-save="correction"]');
+    check((await waitForText(admin, '[data-alert="correction"]', 'Нет связи')).includes('Нет связи'), 'третий обрыв не показан');
+    await admin.click('[role="tab"][data-tab="payments"]');
+    await admin.waitForSelector('[role="tabpanel"][data-tab="payments"]');
+    slowReplay = 1_200;
+    gets.length = 0;
+    await admin.click('[role="tab"][data-tab="results"]');
+    await admin.waitForSelector('table.results', { timeout: 8_000 });
+    const earlyReads = gets.filter((t) => t < replayStart + 1_100);
+    check(replayStart > 0 && earlyReads.length === 0, `первый снимок прочитан до окончания проверки: ${earlyReads.length} чтений за время повтора`);
+    check(adds.length === 2 && same(adds[0], adds[1]), 'на открытии ушло не повторение потерянного запроса');
+    check(await admin.evaluate(() => document.querySelector('[data-stale]')?.hidden === true), 'после удачной проверки вкладка открылась «устаревшей»');
+    check((await textOf(admin, '[data-alert="results"]')).includes(INTERRUPTED), 'после проверки на открытии нет сообщения о проверенной правке');
+    check(JSON.stringify(await serverDeltas()) === '[7,1,5,1,3]', `на сервере после третьего обрыва ${JSON.stringify(await serverDeltas())}`);
+    await admin.click(`[data-group-toggle="${g}"]`);
+    check((await rowText(idB)).includes('правки +9'), 'на открытии таблица без только что проверенной правки');
   });
 
   await scenario('итоги: «Отменить» при потерянной записи сначала выясняет её, отменённая правка не воскресает', async ({ mock, newPage, check, urls }) => {

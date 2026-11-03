@@ -35,52 +35,74 @@ export interface RemoveDone {
   refreshError: unknown;
 }
 
+/** Экран вкладки «Итоги», который обслуживает поток: получает свежие данные и состояние «занято» / «устарело». */
+export interface FlowView<S> {
+  apply(snapshot: S): void;
+  setBusy(busy: boolean): void;
+  setStale(stale: boolean): void;
+}
+
+/** Открытие вкладки. Вид подключает только самое новое открытие: более старое, закончившее позже, потока не отбирает. */
+export interface Opening<S> {
+  /** Проверить потерянную запись прежде первого снимка: если проверка уже идёт, это та же проверка. `null` — нечего. */
+  open(): Promise<ReloadDone | null>;
+  /** `false`: открытие успели сменить более новым, вид не подключён. */
+  attach(view: FlowView<S>): boolean;
+}
+
 /**
- * Порядок записей вкладки «Итоги», без DOM. Одна запись за раз (и чтения тоже): пока идёт правка, отмена или
- * «Обновить», остальное отклоняется (`WriteRefused`), а `setBusy(true)` блокирует всю вкладку. Снимок читается заново
- * после каждой записи.
+ * Порядок записей админки «Итоги», без DOM. ОДИН на всю страницу (его создаёт каркас): состояние «занято», «устарело»,
+ * неотвеченный запрос и единственная идущая проверка принадлежат ему, а не экземпляру вкладки. Иначе два экземпляра
+ * (быстрая смена вкладки при загрузке) повторяли бы запрос каждый сам: один дописал бы после отмены той правки, а
+ * второй открылся бы с таблицей до проверки. Вкладка только рисует: подключает вид (`begin().attach`), и поток
+ * обслуживает самый новый из них.
+ *
+ * Одна запись за раз (и проверка с чтением тоже): пока идёт правка, отмена или проверка, остальное отклоняется
+ * (`WriteRefused`), вид получает `setBusy(true)`, вкладки админки блокирует `lockNav`. Снимок читается заново после
+ * каждой записи.
  *
  * Запрос `addCorrections` без ответа (обрыв, таймаут) мог дойти или ещё дописываться на сервере. Исход узнаётся только
  * повтором того же запроса, слово в слово (те же правки, тот же `ref`): сервер запишет, если не писал, или ответит «уже
  * есть», а запись идёт под замком, так что повтор дождётся незаконченной. Перечитать данные мало: чтение замка не берёт
  * и недописанного не видит. Поэтому те же значения — это и есть повтор; другие значения сначала повторяют прошлый
- * запрос и уходят в `changed` (новые не отправляются: считались от старых данных); «Обновить» и новая вкладка тоже
- * сперва повторяют. Не получил повтор ответа — запрос остаётся ожидать, вкладка «устарела», новых записей нет.
- * «Отменить» при неотвеченной записи тоже ничего не удаляет, а выясняет её (повтор, чтение): удаляют по номеру строки,
- * и отменённая правка оставила бы ожидание, чей повтор потом записал бы её заново. Ожидание лежит в `pending` вне
- * вкладки, чтобы пережить смену вкладки админки.
+ * запрос и уходят в `changed` (новые не отправляются: считались от старых данных); «Обновить», «Отменить» и открытие
+ * вкладки тоже сперва повторяют. Кто бы ни попросил проверку, пока она идёт, он получает ту же проверку, второго
+ * повтора нет. Не получил повтор ответа — запрос остаётся ожидать, поток «устарел», новых записей нет. Ожидание лежит в
+ * `pending`, поэтому переживает смену вкладки админки.
  *
- * Пока запись не видна в свежем снимке, вкладка «устарела» (`setStale(true)`): правки и отмены отклоняются, ничего не
+ * Пока запись не видна в свежем снимке, поток «устарел» (`setStale(true)` виду): правки и отмены отклоняются, ничего не
  * отправляя, потому что любое новое число считалось бы от таблицы, которая врёт. Так после записи, после отмены и
- * после «changed», если перечитать не удалось, и сразу в новой вкладке, если от прошлой остался неотвеченный запрос.
- * Снимает это только `reload` («Обновить»): повтор, если он нужен, затем чтение.
+ * после «changed», если перечитать не удалось, и сразу, если от прошлого открытия остался неотвеченный запрос. Снимает
+ * это только проверка (`reload`, `open`): повтор, если он нужен, затем чтение.
  */
 export function createResultsFlow<S>(deps: {
   send: (items: CorrectionItem[], ref: string) => Promise<unknown>;
   remove: (id: number) => Promise<unknown>;
   load: () => Promise<S>;
-  apply: (snapshot: S) => void;
-  setBusy: (busy: boolean) => void;
-  setStale: (stale: boolean) => void;
+  /** Заблокировать (true) или вернуть (false) вкладки админки и «Выйти»: на время записи их трогать нельзя. */
+  lockNav?: (locked: boolean) => void;
   pending?: PendingHolder;
   newRef?: () => string;
 }) {
   const saver = createCorrectionSaver({ send: deps.send, newRef: deps.newRef, pending: deps.pending });
+  let view: FlowView<S> | null = null;
+  let generation = 0;
   let busy = false;
-  let stale = false;
+  let stale = saver.hasPending; // от прошлого открытия мог остаться запрос без ответа: писать нельзя, пока его не повторят
+  let running: Promise<unknown> | null = null;
+  let checking: Promise<ReloadDone> | null = null;
 
   const setStale = (value: boolean): void => {
     if (stale === value) return;
     stale = value;
-    deps.setStale(value);
+    view?.setStale(value);
   };
-  // от прошлой вкладки остался запрос без ответа: писать нельзя, пока его не повторят
-  if (saver.hasPending) setStale(true);
 
-  /** Чтение под замком вкладки, поэтому два чтения не обгоняют друг друга. Сбой чтения не провал сделанной записи. */
+  /** Чтение под замком, поэтому два чтения не обгоняют друг друга. Сбой чтения не провал сделанной записи. */
   async function refreshQuietly(): Promise<unknown> {
     try {
-      deps.apply(await deps.load());
+      const snapshot = await deps.load();
+      view?.apply(snapshot);
     } catch (e) {
       return e;
     }
@@ -88,37 +110,59 @@ export function createResultsFlow<S>(deps: {
     return null;
   }
 
-  /** После записи: перечитать снимок; не вышло — вкладка устарела, пока чтение не удастся. */
+  /** После записи: перечитать снимок; не вышло — поток устарел, пока чтение не удастся. */
   async function settle(): Promise<unknown> {
     const error = await refreshQuietly();
     if (error) setStale(true);
     return error;
   }
 
-  /** Выяснить неотвеченную запись (если есть) повтором и прочитать снимок. Повтор без ответа — ожидание остаётся, вкладка устарела. */
-  async function check(): Promise<ReloadDone> {
-    let checked: boolean;
-    try {
-      checked = await saver.resolve();
-    } catch (error) {
-      setStale(true);
-      return { checked: false, error };
-    }
-    return { checked, error: await settle() };
+  /** Выяснить неотвеченную запись (если есть) повтором и прочитать снимок. Повтор без ответа — ожидание остаётся, поток устарел. */
+  function check(): Promise<ReloadDone> {
+    const done = (async (): Promise<ReloadDone> => {
+      let checked: boolean;
+      try {
+        checked = await saver.resolve();
+      } catch (error) {
+        setStale(true);
+        return { checked: false, error };
+      }
+      return { checked, error: await settle() };
+    })().finally(() => {
+      checking = null;
+    });
+    checking = done;
+    return done;
   }
 
-  /** `write`: запись, а не чтение. Её отклоняет и «устаревшая» вкладка; отказ приходит до `setBusy`, вкладка не мигает. */
+  /** `write`: запись, а не чтение. Её отклоняет и «устаревший» поток; отказ приходит до `setBusy`, вид не мигает. */
   async function exclusive<T>(run: () => Promise<T>, write = true): Promise<T> {
     if (busy) throw new WriteRefused(BUSY_TEXT);
     if (write && stale) throw new WriteRefused(STALE_TEXT);
     busy = true;
-    deps.setBusy(true);
+    view?.setBusy(true);
+    deps.lockNav?.(true);
+    const op = run();
+    running = op;
     try {
-      return await run();
+      return await op;
     } finally {
       busy = false;
-      deps.setBusy(false);
+      running = null;
+      view?.setBusy(false);
+      deps.lockNav?.(false);
     }
+  }
+
+  /** Открытие вкладки: дождаться идущей проверки или записи, иначе, если надо, проверить самому. */
+  async function open(): Promise<ReloadDone | null> {
+    if (checking) return checking;
+    if (running) {
+      await running.catch(() => undefined);
+      return open();
+    }
+    if (!stale && !saver.hasPending) return null;
+    return exclusive(check, false);
   }
 
   return {
@@ -128,8 +172,22 @@ export function createResultsFlow<S>(deps: {
     get stale(): boolean {
       return stale;
     },
-    /** «Обновить» и открытие вкладки: повторить неотвеченный запрос (если он есть), затем прочитать снимок заново. */
-    reload: (): Promise<ReloadDone> => exclusive(check, false),
+    /** Новое открытие вкладки (см. `Opening`). */
+    begin(): Opening<S> {
+      const mine = ++generation;
+      return {
+        open,
+        attach(next) {
+          if (mine !== generation) return false;
+          view = next;
+          if (stale) next.setStale(true);
+          if (busy) next.setBusy(true);
+          return true;
+        },
+      };
+    },
+    /** «Обновить»: повторить неотвеченный запрос (если он есть), затем прочитать снимок. Идёт проверка — та же проверка. */
+    reload: (): Promise<ReloadDone> => checking ?? exclusive(check, false),
     /** Ошибку запроса пробрасывает; после неё снимок не читается (потерянный ответ берёт под охрану `saver`). */
     correct: (items: CorrectionItem[]): Promise<WriteDone> =>
       exclusive(async () => {
@@ -149,7 +207,7 @@ export function createResultsFlow<S>(deps: {
       exclusive(async () => {
         if (saver.hasPending) {
           const done = await check();
-          if (!done.checked) throw done.error; // повтор без ответа: ничего не удалено, вкладка устарела
+          if (!done.checked) throw done.error; // повтор без ответа: ничего не удалено, поток устарел
           return { removed: false, refreshError: done.error };
         }
         try {
@@ -163,3 +221,6 @@ export function createResultsFlow<S>(deps: {
       }),
   };
 }
+
+/** Тип общего потока, как его видят вкладки. */
+export type ResultsFlow<S> = ReturnType<typeof createResultsFlow<S>>;
