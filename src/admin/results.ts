@@ -13,7 +13,9 @@ import { groupFunnel } from '@/game/tv/metrics';
 
 export type Kind = 'quality' | 'long' | 'payments';
 const KINDS: Kind[] = ['quality', 'long', 'payments'];
-const KIND_TITLE: Record<Kind, string> = { quality: 'Качественные', long: 'Длинные', payments: 'Оплаты' };
+export const KIND_TITLE: Record<Kind, string> = { quality: 'Качественные', long: 'Длинные', payments: 'Оплаты' };
+/** Сотрудник из файла, которого ещё нет в штате: id начинается с этого префикса. */
+export const NEW_EMPLOYEE_PREFIX = 'new:';
 /** Предел одной правки на сервере: |дельта| ≤ 50. */
 const MAX_DELTA = 50;
 
@@ -286,7 +288,7 @@ export interface CorrectionItem { date: DateStr; employeeId: string; kind: Kind;
  * показатель, разница считается от сырого значения (файл + правки), `base` — значение «из файла». Ничего не изменилось — `[]`.
  */
 export function correctionItems(line: EmployeeLine, wanted: Record<Kind, number>, date: DateStr): CorrectionItem[] | { error: string } {
-  if (line.id.startsWith('new:')) return { error: 'Новый сотрудник появится после загрузки файла: сейчас поправить нельзя' };
+  if (line.id.startsWith(NEW_EMPLOYEE_PREFIX)) return { error: 'Новый сотрудник появится после загрузки файла: сейчас поправить нельзя' };
   const items: CorrectionItem[] = [];
   for (const kind of KINDS) {
     const w = wanted[kind];

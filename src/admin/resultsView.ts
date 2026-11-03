@@ -1,16 +1,16 @@
 import { THEME } from '@/art/manifest';
 import type { DateStr, GroupCode } from '@/engine/types';
 import { errorText, h } from './dom';
-import { correctionItems, type Cell, type EmployeeLine, type GroupLine, type Kind } from './results';
+import { KIND_TITLE, NEW_EMPLOYEE_PREFIX, correctionItems, type Cell, type EmployeeLine, type GroupLine, type Kind } from './results';
+import { WriteRefused } from './resultsFlow';
 import {
-  ABSENT_FUNNEL_NOTE, KIND_TITLE, LEVEL_TITLE, cellText, editorCaption, employeeMarks, nowLines, outcomeLines, shortDate,
+  ABSENT_FUNNEL_NOTE, LEVEL_TITLE, cellText, editorCaption, employeeMarks, nowLines, outcomeLines, shortDate,
   unassignedLines,
 } from './resultsText';
 
 const KINDS: Kind[] = ['quality', 'long', 'payments'];
 /** Столбцов в таблице: группа, три за день, итог дня, три с начала игры, «Сейчас». */
 const COLUMNS = 9;
-const NEW_EMPLOYEE = 'new:';
 
 export interface ResultsOpts {
   /** день таблицы: за него отправляются правки */
@@ -88,7 +88,7 @@ export function renderResults(lines: GroupLine[], opts: ResultsOpts): HTMLElemen
             await opts.onCorrect(e, wanted);
             closeEditor();
           } catch (err) {
-            alert.textContent = errorText(err);
+            alert.textContent = err instanceof WriteRefused ? err.message : errorText(err);
           } finally {
             busy = false;
             lock(false);
@@ -114,7 +114,7 @@ export function renderResults(lines: GroupLine[], opts: ResultsOpts): HTMLElemen
   function employeeRow(e: EmployeeLine): HTMLTableRowElement {
     const tr: HTMLTableRowElement = h('tr', { class: 'emp-row', 'data-employee-row': e.id });
     const marks = employeeMarks(e);
-    const correctable = Boolean(opts.onCorrect) && !e.id.startsWith(NEW_EMPLOYEE);
+    const correctable = Boolean(opts.onCorrect) && !e.id.startsWith(NEW_EMPLOYEE_PREFIX);
     const edit = correctable && h('button', {
       type: 'button', class: 'small', 'data-correct': e.id,
       onclick: () => {

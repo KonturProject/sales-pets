@@ -613,3 +613,9 @@ button.small {
 td.stale {
   color: var(--bad);
 }
+
+/* пока идёт запись правки, вкладка «Итоги» недоступна (inert) */
+.results-tab[inert] {
+  opacity: 0.6;
+  cursor: progress;
+}

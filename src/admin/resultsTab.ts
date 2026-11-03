@@ -1,16 +1,17 @@
 import type { Snapshot } from '@/data/api';
 import type { DateStr, GroupCode } from '@/engine/types';
-import { createCorrectionSaver } from './correctionSaver';
 import type { AdminCtx } from './ctx';
 import { errorText, h } from './dom';
 import { correctionItems, correctionViews, dayResults, defaultResultsDay, resultsDays, type EmployeeLine, type Kind } from './results';
+import { INTERRUPTED_TEXT, WriteRefused, createResultsFlow } from './resultsFlow';
 import { KIND_WORD, dayLabel, shortDate, signed, staleText } from './resultsText';
 import { renderResults } from './resultsView';
 
 /**
  * Вкладка «Итоги»: выбор дня, таблица групп с раскрытием в сотрудников, правка факта у сотрудника и список всех правок
  * с «Отменить». Опроса у админки нет: после каждой записи снимок читается заново и всё перерисовывается, а раскрытые
- * группы и выбранный день остаются.
+ * группы и выбранный день остаются. Пока идёт запись (правка или отмена), вся вкладка недоступна (`inert`): ни второй
+ * редактор, ни раскрытие, ни смена дня, ни «Отменить» не мешают записи и не теряют введённое.
  */
 export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
   let snapshot: Snapshot = await ctx.snapshot();
@@ -19,6 +20,7 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
   let date: DateStr = first;
 
   const open = new Set<GroupCode>();
+  const root = h('div', { class: 'results-tab' });
   const alert = h('p', { role: 'alert', 'data-alert': 'results' });
   const status = h('p', { role: 'status', 'data-status': 'results' });
   const day = h('select', {
@@ -30,43 +32,44 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
   });
   const tableBox = h('div', {});
   const listBox = h('section', { 'data-corrections': true });
-  const saver = createCorrectionSaver({ send: (items, ref) => ctx.session.call('addCorrections', { items, ref }) });
-  let removing = false;
+  const flow = createResultsFlow<Snapshot>({
+    send: (items, ref) => ctx.session.call('addCorrections', { items, ref }),
+    remove: (id) => ctx.session.call('removeCorrection', { id }),
+    load: () => ctx.snapshot(),
+    apply: (fresh) => {
+      snapshot = fresh;
+      paint();
+    },
+    setBusy: (busy) => {
+      root.inert = busy;
+    },
+  });
 
-  /** Свежий снимок и перерисовка. Запись к этому моменту уже на сервере, поэтому сбой чтения — отдельное сообщение. */
-  async function reload(done: string): Promise<void> {
-    try {
-      snapshot = await ctx.snapshot();
-    } catch (e) {
-      alert.textContent = `${done}, но обновить таблицу не удалось: ${errorText(e)}. Откройте вкладку заново.`;
-      return;
-    }
-    status.textContent = done;
-    paint();
-  }
-
+  /** «Сохранить» в редакторе. Ошибка запроса уходит редактору (он её показывает), итог записи — вкладке. */
   async function correct(line: EmployeeLine, wanted: Record<Kind, number>): Promise<void> {
     alert.textContent = '';
     status.textContent = '';
     const items = correctionItems(line, wanted, date);
     if ('error' in items || items.length === 0) return; // редактор уже сказал об этом сам
-    if (await saver.save(items)) await reload('Правка сохранена');
+    const done = await flow.correct(items);
+    if (done.refreshError) {
+      alert.textContent = done.result === 'saved'
+        ? `Правка сохранена, но обновить таблицу не удалось: ${errorText(done.refreshError)}. Откройте вкладку заново.`
+        : `Связь прерывалась, данные перечитать не удалось: ${errorText(done.refreshError)}. Откройте вкладку заново и проверьте правки.`;
+    } else if (done.result === 'changed') alert.textContent = INTERRUPTED_TEXT;
+    else status.textContent = 'Правка сохранена';
   }
 
   async function remove(id: number): Promise<void> {
-    if (removing || saver.busy) return;
-    removing = true;
     alert.textContent = '';
     status.textContent = '';
-    listBox.querySelectorAll('button').forEach((b) => { b.disabled = true; });
     try {
-      await ctx.session.call('removeCorrection', { id });
-      await reload('Правка отменена');
+      const done = await flow.remove(id);
+      if (done.refreshError) alert.textContent = `Правка отменена, но обновить таблицу не удалось: ${errorText(done.refreshError)}. Откройте вкладку заново.`;
+      else status.textContent = 'Правка отменена';
     } catch (e) {
-      alert.textContent = errorText(e);
+      alert.textContent = e instanceof WriteRefused ? e.message : errorText(e);
     }
-    removing = false;
-    paintList();
   }
 
   function paintList(): void {
@@ -102,9 +105,7 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
   }
 
   paint();
-  return h(
-    'div',
-    {},
+  root.append(
     h(
       'section',
       {},
@@ -117,4 +118,5 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
     ),
     listBox,
   );
+  return root;
 }

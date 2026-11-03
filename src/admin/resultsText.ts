@@ -4,7 +4,6 @@ import type { Cell, CorrectionView, EmployeeLine, GroupLine, Kind, Outcome } fro
 
 /** Чистые тексты вкладки «Итоги»: что написать в ячейке, итоге дня, подписях и списке правок. DOM здесь не нужен. */
 
-export const KIND_TITLE: Record<Kind, string> = { quality: 'Качественные', long: 'Длинные', payments: 'Оплаты' };
 /** Показатель в середине фразы: «длинные: правка +1 …». */
 export const KIND_WORD: Record<Kind, string> = { quality: 'качественные', long: 'длинные', payments: 'оплаты' };
 export const LEVEL_TITLE: Record<Level, string> = { experienced: 'опытный', rookie1: 'новичок 1', rookie2: 'новичок 2' };
