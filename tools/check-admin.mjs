@@ -58,7 +58,7 @@ async function scenario(name, fn) {
   }
 }
 
-/** Вход в админку с PIN мока; возвращает страницу с открытой вкладкой «Оплаты». */
+/** Вход в админку с PIN мока; открывается первая вкладка — «Итоги». */
 async function loginAdmin(page, url, pin = MOCK_ADMIN_PIN) {
   await page.goto(url, { waitUntil: 'networkidle' });
   await page.fill('form[data-login] input[type="password"]', pin);
@@ -106,6 +106,7 @@ try {
 
     const admin = await newPage();
     await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="payments"]');
     await admin.waitForSelector('[data-pay="СР1"]', { timeout: 8_000 });
     check(await admin.$eval('[data-today]', (e) => e.dataset.today) === '2026-11-12', 'вкладка «Оплаты»: «сегодня» не по часам сервера (12.11 в моке)');
     check(await admin.locator('[data-pay]').count() === GROUP_CODES.length, 'вкладка «Оплаты»: поле не у каждой группы');
@@ -128,6 +129,7 @@ try {
     const admin = await newPage();
     await admin.setViewportSize({ width: 390, height: 800 });
     await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="payments"]');
     await admin.waitForSelector('[data-pay="СР1"]', { timeout: 8_000 });
     // −/+ у группы меняют число и подсвечивают несохранённое; без «Сохранить» на сервер ничего не уходит
     const was = Number(await admin.inputValue('[data-pay="СР2"]'));
@@ -159,6 +161,7 @@ try {
     let writes = 0;
     admin.on('request', (r) => { if (r.method() === 'POST' && JSON.parse(r.postData() ?? '{}').action === 'setProvisional') writes++; });
     await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="payments"]');
     await admin.waitForSelector('[data-pay="СР1"]', { timeout: 8_000 });
     nextDay = true;
     // утром вводят те же числа, что стоят в полях со вчера: это не «изменений нет», а новый день
@@ -963,6 +966,172 @@ try {
     const seen = `${dump}\n${logs.join('\n')}`;
     for (const group of GROUP_CODES) check(!seen.includes(pinOf(group)), `PIN группы ${group} остался в DOM, адресе, хранилище или консоли после выхода`);
   });
+  await scenario('итоги: день по умолчанию, раскрытие, правка длинных и отмена', async ({ mock, newPage, check, urls }) => {
+    const DAY = '2026-11-11';
+    const admin = await newPage();
+    const addRequests = [];
+    admin.on('request', (r) => { if (r.method() === 'POST' && JSON.parse(r.postData() ?? '{}').action === 'addCorrections') addRequests.push(r); });
+    await loginAdmin(admin, urls.admin);
+    const shown = await admin.waitForSelector('table.results', { timeout: 8_000 }).then(() => true, () => false);
+    check(shown, 'вкладка «Итоги»: нет таблицы');
+    if (!shown) return;
+    check(await admin.getAttribute('[role="tab"][aria-selected="true"]', 'data-tab') === 'results', '«Итоги» — не первая вкладка');
+    const text = (selector) => textOf(admin, selector);
+
+    // день по умолчанию — последний оценённый; в списке дни игры по вчера, выходные помечены
+    const dayField = '[data-field="results-day"]';
+    check(await admin.inputValue(dayField) === DAY, `день по умолчанию «${await admin.inputValue(dayField)}», ожидался ${DAY}`);
+    const days = await admin.$$eval(`${dayField} option`, (os) => os.map((o) => [o.value, o.textContent ?? '']));
+    check(days.length === 10 && days[0][0] === '2026-11-02' && days.at(-1)[0] === DAY, `дни игры в списке: ${JSON.stringify(days.map((d) => d[0]))}`);
+    check(days.find((d) => d[0] === '2026-11-07')?.[1].includes('выходной') && !days.find((d) => d[0] === '2026-11-06')?.[1].includes('выходной'), 'выходные в списке дней не помечены');
+    check(await admin.locator('[data-group-toggle]').count() === GROUP_CODES.length, 'в таблице не шесть групп');
+    check(await admin.$$eval('[data-group-toggle]', (b) => b.every((x) => x.getAttribute('aria-expanded') === 'false')), 'группы раскрыты без нажатия');
+    check(await admin.locator('[data-employee-row]').count() === 0, 'сотрудники видны у закрытых групп');
+
+    // итог дня: группа, недобравшая длинные, и группа с аптечкой
+    const outcomes = await admin.$$eval('[data-outcome]', (els) => els.map((e) => [e.dataset.outcome, e.textContent ?? '']));
+    const weak = outcomes.find((o) => o[1].includes('+1 кучка'));
+    check(Boolean(weak), `ни у одной группы нет «+1 кучка»: ${JSON.stringify(outcomes)}`);
+    check(outcomes.some((o) => o[1].includes('Аптечка, −1 кучка')), 'ни у одной группы нет «Аптечка, −1 кучка»');
+    if (!weak) return;
+    const g = weak[0];
+    check(/длинные \d+(,\d+)? из \d+(,\d+)?/.test(weak[1]) && /игрушка|нет игрушки/.test(weak[1]), `итог дня без причины или игрушки: «${weak[1]}»`);
+    const groupLong = `tbody[data-group="${g}"] .group-row [data-cell="day-long"]`;
+    const [, fact, plan] = (await text(groupLong)).replace(/,/g, '.').match(/^(\d+(?:\.\d+)?) \/ (\d+(?:\.\d+)?)/) ?? [];
+    check(fact !== undefined && Number(fact) < Number(plan) && (await text(groupLong)).includes('✗'), `длинные ${g}: «${await text(groupLong)}»`);
+    const shortage = Math.ceil(Number(plan) - Number(fact));
+
+    // раскрытие: сотрудники группы
+    const before = await publicSnapshot(mock);
+    await admin.click(`[data-group-toggle="${g}"]`);
+    check(await admin.getAttribute(`[data-group-toggle="${g}"]`, 'aria-expanded') === 'true', 'нажатие не раскрыло группу');
+    const inGroup = before.staff.filter((e) => e.group === g).length;
+    const rows = `tbody[data-group="${g}"] tr[data-employee-row]`;
+    check(await admin.locator(rows).count() === inGroup, `у ${g} сотрудников ${await admin.locator(rows).count()}, в штате ${inGroup}`);
+    const id = await admin.$eval(rows, (r) => r.dataset.employeeRow);
+    const fileLong = before.funnel.find((r) => r.employeeId === id && r.date === DAY).long;
+
+    // «Поправить»: поля заполнены текущими значениями, подпись «из файла N»
+    await admin.click(`button[data-correct="${id}"]`);
+    check(await admin.locator(`form[data-editor="${id}"]`).isVisible(), 'нажатие «Поправить» не открыло редактор');
+    check(await admin.inputValue('[data-edit="long"]') === String(fileLong), `длинные в редакторе «${await admin.inputValue('[data-edit="long"]')}», в файле ${fileLong}`);
+    check((await text('[data-caption="long"]')).trim() === `из файла ${fileLong}`, `подпись длинных «${await text('[data-caption="long"]')}»`);
+    const writes = addRequests.length;
+    await admin.click('[data-save="correction"]');
+    check((await waitForText(admin, '[data-alert="correction"]', 'Ничего не изменено')).includes('Ничего не изменено') && addRequests.length === writes, `сохранение без изменений: «${await text('[data-alert="correction"]')}», запросов ${addRequests.length - writes}`);
+
+    // правка: длинные добираются до нормы, итог дня меняется, группа остаётся раскрытой
+    await admin.fill('[data-edit="long"]', String(fileLong + shortage));
+    await admin.click('[data-save="correction"]');
+    const flipped = await waitForText(admin, `[data-outcome="${g}"]`, 'Аптечка, −1 кучка');
+    check(flipped.includes('Аптечка, −1 кучка') && !flipped.includes('+1 кучка'), `после правки итог дня «${flipped}» / «${await text('[data-alert="correction"]')}»`);
+    const corrections = (await publicSnapshot(mock)).corrections ?? [];
+    check(
+      corrections.length === 1 && corrections[0].employeeId === id && corrections[0].kind === 'long' && corrections[0].date === DAY
+        && corrections[0].delta === shortage && corrections[0].base === fileLong,
+      `на сервере: ${JSON.stringify(corrections)}`,
+    );
+    check(addRequests.length === writes + 1, `одно «Сохранить» — запросов ${addRequests.length - writes}`);
+    check(await admin.getAttribute(`[data-group-toggle="${g}"]`, 'aria-expanded') === 'true' && await admin.locator(rows).count() === inGroup, 'после правки группа свернулась');
+    check((await text(groupLong)).includes(`правки +${shortage}`), `ячейка группы без отметки правки: «${await text(groupLong)}»`);
+    check(await admin.locator('[data-corrections] [data-correction]').count() === 1, 'в списке правок нет новой записи');
+    const row = await text('[data-corrections] [data-correction]');
+    check(row.includes('11.11') && row.includes(g) && row.includes('длинные') && row.includes(`+${shortage}`), `запись в списке правок: «${row}»`);
+
+    // редактор снова: «из файла N, правки +K»
+    await admin.click(`button[data-correct="${id}"]`);
+    check((await text('[data-caption="long"]')).trim() === `из файла ${fileLong}, правки +${shortage}`, `подпись после правки «${await text('[data-caption="long"]')}»`);
+    check(await admin.inputValue('[data-edit="long"]') === String(fileLong + shortage), 'в редакторе не текущее значение');
+    await admin.click('[data-cancel="correction"]');
+    check(await admin.locator('form[data-editor]').count() === 0, '«Отмена» не закрыла редактор');
+
+    // смена дня и возврат: раскрытая группа остаётся раскрытой
+    await admin.selectOption(dayField, '2026-11-10');
+    check(await admin.getAttribute(`[data-group-toggle="${g}"]`, 'aria-expanded') === 'true', 'после смены дня группа свернулась');
+    await admin.selectOption(dayField, DAY);
+
+    // отмена правки: итог вернулся, группа раскрыта
+    await admin.click('[data-corrections] [data-remove-correction]');
+    const back = await waitForText(admin, `[data-outcome="${g}"]`, '+1 кучка');
+    check(back.includes('+1 кучка') && !back.includes('Аптечка'), `после отмены итог дня «${back}»`);
+    check(((await publicSnapshot(mock)).corrections ?? []).length === 0, 'правка осталась на сервере после «Отменить»');
+    check(await admin.getAttribute(`[data-group-toggle="${g}"]`, 'aria-expanded') === 'true' && await admin.locator(rows).count() === inGroup, 'после отмены группа свернулась');
+    check(await admin.locator('[data-corrections] [data-correction]').count() === 0, 'отменённая правка осталась в списке');
+
+    // отсутствующий (отпуск): воронка не входит в итог группы и не правится, оплаты правятся
+    const vacationer = before.staff.find((e) => e.name === MOCK_VACATIONER);
+    await admin.click(`[data-group-toggle="${vacationer.group}"]`);
+    const vRow = await text(`tr[data-employee-row="${vacationer.id}"]`);
+    check(vRow.includes('отпуск') && vRow.includes('не входит в итог группы'), `строка отпускника: «${vRow}»`);
+    await admin.click(`button[data-correct="${vacationer.id}"]`);
+    check(await admin.locator('[data-edit="quality"]').isDisabled() && await admin.locator('[data-edit="long"]').isDisabled(), 'воронка отпускника доступна для правки');
+    check(await admin.locator('[data-edit="payments"]').isEnabled(), 'оплаты отпускника недоступны для правки');
+    check((await text(`form[data-editor="${vacationer.id}"]`)).includes('отсутствует'), 'нет причины, по которой воронка недоступна');
+
+    // узкий экран: открытый редактор не раздвигает страницу
+    await admin.setViewportSize({ width: 390, height: 800 });
+    check(await admin.evaluate(() => document.documentElement.scrollWidth) <= 390, 'телефон: «Итоги» с открытым редактором шире экрана');
+    check(await admin.evaluate(() => document.querySelector('.results-scroll').scrollWidth > document.querySelector('.results-scroll').clientWidth), 'телефон: таблица не прокручивается в своём контейнере');
+  });
+
+  await scenario('итоги: второй клик во время записи и повтор после обрыва связи', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    const bodies = [];
+    let mode = 'slow';
+    await admin.route(`${mock.url}**`, async (route) => {
+      const request = route.request();
+      if (request.method() !== 'POST' || JSON.parse(request.postData() ?? '{}').action !== 'addCorrections') return route.continue();
+      bodies.push(JSON.parse(request.postData()));
+      if (mode === 'slow') {
+        await new Promise((resolve) => setTimeout(resolve, 1_200));
+        return route.continue();
+      }
+      if (mode === 'lost') {
+        // сервер запись принял, а ответ до страницы не дошёл
+        mode = 'normal';
+        await route.fetch();
+        return route.fulfill({ status: 200, contentType: 'text/plain', body: 'timeout' });
+      }
+      return route.continue();
+    });
+    await loginAdmin(admin, urls.admin);
+    const shown = await admin.waitForSelector('table.results', { timeout: 8_000 }).then(() => true, () => false);
+    check(shown, 'вкладка «Итоги»: нет таблицы');
+    if (!shown) return;
+    const g = 'СР6';
+    const id = (await publicSnapshot(mock)).staff.find((e) => e.group === g).id;
+    const serverCorrections = async () => (await publicSnapshot(mock)).corrections ?? [];
+    await admin.click(`[data-group-toggle="${g}"]`);
+    const open = async (value) => {
+      await admin.click(`button[data-correct="${id}"]`);
+      await admin.fill('[data-edit="long"]', String(value));
+    };
+
+    // второй клик, пока первая запись ещё идёт: запрос один, запись одна
+    await open(5);
+    await admin.click('[data-save="correction"]');
+    await admin.click('[data-save="correction"]', { force: true, timeout: 2_000 }).catch(() => {});
+    await waitForText(admin, `tr[data-employee-row="${id}"]`, 'правки +5');
+    check(bodies.length === 1, `два клика по «Сохранить» — запросов ${bodies.length}`);
+    check((await serverCorrections()).length === 1, `два клика — правок на сервере ${(await serverCorrections()).length}`);
+
+    // обрыв после записи на сервере: поле не потеряно, повтор уходит с тем же ref и не задваивает правку
+    mode = 'lost';
+    await admin.click('[data-remove-correction]');
+    await admin.waitForFunction(() => document.querySelectorAll('[data-correction]').length === 0);
+    bodies.length = 0;
+    await open(7);
+    await admin.click('[data-save="correction"]');
+    const failed = await waitForText(admin, '[data-alert="correction"]', 'Нет связи');
+    check(failed.includes('Нет связи с сервером'), `после обрыва: «${failed}»`);
+    check(await admin.inputValue('[data-edit="long"]') === '7', 'после обрыва введённое значение потеряно');
+    check((await serverCorrections()).length === 1, 'контроль: после обрыва запись должна быть на сервере');
+    await admin.click('[data-save="correction"]');
+    await waitForText(admin, `tr[data-employee-row="${id}"]`, 'правки +7');
+    check(bodies.length === 2 && bodies[0].ref === bodies[1].ref && typeof bodies[0].ref === 'string', `повтор ушёл с другим ref: ${JSON.stringify(bodies.map((b) => b.ref))}`);
+    check((await serverCorrections()).length === 1, `повтор после обрыва задвоил правку: ${(await serverCorrections()).length}`);
+    check(await admin.locator('[data-correction]').count() === 1, 'после повтора в списке не одна правка');
+  });
 } finally {
   await browser.close();
   await server.close();
@@ -972,4 +1141,4 @@ if (failures.length) {
   console.error(`FAIL (${failures.length}):\n- ${failures.join('\n- ')}`);
   process.exit(1);
 }
-console.log('OK: админка — вход и блокировка, оплаты → экран, импорт оплат и воронки, штат и отсутствия, нормы и ручные правки → экран, РГ — вход и расход предмета → экран, PIN групп не остаются в DOM, хранилище и консоли');
+console.log('OK: админка — вход и блокировка, «Итоги» с правкой и отменой, оплаты → экран, импорт оплат и воронки, штат и отсутствия, нормы и ручные правки → экран, РГ — вход и расход предмета → экран, PIN групп не остаются в DOM, хранилище и консоли');

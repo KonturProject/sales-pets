@@ -181,7 +181,7 @@ th {
 }
 
 /* таблица шире экрана прокручивается сама, страница вбок не едет */
-[role='tabpanel'] table:not(.bulk) {
+[role='tabpanel'] table:not(.bulk, .results) {
   display: block;
   max-width: 100%;
   overflow-x: auto;
@@ -440,4 +440,176 @@ input[type='file']::file-selector-button {
   background: var(--accent);
   color: var(--accent-ink);
   cursor: pointer;
+}
+
+/* «Итоги»: таблица групп в своём контейнере с прокруткой вбок, первый столбец прилипает слева */
+.results-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  margin: 0.6rem 0;
+}
+
+table.results {
+  margin: 0;
+  width: 100%;
+  min-width: 56rem;
+  font-size: 0.92rem;
+}
+
+.results th,
+.results td {
+  padding: 0.3rem 0.4rem;
+  vertical-align: top;
+}
+
+.results thead th {
+  text-align: center;
+  background: var(--card);
+}
+
+.results tbody {
+  border-top: 2px solid var(--line);
+}
+
+.results .group-row {
+  background: var(--card);
+}
+
+.results .emp-row {
+  background: #fdf9ef;
+}
+
+.results .who {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 11.5rem;
+  background: inherit;
+}
+
+.results thead .who {
+  background: var(--card);
+}
+
+.results td.num {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.results td.text {
+  min-width: 10rem;
+  max-width: 13rem;
+}
+
+.results .sub {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: normal;
+}
+
+.results .sub.corr {
+  color: #7a4a0c;
+}
+
+.results .sub.stale {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.verdict {
+  margin-left: 0.3rem;
+  font-weight: 700;
+}
+
+.verdict.ok {
+  color: var(--ok);
+}
+
+.verdict.bad {
+  color: var(--bad);
+}
+
+.results .toggle {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border-color: transparent;
+  border-left: 6px solid var(--group);
+  border-radius: 0.3rem;
+}
+
+.results .chev {
+  display: inline-block;
+  width: 1.1rem;
+}
+
+.who-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.35rem;
+}
+
+.results .mark {
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: #fde9c8;
+  color: #7a4a0c;
+  white-space: nowrap;
+}
+
+button.small {
+  padding: 0.12rem 0.55rem;
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.results .note-row td {
+  padding-left: 1.6rem;
+}
+
+.results .editor-row td {
+  padding: 0.3rem 0.5rem 0.6rem;
+  background: var(--changed);
+}
+
+.corr-editor {
+  position: sticky;
+  left: 0;
+  gap: 0.5rem;
+  max-width: min(40rem, calc(100vw - 3.5rem));
+}
+
+.corr-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.corr-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+}
+
+.corr-fields label {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.2rem;
+}
+
+.corr-fields input {
+  width: 6.5rem;
+}
+
+.corr-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+td.stale {
+  color: var(--bad);
 }

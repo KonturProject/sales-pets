@@ -7,6 +7,7 @@ import { normsTab } from './normsTab';
 import { overridesTab } from './overridesTab';
 import { paymentsTab } from './payments';
 import { pinsTab } from './pins';
+import { resultsTab } from './resultsTab';
 import { createSession, type Session } from './session';
 import { staffTab } from './staffTab';
 import { todayLine, todayTasks } from './today';
@@ -71,6 +72,7 @@ function showWork(): void {
     updateSlot,
     todayBox,
     tabs([
+      { id: 'results', title: 'Итоги', render: () => resultsTab(ctx) },
       { id: 'payments', title: 'Оплаты', render: () => paymentsTab(ctx) },
       { id: 'import', title: 'Импорт', render: () => importTab(ctx) },
       { id: 'staff', title: 'Сотрудники', render: () => staffTab(ctx) },
