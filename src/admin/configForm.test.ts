@@ -13,6 +13,11 @@ describe('configFormOf', () => {
     expect(form.norms.experienced).toEqual({ quality: '5', long: '3', payments: '0,4' });
     expect(form.stageThresholds).toEqual(['25', '50', '75', '100']);
   });
+
+  test('дробные нормы — с запятой, целые без «,0»', () => {
+    const cfg = { ...current, norms: { ...current.norms, rookie1: { quality: 1.5, long: 0.25, payments: 2 } } };
+    expect(configFormOf(cfg).norms.rookie1).toEqual({ quality: '1,5', long: '0,25', payments: '2' });
+  });
 });
 
 describe('configPatch с датой', () => {
@@ -70,6 +75,20 @@ describe('configPatch', () => {
     expect(pays('0.4')).toEqual({ error: 'Ничего не изменено' });
     for (const bad of ['', 'x', '0,123', '-1', '1,2,3']) {
       expect(pays(bad), bad).toMatchObject({ error: expect.stringContaining('Опытный, оплат в день') });
+    }
+  });
+
+  test('качественные и длинные: «1,5» и «0.25» принимаются, как оплаты', () => {
+    const form = configFormOf(current);
+    const norm = (f: 'quality' | 'long', text: string) =>
+      patch({ norms: { ...form.norms, rookie2: { ...form.norms.rookie2, [f]: text } } });
+    expect(norm('long', '1,5')).toEqual({ norms: { rookie2: { long: 1.5 } } });
+    expect(norm('quality', ' 0.25 ')).toEqual({ norms: { rookie2: { quality: 0.25 } } });
+    expect(norm('quality', '2')).toEqual({ error: 'Ничего не изменено' });
+    for (const [f, title] of [['quality', 'качественные'], ['long', 'длинные']] as const) {
+      for (const bad of ['1,555', '', 'x', '-1', '1,2,3']) {
+        expect(norm(f, bad), `${f} ${bad}`).toMatchObject({ error: expect.stringContaining(`Новичок 2, ${title}`) });
+      }
     }
   });
 

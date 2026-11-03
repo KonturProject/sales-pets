@@ -1,3 +1,4 @@
+import { parseDate } from '@/engine/calendar';
 import { defaultConfig, type Config } from '@/engine/config';
 import type { DateStr, Level } from '@/engine/types';
 import type { ConfigChange, Snapshot, SnapshotConfig } from './api';
@@ -11,6 +12,8 @@ const INT_RANGES = {
   deathDaysNoPay: [1, 30],
 } as const;
 const NORM_MAX = 50;
+/** выходных дней в игре не больше, чем дней в периоде игры */
+const NON_WORKING_MAX = 21;
 /** пороги стадий 2..5 — проценты плана оплат группы на игру */
 const STAGE_COUNT = 4;
 const STAGE_THRESHOLD_MAX = 1000;
@@ -19,8 +22,8 @@ const LEVELS = Object.keys(defaultConfig.norms) as Level[];
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isIntIn = (v: unknown, lo: number, hi: number): v is number =>
   typeof v === 'number' && Number.isInteger(v) && v >= lo && v <= hi;
-/** Норма оплат в день: 0…50, не больше двух знаков после запятой (так же проверяет сервер). */
-const isPaymentsNorm = (v: unknown): v is number =>
+/** Личная норма (качественные, длинные, оплат в день): 0…50, не больше двух знаков после запятой (так же проверяет сервер). */
+const isNorm = (v: unknown): v is number =>
   typeof v === 'number' && v >= 0 && v <= NORM_MAX && Math.round(v * 100) / 100 === v;
 
 const validThresholds = (v: unknown): v is number[] =>
@@ -61,10 +64,9 @@ function applyValid(out: Config, raw: Record<string, unknown>, withThresholds: b
     for (const level of LEVELS) {
       const norm = raw.norms[level];
       if (!isObject(norm)) continue;
-      for (const field of ['quality', 'long'] as const) {
-        if (isIntIn(norm[field], 0, NORM_MAX)) { out.norms[level][field] = norm[field]; changed = true; }
+      for (const field of ['quality', 'long', 'payments'] as const) {
+        if (isNorm(norm[field])) { out.norms[level][field] = norm[field]; changed = true; }
       }
-      if (isPaymentsNorm(norm.payments)) { out.norms[level].payments = norm.payments; changed = true; }
     }
   }
 
@@ -73,9 +75,27 @@ function applyValid(out: Config, raw: Record<string, unknown>, withThresholds: b
   return changed;
 }
 
+/**
+ * Выходные дни игры: список целиком — настоящие даты периода игры, без повторов, не больше 21 (так же проверяет сервер).
+ * Пустой список годен («выходных нет»). Негодный возвращает `null`: тогда действует встроенный календарь.
+ */
+function validNonWorking(v: unknown): DateStr[] | null {
+  if (!Array.isArray(v) || v.length > NON_WORKING_MAX) return null;
+  const days = new Set<string>();
+  for (const d of v) {
+    if (typeof d !== 'string' || parseDate(d, '') !== d || d < defaultConfig.startDate || d > defaultConfig.endDate || days.has(d)) return null;
+    days.add(d);
+  }
+  return [...days].sort();
+}
+
+/** Календарь берётся только из базы («вся игра»): записи «с даты» его не задают. */
 function parse(raw: Record<string, unknown>): Config {
   const out = cloneConfig(defaultConfig);
-  return applyValid(out, raw, true) ? out : defaultConfig;
+  let changed = applyValid(out, raw, true);
+  const nonWorking = validNonWorking(raw.nonWorking);
+  if (nonWorking) { out.nonWorking = nonWorking; changed = true; }
+  return changed ? out : defaultConfig;
 }
 
 /** Настройки игры по датам: база («вся игра») и правки, действующие с даты. Пороги стадий от даты не зависят. */

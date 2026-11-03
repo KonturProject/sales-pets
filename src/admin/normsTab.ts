@@ -87,7 +87,7 @@ export async function normsTab(ctx: AdminCtx): Promise<HTMLElement> {
     const start = configFormOf(current);
     const inputs = new Map<string, HTMLInputElement>();
     const input = (key: string, value: string, disabled = false) => {
-      const el = h('input', { type: 'text', inputmode: key.endsWith('-payments') ? 'decimal' : 'numeric', autocomplete: 'off', 'data-field': key, value, disabled });
+      const el = h('input', { type: 'text', inputmode: key.startsWith('norm-') ? 'decimal' : 'numeric', autocomplete: 'off', 'data-field': key, value, disabled });
       inputs.set(key, el);
       return el;
     };

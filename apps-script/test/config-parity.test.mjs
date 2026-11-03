@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { loadBackend, TEST_ADMIN_PIN as PIN } from './gas-harness.mjs';
 import { applyPatch, removeChange } from '../../src/admin/configPreview.ts';
+import { configOf } from '../../src/data/config.ts';
 
 // Клиент (предпросмотр) и сервер (Code.gs) обязаны давать одно и то же при одинаковой последовательности правок:
 // иначе «что изменится» в предпросмотре разойдётся с тем, что запишется.
@@ -52,8 +53,25 @@ describe('дробные нормы и выходные в config', () => {
     expect(state.config.norms.experienced).toEqual({ quality: 1.5, long: 0.25, payments: 0.35 });
   });
 
-  // configOf пока пропускает только целые quality/long и молча подставляет умолчание — его чинит Task 2 (клиент)
-  test.todo('configOf принимает дробные quality и long так же, как сервер (Task 2)');
+  test('configOf принимает дробные quality и long так же, как сервер, и отвергает то же самое', () => {
+    const b = loadBackend();
+    const patch = { norms: { experienced: { quality: 1.5, long: 0.25 } } };
+    expect(admin(b, { action: 'setConfig', config: patch }).ok).toBe(true);
+    expect(configOf(b.get().config).norms.experienced).toEqual({ quality: 1.5, long: 0.25, payments: 0.4 });
+    for (const bad of [1.555, -0.5, 50.01]) {
+      const norms = { experienced: { long: bad } };
+      expect(admin(b, { action: 'setConfig', config: { norms } }).ok, `сервер ${bad}`).toBe(false);
+      expect(configOf({ norms }).norms.experienced.long, `клиент ${bad}`).toBe(3);
+    }
+  });
+
+  test('configOf берёт выходные из config в том же виде, что хранит сервер', () => {
+    const b = loadBackend();
+    expect(admin(b, { action: 'setNonWorking', nonWorking: ['2026-11-07', '2026-11-04'] }).ok).toBe(true);
+    expect(configOf(b.get().config).nonWorking).toEqual(['2026-11-04', '2026-11-07']);
+    expect(admin(b, { action: 'setNonWorking', nonWorking: [] }).ok).toBe(true);
+    expect(configOf(b.get().config).nonWorking).toEqual([]);
+  });
 
   test('config.nonWorking переживает setConfig на сервере и applyPatch на клиенте', () => {
     const b = loadBackend();

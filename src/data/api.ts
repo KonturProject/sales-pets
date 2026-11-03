@@ -13,7 +13,10 @@ export interface SnapshotOverride {
   delta: number;
 }
 
-/** Настройки, которые админ меняет через `setConfig`; чего нет — берётся из `defaultConfig`. Календарь игры не правится. */
+/**
+ * Настройки, которые админ меняет через `setConfig`; чего нет — берётся из `defaultConfig`. Даты игры не правятся,
+ * выходные (`nonWorking`) хранит сервер на всю игру и меняет только `setNonWorking`: `setConfig` их не принимает.
+ */
 export interface SnapshotConfig {
   maxPiles?: number;
   boredomBelow?: number;
@@ -22,6 +25,8 @@ export interface SnapshotConfig {
   deathDaysNoPay?: number;
   norms?: Partial<Record<Level, { quality?: number; long?: number; payments?: number }>>;
   stageThresholds?: number[];
+  /** выходные дни игры; в записях «с даты» не бывает */
+  nonWorking?: DateStr[];
 }
 
 /** Правка норм и порогов, действующая с даты `from` (пороги стадий в ней не бывают); уникальна по `from`. */

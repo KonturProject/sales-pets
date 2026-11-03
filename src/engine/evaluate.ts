@@ -28,20 +28,21 @@ export function evaluateDay(
   group: GroupCode, date: DateStr, staff: Employee[], absences: Absence[], funnel: FunnelDay[], cfg: Config,
 ): DayResult {
   const present = staff.filter((e) => groupOn(e, date) === group && isPresent(e, date, absences));
-  let normQuality = 0, normLong = 0, factQuality = 0, factLong = 0;
+  // нормы дробные (до 0,01): копим в целых сотых, чтобы 0,1 + 0,2 не давали ошибок округления
+  let qualityCents = 0, longCents = 0, factQuality = 0, factLong = 0;
   for (const e of present) {
     const n = cfg.norms[levelOn(e, date)];
-    normQuality += n.quality;
-    normLong += n.long;
+    qualityCents += Math.round(n.quality * 100);
+    longCents += Math.round(n.long * 100);
     for (const row of funnel) {
       if (row.employeeId === e.id && row.date === date) { factQuality += row.quality; factLong += row.long; }
     }
   }
   return {
-    group, date, normQuality, normLong, factQuality, factLong,
-    longRequired: normLong > 0,
-    longMet: normLong > 0 && factLong >= normLong,
-    qualityMet: normQuality > 0 && factQuality >= normQuality,
+    group, date, normQuality: qualityCents / 100, normLong: longCents / 100, factQuality, factLong,
+    longRequired: longCents > 0,
+    longMet: longCents > 0 && factLong * 100 >= longCents,
+    qualityMet: qualityCents > 0 && factQuality * 100 >= qualityCents,
   };
 }
 

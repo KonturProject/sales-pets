@@ -2,9 +2,10 @@ import { serverToday, type ConfigChange, type Snapshot, type SnapshotConfig } fr
 import { configOf } from '@/data/config';
 import { buildFacts } from '@/data/facts';
 import { workingDaysBetween } from '@/engine/calendar';
+import { ruNum } from '@/engine/format';
 import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
 import type { PetState } from '@/engine/pet';
-import { LEVELS, LEVEL_TITLE, NORM_FIELD_TITLE, NORM_FIELDS, ruNumber, SCALAR_KEYS, SCALARS } from './configForm';
+import { LEVELS, LEVEL_TITLE, NORM_FIELD_TITLE, NORM_FIELDS, SCALAR_KEYS, SCALARS } from './configForm';
 import { ruDate } from './dom';
 
 export type PetLine = Pick<PetState, 'alive' | 'phase' | 'stage' | 'planPercent' | 'totalPayments' | 'medkits' | 'toys' | 'piles'>;
@@ -151,7 +152,7 @@ export function describeEntry({ from, config }: ConfigChange): string {
   for (const level of LEVELS) {
     const norm = config.norms?.[level];
     if (!norm) continue;
-    const fields = NORM_FIELDS.filter((f) => norm[f] !== undefined).map((f) => `${NORM_FIELD_TITLE[f]} ${ruNumber(norm[f]!)}`);
+    const fields = NORM_FIELDS.filter((f) => norm[f] !== undefined).map((f) => `${NORM_FIELD_TITLE[f]} ${ruNum(norm[f]!)}`);
     if (fields.length) parts.push(`${LEVEL_TITLE[level]} — ${fields.join(', ')}`);
   }
   return `с ${ruDate(from)}: ${parts.join('; ')}`;

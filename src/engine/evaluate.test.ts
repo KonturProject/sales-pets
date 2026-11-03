@@ -52,6 +52,36 @@ describe('evaluateDay', () => {
     const r = evaluateDay('СР1', D, [emp('a')], [], [f('a', 9, 9, '2026-11-02')], cfg);
     expect(r.factQuality).toBe(0);
   });
+  describe('дробные нормы: сравнение в целых сотых', () => {
+    const withNorms = (experienced: Partial<typeof cfg.norms.experienced>) =>
+      ({ ...cfg, norms: { ...cfg.norms, experienced: { ...cfg.norms.experienced, ...experienced } } });
+    const seven = Array.from({ length: 7 }, (_, i) => emp(`e${i}`));
+
+    test('семеро опытных с нормой длинных 1,5: норма 10,5, нужно 11', () => {
+      const c = withNorms({ long: 1.5 });
+      expect(evaluateDay('СР1', D, seven, [], [], c).normLong).toBe(10.5);
+      const ten = evaluateDay('СР1', D, seven, [], [f('e0', 0, 10)], c);
+      expect(ten.longMet).toBe(false);
+      expect(ten.longRequired).toBe(true);
+      expect(evaluateDay('СР1', D, seven, [], [f('e0', 0, 11)], c).longMet).toBe(true);
+    });
+    test('три человека с нормой 0,1: ровно 0,3 (без 0,30000000000000004), факт 0 не выполняет', () => {
+      const c = withNorms({ quality: 0.1, long: 0.1 });
+      const three = seven.slice(0, 3);
+      const r = evaluateDay('СР1', D, three, [], [], c);
+      expect(r.normQuality).toBe(0.3);
+      expect(r.normLong).toBe(0.3);
+      expect(r.qualityMet).toBe(false);
+      expect(r.longRequired).toBe(true);
+      expect(evaluateDay('СР1', D, three, [], [f('e0', 1, 1)], c).qualityMet).toBe(true);
+    });
+    test('норма 0,29 ×3: факт 1 перекрывает 0,87', () => {
+      const c = withNorms({ quality: 0.29 });
+      const r = evaluateDay('СР1', D, seven.slice(0, 3), [], [f('e0', 1, 0)], c);
+      expect(r.normQuality).toBe(0.87);
+      expect(r.qualityMet).toBe(true);
+    });
+  });
   test('норма 0 (пустая группа) — ничего не выполнено', () => {
     const r = evaluateDay('СР9', D, [emp('a')], [], [], cfg);
     expect(r.normQuality).toBe(0);

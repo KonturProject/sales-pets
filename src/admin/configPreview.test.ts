@@ -23,6 +23,12 @@ describe('mergeConfig', () => {
     });
   });
 
+  test('выходные из настроек переживают правку норм', () => {
+    const raw = { nonWorking: ['2026-11-05'], maxPiles: 2 };
+    expect(mergeConfig(raw, { maxPiles: 3 })).toEqual({ nonWorking: ['2026-11-05'], maxPiles: 3 });
+    expect(mergeConfig(raw, { norms: { experienced: { long: 1.5 } } }).nonWorking).toEqual(['2026-11-05']);
+  });
+
   test('исходный объект не меняется', () => {
     const raw = { norms: { rookie1: { quality: 2 } } };
     mergeConfig(raw, { norms: { rookie1: { quality: 5 } } });
@@ -199,6 +205,13 @@ describe('describeEntry', () => {
   test('дата, затем поля в порядке формы: скаляры, потом нормы по уровням', () => {
     expect(describeEntry({ from: '2026-11-10', config: { norms: { rookie1: { long: 1 }, experienced: { quality: 2, long: 4, payments: 0.5 } }, maxPiles: 2 } }))
       .toBe('с 10.11.2026: Кучек (максимум) 2; Опытный — качественные 2, длинные 4, оплат в день 0,5; Новичок 1 — длинные 1');
+  });
+});
+
+describe('describeEntry: дробные нормы', () => {
+  test('с запятой, целые без «,0»', () => {
+    expect(describeEntry({ from: '2026-11-10', config: { norms: { experienced: { quality: 2, long: 1.5 }, rookie1: { quality: 0.25 } } } }))
+      .toBe('с 10.11.2026: Опытный — качественные 2, длинные 1,5; Новичок 1 — качественные 0,25');
   });
 });
 

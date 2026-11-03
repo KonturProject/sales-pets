@@ -2,6 +2,7 @@ import './ranking.css';
 import { THEME } from '@/art/manifest';
 import { workingDaysBetween } from '@/engine/calendar';
 import type { Config } from '@/engine/config';
+import { ruNum } from '@/engine/format';
 import { groupRanking, heroesOfDay, topOverall, type RankData, type RankRow } from '@/engine/ranking';
 import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
 
@@ -76,7 +77,7 @@ function fill(b: Block, rows: RankRow[], withGroup: boolean, format: (v: number)
     who.append(node('span', 'name', r.name));
     if (r.facts) {
       const f = r.facts;
-      who.append(node('span', 'facts', `кач ${f.quality}/${f.normQuality} · длин ${f.long}/${f.normLong}`));
+      who.append(node('span', 'facts', `кач ${f.quality}/${ruNum(f.normQuality)} · длин ${f.long}/${ruNum(f.normLong)}`));
     }
     tr.append(node('td', 'place', String(r.place)), who);
     if (withGroup) {

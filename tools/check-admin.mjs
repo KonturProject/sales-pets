@@ -573,11 +573,14 @@ try {
     check(await field('maxPiles') === '5' && await field('threshold-1') === '25', 'пороги не предзаполнены текущими значениями');
     check(await admin.locator('[data-field^="threshold-"]').count() === 4, 'порогов стадий не 4');
     check(await field('norm-experienced-payments') === '0,4', `норма оплат опытных не предзаполнена: «${await field('norm-experienced-payments')}»`);
-    check(await admin.getAttribute('[data-field="norm-experienced-payments"]', 'inputmode') === 'decimal', 'у нормы оплат нет дробной клавиатуры');
+    for (const f of ['quality', 'long', 'payments']) {
+      check(await admin.getAttribute(`[data-field="norm-experienced-${f}"]`, 'inputmode') === 'decimal', `у нормы «${f}» нет дробной клавиатуры`);
+    }
 
     // факты мока ровно равны норме опытных, поэтому смену видно только при повышении нормы: игрушки перестают копиться
     await admin.fill('[data-field="norm-experienced-quality"]', '50');
     await admin.fill('[data-field="norm-experienced-payments"]', '0,5'); // с запятой, как пишут по-русски
+    await admin.fill('[data-field="norm-rookie2-long"]', '1,5'); // дробная норма длинных
     const v0 = (await publicSnapshot(mock)).version;
     await admin.click('[data-save="config"]');
     // правка переписывает всю историю: сначала предпросмотр «было → станет», на сервер пока ничего не уходит
@@ -595,7 +598,8 @@ try {
     check(config.norms?.experienced?.quality === 50, 'норма опытных не записана на сервер');
     check(config.norms?.experienced?.payments === 0.5, `норма оплат опытных не записана: ${config.norms?.experienced?.payments}`);
     check(config.norms?.experienced?.long === configBefore.norms?.experienced?.long && config.maxPiles === configBefore.maxPiles, 'на сервер ушло неизменённое');
-    check(await field('norm-experienced-quality') === '50', 'после записи форма не перечитана');
+    check(config.norms?.rookie2?.long === 1.5, `дробная норма длинных не записана: ${config.norms?.rookie2?.long}`);
+    check(await field('norm-experienced-quality') === '50' && await field('norm-rookie2-long') === '1,5', 'после записи форма не перечитана');
 
     await screen.waitForFunction((old) => window.__sig() !== old, before, { timeout: 8_000 }).catch(() => {});
     check(await screen.evaluate(() => window.__sig()) !== before, 'экран не пересчитал питомцев после смены нормы за время опроса');

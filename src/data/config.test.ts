@@ -39,9 +39,71 @@ describe('configOf', () => {
     }
   });
 
-  test('календарь не берётся из config, даже если он там есть', () => {
-    const raw = { startDate: '2020-01-01', endDate: '2020-02-01', nonWorking: [] } as unknown as SnapshotConfig;
+  test('даты игры не берутся из config, даже если они там есть', () => {
+    const raw = { startDate: '2020-01-01', endDate: '2020-02-01' } as unknown as SnapshotConfig;
     expect(configOf(raw)).toBe(defaultConfig);
+    const withDays = { startDate: '2020-01-01', endDate: '2020-02-01', nonWorking: ['2026-11-05'] } as unknown as SnapshotConfig;
+    expect(configOf(withDays)).toEqual({ ...defaultConfig, nonWorking: ['2026-11-05'] });
+  });
+
+  test('качественные и длинные — дробные, до двух знаков, 0…50', () => {
+    expect(configOf({ norms: { experienced: { long: 1.5 } } }).norms.experienced).toEqual({ quality: 5, long: 1.5, payments: 0.4 });
+    for (const field of ['quality', 'long'] as const) {
+      for (const v of [0, 0.01, 0.25, 1.15, 50]) {
+        expect(configOf({ norms: { rookie1: { [field]: v } } }).norms.rookie1[field]).toBe(v);
+      }
+    }
+  });
+
+  test('качественные и длинные: больше двух знаков, отрицательные и выше 50 — норма по умолчанию', () => {
+    for (const field of ['quality', 'long'] as const) {
+      for (const v of [1.555, 0.001, -0.5, 50.01, NaN, '1.5']) {
+        const raw = { sickPilesAbove: 3, norms: { experienced: { [field]: v } } } as unknown as SnapshotConfig;
+        expect(configOf(raw), `${field} ${String(v)}`).toEqual({ ...defaultConfig, sickPilesAbove: 3 });
+      }
+    }
+  });
+
+  test('выходные: список сортируется, сырой объект не меняется', () => {
+    const nonWorking = ['2026-11-05', '2026-11-04'];
+    expect(configOf({ nonWorking }).nonWorking).toEqual(['2026-11-04', '2026-11-05']);
+    expect(nonWorking).toEqual(['2026-11-05', '2026-11-04']);
+  });
+
+  test('выходные: пустой список — «выходных нет», а не умолчание', () => {
+    expect(configOf({ nonWorking: [] }).nonWorking).toEqual([]);
+    expect(defaultConfig.nonWorking).not.toEqual([]);
+  });
+
+  test('выходные: весь период (21 день) принимается', () => {
+    const all = Array.from({ length: 21 }, (_, i) => `2026-11-${String(i + 2).padStart(2, '0')}`);
+    expect(all[0]).toBe('2026-11-02');
+    expect(all[20]).toBe('2026-11-22');
+    expect(configOf({ nonWorking: all }).nonWorking).toEqual(all);
+  });
+
+  test('выходные: негодный список целиком заменяется встроенным календарём, годное рядом остаётся', () => {
+    const day = (n: number) => `2026-11-${String(n).padStart(2, '0')}`;
+    const bad = [
+      ['x'],
+      ['2026-11-31'],
+      ['2026-11-30'],
+      ['2026-11-01'],
+      ['2026-11-23'],
+      ['2026-11-05', '2026-11-05'],
+      ['2026-11-05', 'x'],
+      [20261105],
+      [null],
+      'x',
+      null,
+      { 0: '2026-11-05' },
+      // 22 даты: период игры вмещает 21 день, поэтому лишняя может быть только повтором
+      [...Array.from({ length: 21 }, (_, i) => day(i + 2)), day(5)],
+    ] as unknown[];
+    for (const nonWorking of bad) {
+      const raw = { nonWorking, sickPilesAbove: 3 } as unknown as SnapshotConfig;
+      expect(configOf(raw), JSON.stringify(nonWorking)).toEqual({ ...defaultConfig, sickPilesAbove: 3 });
+    }
   });
 
   test('испорченное значение игнорируется по полю, годное рядом остаётся', () => {
@@ -166,6 +228,24 @@ describe('timelineOf', () => {
     expect(t.at('2026-11-06').norms.experienced.payments).toBe(0.6);
     expect(t.at('2026-11-09').norms.experienced.payments).toBe(0.8);
     expect(t.at('2026-11-12').norms.experienced.payments).toBe(0.8);
+  });
+
+  test('запись «с даты» календарь не меняет: выходные берутся только из базы', () => {
+    const base = tl({ nonWorking: ['2026-11-05'] }, [change('2026-11-09', { nonWorking: ['2026-11-10'], maxPiles: 2 })]);
+    expect(base.at('2026-11-06').nonWorking).toEqual(['2026-11-05']);
+    expect(base.at('2026-11-10').nonWorking).toEqual(['2026-11-05']);
+    expect(base.at('2026-11-10').maxPiles).toBe(2);
+    const onlyEntry = tl({}, [change('2026-11-09', { nonWorking: [] })]);
+    expect(onlyEntry.at('2026-11-10').nonWorking).toEqual(defaultConfig.nonWorking);
+  });
+
+  test('дробные нормы «с даты»: принимаются, испорченные оставляют унаследованное', () => {
+    const t = tl({}, [
+      change('2026-11-09', { norms: { experienced: { long: 1.5 } } }),
+      change('2026-11-12', { norms: { experienced: { long: 1.555, quality: 0.25 } } }),
+    ]);
+    expect(t.at('2026-11-09').norms.experienced.long).toBe(1.5);
+    expect(t.at('2026-11-12').norms.experienced).toEqual({ quality: 0.25, long: 1.5, payments: 0.4 });
   });
 
   test('один и тот же снимок — один и тот же Timeline', () => {

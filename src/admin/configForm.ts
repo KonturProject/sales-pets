@@ -1,5 +1,6 @@
 import type { SnapshotConfig } from '@/data/api';
 import type { Config } from '@/engine/config';
+import { ruNum } from '@/engine/format';
 import type { Level } from '@/engine/types';
 import { ruDate } from './dom';
 
@@ -18,9 +19,6 @@ export const LEVEL_TITLE: Record<Level, string> = { experienced: 'Опытный
 export const NORM_FIELD_TITLE = { quality: 'качественные', long: 'длинные', payments: 'оплат в день' } as const;
 export const NORM_FIELDS = ['quality', 'long', 'payments'] as const;
 
-/** Норма оплат в форме — с запятой, как пишут по-русски. */
-export const ruNumber = (n: number): string => String(n).replace('.', ',');
-
 export const SCALARS = {
   maxPiles: 'Кучек (максимум)',
   boredomBelow: 'Скука: оплат за вчера меньше',
@@ -34,7 +32,7 @@ export const SCALAR_KEYS = Object.keys(SCALARS) as Scalar[];
 export function configFormOf(current: Config): ConfigForm {
   const norms = Object.fromEntries(LEVELS.map((l) => [
     l,
-    { quality: String(current.norms[l].quality), long: String(current.norms[l].long), payments: ruNumber(current.norms[l].payments) },
+    { quality: ruNum(current.norms[l].quality), long: ruNum(current.norms[l].long), payments: ruNum(current.norms[l].payments) },
   ])) as ConfigForm['norms'];
   return {
     maxPiles: String(current.maxPiles),
@@ -69,14 +67,11 @@ export function configPatch(form: ConfigForm, current: Config, from?: string): S
 
   const norms: NonNullable<SnapshotConfig['norms']> = {};
   for (const level of LEVELS) {
-    for (const field of ['quality', 'long'] as const) {
-      const n = whole(form.norms[level][field]);
-      if (n === null) return { error: `${LEVEL_TITLE[level]}, ${NORM_FIELD_TITLE[field]}: введите целое число` };
+    for (const field of NORM_FIELDS) {
+      const n = hundredths(form.norms[level][field]);
+      if (n === null) return { error: `${LEVEL_TITLE[level]}, ${NORM_FIELD_TITLE[field]}: число, например 0,4 (не больше двух знаков после запятой)` };
       if (n !== current.norms[level][field]) norms[level] = { ...norms[level], [field]: n };
     }
-    const pays = hundredths(form.norms[level].payments);
-    if (pays === null) return { error: `${LEVEL_TITLE[level]}, ${NORM_FIELD_TITLE.payments}: число, например 0,4 (не больше двух знаков после запятой)` };
-    if (pays !== current.norms[level].payments) norms[level] = { ...norms[level], payments: pays };
   }
   if (Object.keys(norms).length) out.norms = norms;
 
