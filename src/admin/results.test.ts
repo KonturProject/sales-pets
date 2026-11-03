@@ -98,6 +98,12 @@ describe('resultsDays и defaultResultsDay', () => {
     expect(defaultResultsDay(snap({ serverNow: '2026-11-09T10:00:00+03:00' }))).toBe('2026-11-08');
   });
 
+  test('игра ещё не началась (вчера раньше 02.11): дней нет, значения по умолчанию тоже', () => {
+    expect(defaultResultsDay(snap({ serverNow: '2026-10-30T10:00:00+03:00' }))).toBeNull();
+    expect(defaultResultsDay(snap({ serverNow: '2026-11-02T10:00:00+03:00', funnelThrough: '2026-11-02' }))).toBeNull();
+    expect(defaultResultsDay(snap({ serverNow: '2026-11-03T10:00:00+03:00' }))).toBe('2026-11-02');
+  });
+
   test('воронка раньше первого рабочего дня — тоже вчерашний день игры', () => {
     expect(defaultResultsDay(snap({ funnelThrough: '2026-11-01' }))).toBe('2026-11-11');
   });
@@ -304,7 +310,7 @@ describe('dayResults: сотрудники', () => {
   test('предварительные числа дня тоже не разнесены; сумма сотрудников больше группы — минус не отсекается', () => {
     const prov = world({ provisional: [{ date: '2026-11-06', group: 'СР1', count: 3 }] });
     expect(lineOf(dayResults(prov, '2026-11-06'), 'СР1').unassigned).toEqual({ payments: 3, unmatched: 0 });
-    // Бетов переведён в СР2 в файле, но в штате числится в СР1: счёт у группы СР2, у сотрудника СР1
+    // Альфов в штате числится в СР1, а счёт в файле записан группе СР2: у группы он есть, у сотрудников СР1 — нет
     const mismatch = world({ payments: [pay('2026-11-03', 'СР2', 'Тест Альфов', 'M-1')] });
     expect(lineOf(dayResults(mismatch, '2026-11-03'), 'СР1').unassigned.payments).toBe(-1);
   });
@@ -330,6 +336,7 @@ describe('dayResults: ручные правки в ячейках', () => {
     expect(a1.total.long).toMatchObject({ fact: 4, corrected: 1 });
     expect(a1.file.long).toBe(1);
     expect(a1.current.long).toBe(2);
+    expect(a1.corrections).toEqual({ quality: 0, long: 1, payments: 0 });
     expect(sr1.day.long).toMatchObject({ fact: 2, corrected: 1, stale: false });
     expect(sr1.total.long).toMatchObject({ fact: 14, corrected: 1 });
     expect(sr1.outcome).toMatchObject({ evaluated: true, medkit: true, pile: false });
@@ -371,8 +378,46 @@ describe('dayResults: ручные правки в ячейках', () => {
     const a1 = personOf(lines, 'СР1', 'a1');
     expect(a1.current.payments).toBe(0);
     expect(a1.day.payments).toMatchObject({ fact: 0, corrected: -5 });
-    expect(a1.total.payments.fact).toBe(1); // только F-1 за 02.11
+    expect(a1.total.payments.fact).toBe(0); // F-1 за 02.11 и 2 − 5 за 03.11: сумма за период ниже нуля — 0
     expect(lineOf(lines, 'СР1').day.payments.fact).toBe(0); // 4 − 5 → 0
+  });
+
+  test('правка воронки в выходной: выходной не оценивается, оценка следующего рабочего дня та же, что без правки', () => {
+    const funnel = [...world().funnel, fun('a1', '2026-11-05', 4, 2), fun('a3', '2026-11-05', 1, 0)];
+    const plain = world({ funnelThrough: '2026-11-05', funnel });
+    const fixed = world({ funnelThrough: '2026-11-05', funnel, corrections: [corr(1, '2026-11-04', 'a1', 'long', 3, 0)] });
+    const sat = lineOf(dayResults(fixed, '2026-11-04'), 'СР1');
+    expect(sat.outcome).toEqual({ evaluated: false, reason: 'weekend' });
+    expect(personOf(dayResults(fixed, '2026-11-04'), 'СР1', 'a1').current.long).toBe(3);
+    expect(lineOf(dayResults(fixed, '2026-11-05'), 'СР1').outcome).toEqual(lineOf(dayResults(plain, '2026-11-05'), 'СР1').outcome);
+    expect(lineOf(dayResults(fixed, '2026-11-05'), 'СР1').outcome.evaluated).toBe(true);
+  });
+
+  test('минус воронки больше файла: факт сотрудника и группы за день 0, а не отрицательный', () => {
+    const s = world({ corrections: [corr(1, '2026-11-03', 'a1', 'long', -5, 1)] });
+    const lines = dayResults(s, '2026-11-03');
+    const a1 = personOf(lines, 'СР1', 'a1');
+    expect(a1.day.long).toMatchObject({ fact: 0, corrected: -5 });
+    expect(a1.current.long).toBe(0);
+    expect(a1.corrections.long).toBe(-5);
+    expect(lineOf(lines, 'СР1').day.long.fact).toBe(0); // Гаммов 0, Альфов 1 − 5 → 0
+  });
+
+  test('накопление оплат сотрудника: минус вычитается из суммы за период, а не отсекается по дням', () => {
+    const s = snap({
+      staff: [emp('a1', 'Тест Альфов')],
+      payments: [
+        ...[1, 2, 3].map((i) => pay('2026-11-02', 'СР1', 'Тест Альфов', `T-${i}`)),
+        pay('2026-11-03', 'СР1', 'Тест Альфов', 'T-4'),
+      ],
+      corrections: [corr(1, '2026-11-03', 'a1', 'payments', -2, 1)],
+    });
+    const lines = dayResults(s, '2026-11-03');
+    const a1 = personOf(lines, 'СР1', 'a1');
+    expect(a1.day.payments.fact).toBe(0); // 1 − 2 за день отсекается
+    expect(a1.total.payments.fact).toBe(2); // 3 + 1 − 2 за период
+    // у группы суммы по дням, как в движке: день отсекается сам по себе
+    expect(lineOf(lines, 'СР1').total.payments.fact).toBe(3);
   });
 
   test('правка воронки отсутствующего не входит в факт группы за день, но видна у него', () => {
@@ -386,6 +431,7 @@ describe('dayResults: ручные правки в ячейках', () => {
     const s = world({ corrections: [corr(1, '2026-11-05', 'a1', 'quality', 3, 0)] });
     const lines = dayResults(s, '2026-11-05');
     const a1 = personOf(lines, 'СР1', 'a1');
+    expect(lineOf(lines, 'СР1').outcome).toEqual({ evaluated: false, reason: 'no-funnel' });
     expect(a1.day.quality).toMatchObject({ fact: 3, plan: null, corrected: 3, stale: false });
     expect(a1.current.quality).toBe(3);
     expect(a1.total.quality).toMatchObject({ fact: 8, corrected: 0 });
@@ -541,6 +587,53 @@ describe('correctionItems', () => {
     const a1 = lineFor(s, 'СР1', 'a1');
     expect(a1.current.long).toBe(2);
     expect(correctionItems(a1, { ...same(a1), long: 1 }, D)).toEqual([{ date: D, employeeId: 'a1', kind: 'long', delta: -1, base: 1 }]);
+  });
+
+  test('оплаты: после устаревшей минусовой правки «хочу 1» доводит до 1 (файл 1, правка −2, показано 0)', () => {
+    const s = snap({
+      staff: [emp('a1', 'Тест Альфов')],
+      payments: [pay(D, 'СР1', 'Тест Альфов', 'S-1')],
+      paymentsImportedThrough: D,
+      corrections: [corr(1, D, 'a1', 'payments', -2, 2)], // файл с тех пор уменьшился: правка устарела
+    });
+    const a1 = lineFor(s, 'СР1', 'a1');
+    expect(a1).toMatchObject({ file: { payments: 1 }, current: { payments: 0 }, corrections: { payments: -2 } });
+    expect(correctionViews(s)[0].stale).toBe(true);
+    expect(correctionItems(a1, { ...same(a1), payments: 1 }, D)).toEqual([{ date: D, employeeId: 'a1', kind: 'payments', delta: 2, base: 1 }]);
+    // «хочу 0»: уже 0, править нечего
+    expect(correctionItems(a1, same(a1), D)).toEqual([]);
+  });
+
+  test('длинные: после устаревшей минусовой правки «хочу 1» доводит до 1 (файл 1, правка −3, показано 0)', () => {
+    const s = snap({
+      staff: [emp('a1', 'Тест Альфов')],
+      funnelThrough: D,
+      funnel: [fun('a1', D, 0, 1)],
+      corrections: [corr(1, D, 'a1', 'long', -3, 3)],
+    });
+    const a1 = lineFor(s, 'СР1', 'a1');
+    expect(a1).toMatchObject({ file: { long: 1 }, current: { long: 0 }, corrections: { long: -3 } });
+    expect(correctionItems(a1, { ...same(a1), long: 1 }, D)).toEqual([{ date: D, employeeId: 'a1', kind: 'long', delta: 3, base: 1 }]); // 1 − (1 − 3)
+  });
+
+  test('предел 50 считается от сырого значения (файл + правки), а не от показанного', () => {
+    const s = snap({
+      staff: [emp('a1', 'Тест Альфов')],
+      funnelThrough: D,
+      corrections: [corr(1, D, 'a1', 'quality', -50, 0)],
+    });
+    const a1 = lineFor(s, 'СР1', 'a1');
+    expect(a1.current.quality).toBe(0);
+    expect(correctionItems(a1, { ...same(a1), quality: 1 }, D)).toEqual({ error: expect.any(String) }); // +51
+  });
+
+  test('правка субботы не попадает в «правки» понедельника для редактора, хотя входит в его корзину', () => {
+    const s = world({ corrections: [corr(1, '2026-11-07', 'b1', 'payments', 2, 1)] });
+    const mon = lineFor(s, 'СР2', 'b1', '2026-11-09');
+    expect(mon.day.payments).toMatchObject({ fact: 3, weekend: 3, corrected: 2 });
+    expect(mon.corrections.payments).toBe(0);
+    expect(mon.current.payments).toBe(0);
+    expect(lineFor(s, 'СР2', 'b1', '2026-11-07').corrections.payments).toBe(2);
   });
 
   test('оплаты: разница от значения дня, а не от корзины с выходными', () => {

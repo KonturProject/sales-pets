@@ -28,12 +28,14 @@ export type Outcome =
   | { evaluated: false; reason: 'weekend' | 'no-funnel' };
 
 /**
- * `day` и `total` — ячейки таблицы; `file` и `current` — значения выбранного календарного дня для редактора правки
- * (из файла и с правками), а не «корзина» оплат из `day.payments`.
+ * `day` и `total` — ячейки таблицы. Для редактора правки — значения выбранного календарного дня (не «корзина» оплат из
+ * `day.payments`): `file` из файла, `corrections` — сумма правок этого дня без отсечения (может быть < 0), `current` — что
+ * видно в игре: max(0, file + corrections).
  */
 export interface EmployeeLine {
   id: string; name: string; level: Level; absence: Absence['kind'] | null; inGroupTotal: boolean; hidden: boolean;
-  day: Record<Kind, Cell>; total: Record<Kind, Cell>; file: Record<Kind, number>; current: Record<Kind, number>;
+  day: Record<Kind, Cell>; total: Record<Kind, Cell>;
+  file: Record<Kind, number>; corrections: Record<Kind, number>; current: Record<Kind, number>;
 }
 
 export interface GroupLine {
@@ -59,14 +61,14 @@ export function resultsDays(s: Snapshot): { date: DateStr; working: boolean }[] 
   return dateRange(cfg.startDate, yesterday < cfg.endDate ? yesterday : cfg.endDate).map((date) => ({ date, working: isWorkingDay(date, cfg) }));
 }
 
-/** Последний оценённый день: самый поздний рабочий не позже funnelThrough и вчерашнего; без воронки — вчерашний день игры. */
-export function defaultResultsDay(s: Snapshot): DateStr {
+/** Последний оценённый день: самый поздний рабочий не позже funnelThrough и вчерашнего; без воронки — вчерашний день игры; null — дней игры ещё нет. */
+export function defaultResultsDay(s: Snapshot): DateStr | null {
   const days = resultsDays(s);
   const through = s.funnelThrough;
   if (through !== null) {
     for (let i = days.length - 1; i >= 0; i--) if (days[i].working && days[i].date <= through) return days[i].date;
   }
-  return days.at(-1)?.date ?? timelineOf(s).at(serverToday(s)).startDate;
+  return days.at(-1)?.date ?? null;
 }
 
 export interface CorrectionView {
@@ -147,12 +149,12 @@ export function dayResults(s: Snapshot, date: DateStr): GroupLine[] {
   const inGame = (d: DateStr) => d >= start && d <= date;
   const staff = new Map(s.staff.map((e) => [e.id, e]));
 
-  // строки воронки с правками (все даты) и оплаты сотрудников по дням: файл + правки, не меньше 0
+  // строки воронки с правками (все даты) и оплаты сотрудников по дням: файл + правки; в день отсекается нулём, в накоплении — один раз за период
   const rows = new Map(eff.funnel.map((f) => [byKey(f.employeeId, f.date), f]));
-  const payDay = new Map(eff.fileInvoices);
-  for (const c of eff.paymentCorrections) payDay.set(byKey(c.employeeId, c.date), (payDay.get(byKey(c.employeeId, c.date)) ?? 0) + c.delta);
-  for (const [key, n] of payDay) if (n < 0) payDay.set(key, 0);
-  const payOf = (id: string, d: DateStr) => payDay.get(byKey(id, d)) ?? 0;
+  const payRaw = new Map(eff.fileInvoices);
+  for (const c of eff.paymentCorrections) payRaw.set(byKey(c.employeeId, c.date), (payRaw.get(byKey(c.employeeId, c.date)) ?? 0) + c.delta);
+  const rawOf = (id: string, d: DateStr) => payRaw.get(byKey(id, d)) ?? 0;
+  const payOf = (id: string, d: DateStr) => Math.max(0, rawOf(id, d));
 
   const employeeLine = (e: Employee): EmployeeLine => {
     const present = isPresent(e, date, s.absences);
@@ -162,6 +164,7 @@ export function dayResults(s: Snapshot, date: DateStr): GroupLine[] {
     const fileRow = eff.fileFunnel.get(byKey(e.id, date));
     const file = { quality: fileRow?.quality ?? 0, long: fileRow?.long ?? 0, payments: eff.fileInvoices.get(byKey(e.id, date)) ?? 0 };
     const current = { quality: row?.quality ?? 0, long: row?.long ?? 0, payments: payOf(e.id, date) };
+    const own = (kind: Kind) => corrections(views, (v) => v.c.employeeId === e.id && v.c.kind === kind && v.c.date === date).corrected;
 
     const funnelCells = (kind: 'quality' | 'long') => {
       const day: Cell = {
@@ -188,7 +191,7 @@ export function dayResults(s: Snapshot, date: DateStr): GroupLine[] {
     let payPlanCents = 0;
     for (const x of workDays) if (isPresent(e, x, s.absences)) payPlanCents += cents(tl.at(x).norms[levelOn(e, x)].payments);
     const payTotalCell: Cell = {
-      fact: gameDays.reduce((a, x) => a + payOf(e.id, x), 0), plan: workDays.length ? payPlanCents / 100 : null,
+      fact: Math.max(0, gameDays.reduce((a, x) => a + rawOf(e.id, x), 0)), plan: workDays.length ? payPlanCents / 100 : null,
       ...corrections(views, (v) => v.c.employeeId === e.id && v.c.kind === 'payments' && inGame(v.c.date)),
     };
 
@@ -196,7 +199,7 @@ export function dayResults(s: Snapshot, date: DateStr): GroupLine[] {
       id: e.id, name: e.name, level, absence: absenceOn(s.absences, e.id, date), inGroupTotal: present, hidden: e.hiddenFromRating,
       day: { quality: quality.day, long: long.day, payments: payDayCell },
       total: { quality: quality.total, long: long.total, payments: payTotalCell },
-      file, current,
+      file, corrections: { quality: own('quality'), long: own('long'), payments: own('payments') }, current,
     };
   };
 
@@ -280,7 +283,7 @@ export interface CorrectionItem { date: DateStr; employeeId: string; kind: Kind;
 
 /**
  * Что отправить на сервер, чтобы у сотрудника за `date` стало `wanted` («сколько должно быть»): по правке на каждый изменённый
- * показатель, разница считается от нынешнего значения (`current`), `base` — значение «из файла». Ничего не изменилось — `[]`.
+ * показатель, разница считается от сырого значения (файл + правки), `base` — значение «из файла». Ничего не изменилось — `[]`.
  */
 export function correctionItems(line: EmployeeLine, wanted: Record<Kind, number>, date: DateStr): CorrectionItem[] | { error: string } {
   if (line.id.startsWith('new:')) return { error: 'Новый сотрудник появится после загрузки файла: сейчас поправить нельзя' };
@@ -288,9 +291,11 @@ export function correctionItems(line: EmployeeLine, wanted: Record<Kind, number>
   for (const kind of KINDS) {
     const w = wanted[kind];
     if (!Number.isInteger(w) || w < 0) return { error: `${KIND_TITLE[kind]}: нужно целое число, не меньше 0` };
-    const delta = w - line.current[kind];
-    if (delta === 0) continue;
+    if (w === line.current[kind]) continue;
     if (kind !== 'payments' && !line.inGroupTotal) return { error: `${KIND_TITLE[kind]}: сотрудник отсутствует, его воронка не входит в итог группы` };
+    // от сырого значения (файл + правки), а не от показанного: отсечённый минус иначе оставил бы значение ниже цели
+    const delta = w - (line.file[kind] + line.corrections[kind]);
+    if (delta === 0) continue;
     if (Math.abs(delta) > MAX_DELTA) return { error: `${KIND_TITLE[kind]}: за один раз можно изменить не больше чем на ${MAX_DELTA}` };
     items.push({ date, employeeId: line.id, kind, delta, base: line.file[kind] });
   }
