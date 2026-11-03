@@ -2,7 +2,7 @@
 // подпутём /sales-pets/ и открывается с хоста, который не localhost. Бэкенд — мок, исполняющий настоящий Code.gs.
 // Две сборки: с вшитым адресом бэкенда (VITE_BACKEND_URL) и без него. PIN в вывод не попадает. Запуск: npm run check:dist
 import { spawnSync } from 'node:child_process';
-import { createReadStream, existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { extname, join, resolve, sep } from 'node:path';
@@ -72,6 +72,16 @@ await vite.close();
 
 build(withBackend, mock.url);
 build(withoutBackend, '');
+
+/** Номер сборки: `version.json` лежит рядом с index.html, а его `build` вшит в бандл (по нему страницы узнают о новой версии). */
+function checkBuildId(name, dir) {
+  const file = join(dir, 'version.json');
+  if (!existsSync(file)) return void failures.push(`${name}: в сборке нет version.json`);
+  const id = JSON.parse(readFileSync(file, 'utf8')).build;
+  if (typeof id !== 'string' || !id) return void failures.push(`${name}: в version.json нет номера сборки`);
+  const baked = readdirSync(join(dir, 'assets')).some((f) => f.endsWith('.js') && readFileSync(join(dir, 'assets', f), 'utf8').includes(id));
+  if (!baked) failures.push(`${name}: номер ${id} из version.json не вшит в бандлы`);
+}
 const site = await serve(withBackend);
 const bare = await serve(withoutBackend);
 const browser = await chromium.launch({ executablePath: browserPath });
@@ -102,6 +112,8 @@ const mockGets = (requests) => requests.filter((u) => u.startsWith(mock.url)).le
 const toEvil = (requests) => requests.some((u) => new URL(u).hostname === new URL(EVIL).hostname);
 
 try {
+  checkBuildId('сборка с бэкендом', withBackend);
+  checkBuildId('сборка без бэкенда', withoutBackend);
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
 
   {
@@ -213,4 +225,4 @@ if (failures.length) {
   console.error(`FAIL (${failures.length}):\n- ${failures.join('\n- ')}`);
   process.exit(1);
 }
-console.log('OK: собранный сайт под /sales-pets/ — экран, до старта, админка (чанк xlsx), РГ, чужой ?backend=, сборка без бэкенда');
+console.log('OK: собранный сайт под /sales-pets/ — номер сборки, экран, до старта, админка (чанк xlsx), РГ, чужой ?backend=, сборка без бэкенда');

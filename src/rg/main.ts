@@ -3,6 +3,7 @@ import '@/game/room.css';
 import './rg.css';
 import { ART } from '@/art/manifest';
 import { ApiError, api, resolvePollMs, serverToday } from '@/data/api';
+import { reloadForBuild, watchBuild } from '@/data/build';
 import { buildFacts } from '@/data/facts';
 import { createStore } from '@/data/store';
 import { GROUPS, type GroupCode } from '@/engine/types';
@@ -20,6 +21,9 @@ const store = createStore({
   fetchSnapshot: (since) => api.get(since),
   pollMs: resolvePollMs(location.search, { dev: import.meta.env.DEV, hostname: location.hostname }),
 });
+
+/** Идёт перенос предмета или запись расхода: страницу сейчас перезагружать нельзя. Выставляет `showWork`. */
+let busy = (): boolean => false;
 
 function showLogin(message = ''): void {
   const group = h('select', { 'data-field': 'group', 'aria-label': 'Группа' }, ...GROUPS.map((g) => h('option', { value: g }, g)));
@@ -105,6 +109,7 @@ function showWork(group: GroupCode, groupPin: string): void {
 
   // Перенос предмета к питомцу (Pointer Events: мышь, палец, перо одним кодом). Решает автомат `dragStep`, здесь только DOM.
   let drag: DragState = { phase: 'idle' };
+  busy = () => locked || drag.phase !== 'idle';
   let ghost: HTMLElement | undefined;
   let swallowClick = false;
   let hintTimer: ReturnType<typeof setTimeout> | undefined;
@@ -225,6 +230,7 @@ function showWork(group: GroupCode, groupPin: string): void {
     ghost?.remove();
     off();
     store.stop();
+    busy = () => false;
     showLogin(message);
   }
 
@@ -238,3 +244,7 @@ function showWork(group: GroupCode, groupPin: string): void {
 }
 
 showLogin();
+// сверка раз в несколько минут; если в этот момент идёт перенос или запись, перезагрузка ждёт следующего тика
+watchBuild((build) => {
+  if (!busy()) reloadForBuild(build);
+});

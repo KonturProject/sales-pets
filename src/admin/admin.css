@@ -333,6 +333,16 @@ th {
   color: var(--bad);
 }
 
+[role='status'].update-banner {
+  margin: 0.6rem 0;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--changed);
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .bulk select,
 .bulk input {
   padding: 0.2rem 0.35rem;

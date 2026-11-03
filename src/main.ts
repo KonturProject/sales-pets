@@ -1,6 +1,7 @@
 import '@fontsource-variable/nunito'; // свой файл шрифта: на ТВ может не быть доступа к Google Fonts
 import './game/room.css';
 import { api, backendUrl, resolvePollMs, serverToday } from '@/data/api';
+import { reloadForBuild, watchBuild } from '@/data/build';
 import { buildFacts } from '@/data/facts';
 import { createStore } from '@/data/store';
 import { buildDemo, groupFacts } from '@/demo/demoFacts';
@@ -92,6 +93,7 @@ function startLive(): void {
   });
   power.start();
   store.start();
+  watchBuild(reloadForBuild); // ТВ никто не обновит руками: на новую версию страница переходит сама
 }
 
 if (params.has('demo')) {

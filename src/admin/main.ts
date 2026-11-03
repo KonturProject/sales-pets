@@ -1,5 +1,6 @@
 import './admin.css';
 import { api } from '@/data/api';
+import { watchBuild } from '@/data/build';
 import { h, tabs, errorText } from './dom';
 import type { AdminCtx } from './ctx';
 import { importTab } from './importTab';
@@ -35,6 +36,12 @@ const tracked: Session = {
 };
 const ctx: AdminCtx = { session: tracked, snapshot };
 
+/** Место под плашку о новой версии: она появляется, когда сверка нашла другую сборку. Страница не перезагружается: в формах может быть несохранённый ввод. */
+const updateSlot = h('div');
+watchBuild(() => {
+  if (!updateSlot.hasChildNodes()) updateSlot.append(h('p', { role: 'status', class: 'update-banner' }, 'Вышла новая версия — обновите страницу'));
+});
+
 function showLogin(message = ''): void {
   // Поле PIN без `name`: браузер не предлагает сохранить его и не автозаполняет.
   const input = h('input', { type: 'password', inputmode: 'numeric', autocomplete: 'off', required: true, 'aria-label': 'PIN' });
@@ -66,6 +73,7 @@ function showWork(): void {
   const logout = h('button', { type: 'button', onclick: () => { session.logout(); showLogin(); } }, 'Выйти');
   root.replaceChildren(
     h('header', {}, h('h1', {}, 'Админка'), logout),
+    updateSlot,
     todayBox,
     tabs([
       { id: 'payments', title: 'Оплаты', render: () => paymentsTab(ctx) },
