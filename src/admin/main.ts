@@ -1,7 +1,6 @@
 import './admin.css';
 import { api } from '@/data/api';
-import { watchBuild } from '@/data/build';
-import { h, tabs, errorText } from './dom';
+import { h, tabs, errorText, newVersionSlot } from './dom';
 import type { AdminCtx } from './ctx';
 import { importTab } from './importTab';
 import { normsTab } from './normsTab';
@@ -36,11 +35,7 @@ const tracked: Session = {
 };
 const ctx: AdminCtx = { session: tracked, snapshot };
 
-/** Место под плашку о новой версии: она появляется, когда сверка нашла другую сборку. Страница не перезагружается: в формах может быть несохранённый ввод. */
-const updateSlot = h('div');
-watchBuild(() => {
-  if (!updateSlot.hasChildNodes()) updateSlot.append(h('p', { role: 'status', class: 'update-banner' }, 'Вышла новая версия — обновите страницу'));
-});
+const updateSlot = newVersionSlot();
 
 function showLogin(message = ''): void {
   // Поле PIN без `name`: браузер не предлагает сохранить его и не автозаполняет.

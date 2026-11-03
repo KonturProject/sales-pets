@@ -1,4 +1,5 @@
 import { ApiError } from '@/data/api';
+import { watchBuild } from '@/data/build';
 
 type Attr = string | number | boolean | undefined | ((e: Event) => void);
 type Child = Node | string | false | null | undefined;
@@ -48,6 +49,19 @@ export function tabs(items: TabItem[]): HTMLElement {
   const nav = h('nav', { role: 'tablist' }, ...buttons);
   void select(items[0]);
   return h('div', { class: 'tabs' }, nav, panel);
+}
+
+/**
+ * Место под плашку «Вышла новая версия»: пустой div, который кладут в начало страницы. Плашка появляется в нём,
+ * когда сверка нашла другую сборку. Страница не перезагружается: у админа в формах несохранённый ввод, а PIN группы
+ * на странице РГ живёт только в памяти.
+ */
+export function newVersionSlot(): HTMLElement {
+  const slot = h('div');
+  watchBuild(() => {
+    if (!slot.hasChildNodes()) slot.append(h('p', { role: 'status', class: 'update-banner' }, 'Вышла новая версия — обновите страницу'));
+  });
+  return slot;
 }
 
 /** `2026-11-12` → `12.11.2026`. */

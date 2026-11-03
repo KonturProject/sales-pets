@@ -3,12 +3,11 @@ import '@/game/room.css';
 import './rg.css';
 import { ART } from '@/art/manifest';
 import { ApiError, api, resolvePollMs, serverToday } from '@/data/api';
-import { reloadForBuild, watchBuild } from '@/data/build';
 import { buildFacts } from '@/data/facts';
 import { createStore } from '@/data/store';
 import { GROUPS, type GroupCode } from '@/engine/types';
 import { MAX_STAGE, PetView } from '@/game/PetView';
-import { errorText, h } from '@/admin/dom';
+import { errorText, h, newVersionSlot } from '@/admin/dom';
 import { dragStep, type DragEvent, type DragResult, type DragState, type Point, type Rect } from './drag';
 import { createSpender, type Item } from './spend';
 
@@ -22,8 +21,8 @@ const store = createStore({
   pollMs: resolvePollMs(location.search, { dev: import.meta.env.DEV, hostname: location.hostname }),
 });
 
-/** Идёт перенос предмета или запись расхода: страницу сейчас перезагружать нельзя. Выставляет `showWork`. */
-let busy = (): boolean => false;
+/** Плашка о новой версии вверху страницы, в потоке: не закрывает арену. PIN группы только в памяти, поэтому перезагрузки нет. */
+const updateSlot = newVersionSlot();
 
 function showLogin(message = ''): void {
   const group = h('select', { 'data-field': 'group', 'aria-label': 'Группа' }, ...GROUPS.map((g) => h('option', { value: g }, g)));
@@ -51,7 +50,7 @@ function showLogin(message = ''): void {
     h('button', { type: 'submit' }, 'Войти'),
     alert,
   );
-  root.replaceChildren(form);
+  root.replaceChildren(updateSlot, form);
   input.focus();
 }
 
@@ -109,7 +108,6 @@ function showWork(group: GroupCode, groupPin: string): void {
 
   // Перенос предмета к питомцу (Pointer Events: мышь, палец, перо одним кодом). Решает автомат `dragStep`, здесь только DOM.
   let drag: DragState = { phase: 'idle' };
-  busy = () => locked || drag.phase !== 'idle';
   let ghost: HTMLElement | undefined;
   let swallowClick = false;
   let hintTimer: ReturnType<typeof setTimeout> | undefined;
@@ -230,12 +228,12 @@ function showWork(group: GroupCode, groupPin: string): void {
     ghost?.remove();
     off();
     store.stop();
-    busy = () => false;
     showLogin(message);
   }
 
   root.replaceChildren(
     h('header', { class: 'bar' }, h('h1', {}, `Питомец ${group}`), h('button', { type: 'button', 'data-logout': true, onclick: () => logout() }, 'Выйти')),
+    updateSlot,
     loading,
     main,
   );
@@ -244,7 +242,3 @@ function showWork(group: GroupCode, groupPin: string): void {
 }
 
 showLogin();
-// сверка раз в несколько минут; если в этот момент идёт перенос или запись, перезагрузка ждёт следующего тика
-watchBuild((build) => {
-  if (!busy()) reloadForBuild(build);
-});

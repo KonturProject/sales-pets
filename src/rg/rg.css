@@ -110,3 +110,6 @@ button:disabled { opacity: 0.45; }
 }
 
 [role='alert'] { min-height: 1.4em; color: #a3281c; }
+
+/* плашка «Вышла новая версия»: в потоке страницы над предметами, ничего не перекрывает */
+[role='status'].update-banner { margin: 12px 0; padding: 8px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--meter-bg); color: var(--ink); font-weight: 600; text-align: center; }
