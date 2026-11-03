@@ -1,6 +1,6 @@
 /**
  * Бэкенд «Питомцев отделов продаж»: Google Apps Script + Google Sheets.
- * Хранит только факты (оплаты, воронку, штат, отсутствия); состояние питомцев считает страница.
+ * Хранит только факты (оплаты, воронку, штат, отсутствия, ручные правки фактов); состояние питомцев считает страница.
  * Публичный GET отдаёт снимок, запись идёт POST-запросами с PIN в теле (JSON как text/plain).
  * Развёртывание и PIN — apps-script/README.md. Тесты гоняют этот же файл: apps-script/test/.
  *
@@ -19,7 +19,10 @@ const MAX_COUNT = 10000;
 const PIN_FORMAT = /^\d{4,12}$/;
 const HIDDEN_REASON_MAX = 200;
 
-/** Допустимые правки config (целые, включительно); календарь (startDate, endDate, nonWorking) не правится. */
+/**
+ * Допустимые правки config (целые, включительно). Календарь через setConfig не правится: startDate и endDate не правятся
+ * вовсе, выходные (nonWorking) — только действием setNonWorking.
+ */
 const CONFIG_RANGES = {
   maxPiles: [1, 20],
   boredomBelow: [0, 100],
@@ -29,7 +32,7 @@ const CONFIG_RANGES = {
 };
 /** Правок «с даты» (configChanges) не больше: ячейка листа не безразмерна. */
 const CONFIG_CHANGES_MAX = 30;
-/** Личные нормы по уровню: воронка за день (целые) и оплат в день (дробное, до сотых). */
+/** Личные нормы по уровню: воронка за день и оплат в день (дробные, до сотых). */
 const NORM_FIELDS = ['quality', 'long', 'payments'];
 const NORM_MAX = 50;
 /** Пороги стадий 2..5 — проценты плана оплат группы на игру. */
@@ -41,6 +44,15 @@ const OVERRIDE_DELTA_MAX = 20;
 const ITEM_KINDS = { medkit: 'useMedkit', toy: 'useToy' };
 const MAX_USES_PER_DAY = 20;
 const REF_MAX = 64;
+/** Период игры (включительно): правки фактов и выходные только внутри него. */
+const GAME_START = '2026-11-02';
+const GAME_END = '2026-11-22';
+const NON_WORKING_MAX = 21;
+/** Ручные правки фактов: показатель, дельта (целая, не 0), записей в запросе и всего. */
+const CORRECTION_KINDS = ['quality', 'long', 'payments'];
+const CORRECTION_DELTA_MAX = 50;
+const CORRECTION_ITEMS_MAX = 3;
+const CORRECTIONS_MAX = 2000;
 
 /** Листы и колонки; первая строка — заголовок, данные с второй. */
 const SHEETS = {
@@ -50,6 +62,7 @@ const SHEETS = {
   Staff: ['id', 'name', 'shortName', 'group', 'hireDate', 'fireDate', 'baseLevel', 'hiddenFromRating', 'transfers', 'hiddenReason'],
   Absences: ['employeeId', 'kind', 'from', 'to'],
   Overrides: ['id', 'date', 'group', 'kind', 'delta', 'ref'],
+  Corrections: ['id', 'date', 'employeeId', 'kind', 'delta', 'base', 'ref'],
   Settings: ['key', 'value'],
 };
 
@@ -98,8 +111,8 @@ function isIntIn_(v, min, max) {
   return typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
 }
 
-/** Норма оплат в день: 0…NORM_MAX, не больше двух знаков после запятой (так же проверяет клиент). */
-function isPaymentsNorm_(v) {
+/** Личная норма (quality, long, payments): 0…NORM_MAX, не больше двух знаков после запятой (так же проверяет клиент). */
+function isNorm_(v) {
   return typeof v === 'number' && v >= 0 && v <= NORM_MAX && Math.round(v * 100) / 100 === v;
 }
 
@@ -299,6 +312,17 @@ function readOverrides_() {
   return readRows_('Overrides')
     .map(function (r) {
       return { id: Number(r[0]) || 0, date: r[1], group: r[2], kind: r[3], delta: Number(r[4]), ref: r[5] };
+    })
+    .sort(function (a, b) {
+      return a.id - b.id;
+    });
+}
+
+/** Правки фактов по возрастанию id; `ref` (ключ повтора запроса) остаётся только здесь, в GET не уходит. */
+function readCorrections_() {
+  return readRows_('Corrections')
+    .map(function (r) {
+      return { id: Number(r[0]) || 0, date: r[1], employeeId: r[2], kind: r[3], delta: Number(r[4]), base: Number(r[5]), ref: r[6] };
     })
     .sort(function (a, b) {
       return a.id - b.id;
@@ -680,7 +704,7 @@ function mergeNorms_(base, patch) {
     const norm = isPlainObject_(out[level]) ? out[level] : {};
     fields.forEach(function (f) {
       const v = patch[level][f];
-      if (NORM_FIELDS.indexOf(f) < 0 || !(f === 'payments' ? isPaymentsNorm_(v) : isIntIn_(v, 0, NORM_MAX))) fail_();
+      if (NORM_FIELDS.indexOf(f) < 0 || !isNorm_(v)) fail_();
       norm[f] = patch[level][f];
     });
     out[level] = norm;
@@ -841,6 +865,84 @@ function removeAbsenceAction_(body) {
   return { ok: true, version: bump_({}), removed: removed };
 }
 
+/** Выходные дни игры: список заменяется целиком, хранится отсортированным в Settings.config.nonWorking (остальной config не трогается). */
+function setNonWorkingAction_(body) {
+  const list = body.nonWorking;
+  if (!Array.isArray(list) || list.length > NON_WORKING_MAX) fail_();
+  const seen = Object.create(null);
+  list.forEach(function (d) {
+    if (!isDate_(d) || d < GAME_START || d > GAME_END || seen[d]) fail_();
+    seen[d] = true;
+  });
+  const nonWorking = list.slice().sort(compare_);
+  const config = parseConfig_(readSettings_().config);
+  config.nonWorking = nonWorking;
+  return { ok: true, version: bump_({ config: JSON.stringify(config) }), nonWorking: nonWorking };
+}
+
+/**
+ * Ручные правки фактов (1–3 записи за запрос): сначала проверяются все, потом пишутся вместе. Дата — день игры строго до
+ * сегодняшнего. `ref` — случайная строка клиента: повтор запроса с тем же `ref` ничего не пишет и отвечает прежними id.
+ */
+function addCorrectionsAction_(body) {
+  const items = body.items;
+  const ref = body.ref;
+  if (typeof ref !== 'string' || ref === '' || ref.length > REF_MAX) fail_();
+  if (!Array.isArray(items) || items.length < 1 || items.length > CORRECTION_ITEMS_MAX) fail_();
+  const known = Object.create(null);
+  readStaff_().forEach(function (e) {
+    known[e.id] = true;
+  });
+  const today = today_();
+  items.forEach(function (item) {
+    const ok =
+      isPlainObject_(item) && isDate_(item.date) && item.date >= GAME_START && item.date <= GAME_END && item.date < today &&
+      typeof item.employeeId === 'string' && known[item.employeeId] === true &&
+      CORRECTION_KINDS.indexOf(item.kind) >= 0 &&
+      isIntIn_(item.delta, -CORRECTION_DELTA_MAX, CORRECTION_DELTA_MAX) && item.delta !== 0 &&
+      isCount_(item.base);
+    if (!ok) fail_();
+  });
+  const rows = readRows_('Corrections');
+  const same = rows.filter(function (r) {
+    return r[6] === ref;
+  });
+  if (same.length > 0) {
+    return {
+      ok: true,
+      version: currentVersion_(),
+      ids: same.map(function (r) {
+        return Number(r[0]);
+      }),
+      duplicate: true,
+    };
+  }
+  if (rows.length + items.length > CORRECTIONS_MAX) fail_();
+  let id = rows.reduce(function (max, r) {
+    return Math.max(max, Number(r[0]) || 0);
+  }, 0);
+  const ids = [];
+  items.forEach(function (item) {
+    id++;
+    ids.push(id);
+    rows.push([String(id), item.date, item.employeeId, item.kind, String(item.delta), String(item.base), ref]);
+  });
+  writeRows_('Corrections', rows);
+  return { ok: true, version: bump_({}), ids: ids };
+}
+
+function removeCorrectionAction_(body) {
+  if (!isIntIn_(body.id, 1, Number.MAX_SAFE_INTEGER)) fail_();
+  const rows = readRows_('Corrections');
+  const kept = rows.filter(function (r) {
+    return Number(r[0]) !== body.id;
+  });
+  const removed = rows.length - kept.length;
+  if (removed === 0) return { ok: true, version: currentVersion_(), removed: 0 };
+  writeRows_('Corrections', kept);
+  return { ok: true, version: bump_({}), removed: removed };
+}
+
 /** who: чей PIN нужен — 'admin' (поле pin) или 'group' (поле groupPin). Админ-действия PIN группы не открывает. */
 const ACTIONS_ = {
   login: { who: 'admin', run: loginAction_ },
@@ -858,6 +960,9 @@ const ACTIONS_ = {
   useItem: { who: 'group', run: useItemAction_ },
   setAbsence: { who: 'admin', run: setAbsenceAction_ },
   removeAbsence: { who: 'admin', run: removeAbsenceAction_ },
+  setNonWorking: { who: 'admin', run: setNonWorkingAction_ },
+  addCorrections: { who: 'admin', run: addCorrectionsAction_ },
+  removeCorrection: { who: 'admin', run: removeCorrectionAction_ },
 };
 
 // ---------------------------------------------------------------- точки входа
@@ -896,8 +1001,9 @@ function doPost(e) {
 }
 
 /**
- * Публичный снимок: ФИО и группы, оплаты {date, group, author, invoice}, воронка, отсутствия, правки и расходы {id, date, group, kind, delta}.
- * Сумм, хешей, солей и `ref` расходов в нём нет. `config` — то, что сохранил setConfig (иначе {}), `configChanges` — его правки «с даты» [{from, config}] (иначе []); причин исключения из рейтинга здесь нет (getPrivate).
+ * Публичный снимок: ФИО и группы, оплаты {date, group, author, invoice}, воронка, отсутствия, правки и расходы {id, date, group, kind, delta},
+ * правки фактов `corrections` {id, date, employeeId, kind, delta, base}.
+ * Сумм, хешей, солей и `ref` расходов и правок фактов в нём нет. `config` — то, что сохранили setConfig и setNonWorking (иначе {}), `configChanges` — его правки «с даты» [{from, config}] (иначе []); причин исключения из рейтинга здесь нет (getPrivate).
  * `?since=<версия>` при той же версии отдаёт {unchanged, version, serverNow}: «сейчас» нужно клиенту, чтобы заметить смену суток без новой версии.
  */
 function doGet(e) {
@@ -929,6 +1035,9 @@ function doGet(e) {
       }),
       overrides: readOverrides_().map(function (o) {
         return { id: o.id, date: o.date, group: o.group, kind: o.kind, delta: o.delta };
+      }),
+      corrections: readCorrections_().map(function (c) {
+        return { id: c.id, date: c.date, employeeId: c.employeeId, kind: c.kind, delta: c.delta, base: c.base };
       }),
     });
   } catch (err) {

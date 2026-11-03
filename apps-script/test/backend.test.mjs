@@ -179,6 +179,7 @@ describe('GET', () => {
       provisional: [],
       funnel: [],
       overrides: [],
+      corrections: [],
     });
   });
 
@@ -663,7 +664,6 @@ describe('setConfig', () => {
       { deathDaysNoPay: 0 }, { deathDaysNoPay: 31 },
       { norms: { experienced: { quality: -1 } } },
       { norms: { experienced: { long: 51 } } },
-      { norms: { rookie1: { quality: 1.5 } } },
       { norms: { experienced: { payments: 0.123 } } },
       { norms: { experienced: { payments: '0.4' } } },
       { norms: { experienced: { payments: null } } },
@@ -853,6 +853,120 @@ describe('настройки по датам (setConfig с from, removeConfigCha
   });
 });
 
+describe('Дробные нормы', () => {
+  const setConfig = (b, config, extra = {}) => admin(b, 'setConfig', { config, ...extra });
+  const FIELDS = ['quality', 'long', 'payments'];
+
+  test('quality и long принимают до двух знаков после запятой, как payments; в GET значение как сохранено', () => {
+    const b = loadBackend();
+    const r = setConfig(b, { norms: { experienced: { long: 1.5, quality: 2.25 } } });
+    expect(r.ok).toBe(true);
+    expect(b.get().config.norms.experienced.long).toBe(1.5);
+    expect(b.get().config.norms.experienced.quality).toBe(2.25);
+    for (const field of FIELDS) {
+      for (const v of [0, 0.01, 0.29, 1.15, 49.99, 50]) {
+        expect(setConfig(b, { norms: { rookie1: { [field]: v } } }).config.norms.rookie1[field], `${field} ${v}`).toBe(v);
+      }
+    }
+  });
+
+  test('три знака после запятой, больше 50, меньше 0, не число — bad_request у всех трёх полей, ничего не пишется', () => {
+    const b = loadBackend();
+    setConfig(b, { norms: { experienced: { long: 1.5 } } });
+    const before = b.get();
+    for (const field of FIELDS) {
+      for (const v of [1.555, 0.001, 50.01, 51, -0.01, -1, '1.5', null, true, [], {}]) {
+        expect(setConfig(b, { norms: { experienced: { [field]: v } } }), `${field} ${JSON.stringify(v)}`).toEqual({ ok: false, error: 'bad_request' });
+      }
+    }
+    expect(setConfig(b, { norms: { experienced: { long: 1.5, quality: 1.555 } } })).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.get()).toEqual(before);
+  });
+
+  test('правка «с даты» тоже принимает дробные quality и long', () => {
+    const b = loadBackend();
+    const r = setConfig(b, { norms: { rookie2: { quality: 0.5, long: 2.75 } } }, { from: '2026-11-16' });
+    expect(r.configChanges).toEqual([{ from: '2026-11-16', config: { norms: { rookie2: { quality: 0.5, long: 2.75 } } } }]);
+    expect(setConfig(b, { norms: { rookie2: { long: 2.755 } } }, { from: '2026-11-16' })).toEqual({ ok: false, error: 'bad_request' });
+  });
+});
+
+describe('Выходные', () => {
+  const setNonWorking = (b, nonWorking, extra = {}) => admin(b, 'setNonWorking', { nonWorking, ...extra });
+  const allDays = Array.from({ length: 21 }, (_, i) => `2026-11-${String(i + 2).padStart(2, '0')}`);
+
+  test('список сортируется по дате и лежит в config.nonWorking; ответ {ok, version, nonWorking}', () => {
+    const b = loadBackend();
+    const v0 = b.get().version;
+    expect(setNonWorking(b, ['2026-11-07', '2026-11-04'])).toEqual({ ok: true, version: v0 + 1, nonWorking: ['2026-11-04', '2026-11-07'] });
+    expect(b.get().config.nonWorking).toEqual(['2026-11-04', '2026-11-07']);
+    expect(b.get().version).toBe(v0 + 1);
+  });
+
+  test('новый список заменяет прежний целиком; пустой список, первый и последний день игры допустимы', () => {
+    const b = loadBackend();
+    setNonWorking(b, ['2026-11-04', '2026-11-07']);
+    expect(setNonWorking(b, ['2026-11-22', '2026-11-02']).nonWorking).toEqual(['2026-11-02', '2026-11-22']);
+    expect(b.get().config.nonWorking).toEqual(['2026-11-02', '2026-11-22']);
+    expect(setNonWorking(b, allDays).nonWorking).toEqual(allDays);
+    expect(setNonWorking(b, []).nonWorking).toEqual([]);
+    expect(b.get().config.nonWorking).toEqual([]);
+  });
+
+  test('дата вне периода, повтор, не массив, больше 21 даты, мусор — bad_request, список на месте', () => {
+    const b = loadBackend();
+    setNonWorking(b, ['2026-11-07']);
+    const before = b.get();
+    const bad = [
+      ['2026-11-23'], ['2026-11-01'], ['2026-11-07', '2026-11-23'],
+      ['2026-11-07', '2026-11-07'], ['2026-11-04', '2026-11-07', '2026-11-04'],
+      '2026-11-07', { 0: '2026-11-07' }, null, undefined, 5,
+      [...allDays, '2026-11-23'], [...allDays, '2026-11-02'],
+      ['мусор'], ['2026-02-30'], ['2026-11-7'], [5], [null], [['2026-11-07']], [{}],
+    ];
+    for (const list of bad) expect(setNonWorking(b, list), JSON.stringify(list)).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.post({ action: 'setNonWorking', pin: PIN })).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.get()).toEqual(before);
+  });
+
+  test('setConfig не стирает список (ни на всю игру, ни «с даты»); поле nonWorking в setConfig — bad_request', () => {
+    const b = loadBackend();
+    setNonWorking(b, ['2026-11-07', '2026-11-04']);
+    expect(admin(b, 'setConfig', { config: { maxPiles: 3 } }).config).toEqual({ maxPiles: 3, nonWorking: ['2026-11-04', '2026-11-07'] });
+    admin(b, 'setConfig', { config: { norms: { experienced: { long: 1.5 } } } });
+    admin(b, 'setConfig', { config: { maxPiles: 2 }, from: '2026-11-16' });
+    expect(b.get().config).toEqual({ maxPiles: 3, norms: { experienced: { long: 1.5 } }, nonWorking: ['2026-11-04', '2026-11-07'] });
+    const before = b.get();
+    expect(admin(b, 'setConfig', { config: { nonWorking: ['2026-11-09'] } })).toEqual({ ok: false, error: 'bad_request' });
+    expect(admin(b, 'setConfig', { config: { nonWorking: [] }, from: '2026-11-16' })).toEqual({ ok: false, error: 'bad_request' });
+    expect(admin(b, 'setConfig', { config: { maxPiles: 5, nonWorking: [] } })).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.get()).toEqual(before);
+  });
+
+  test('setNonWorking не трогает остальные настройки и правки «с даты»', () => {
+    const b = loadBackend();
+    admin(b, 'setConfig', { config: { maxPiles: 3, norms: { rookie1: { payments: 0.4 } } } });
+    admin(b, 'setConfig', { config: { sickDaysNoPay: 4 }, from: '2026-11-16' });
+    const before = b.get();
+    setNonWorking(b, ['2026-11-04']);
+    const after = b.get();
+    expect(after.config).toEqual({ ...before.config, nonWorking: ['2026-11-04'] });
+    expect(after.configChanges).toEqual(before.configChanges);
+  });
+
+  test('только админ: без PIN, с неверным и с PIN группы — invalid_pin, ничего не пишется', () => {
+    const b = loadBackend();
+    const { groupPins } = admin(b, 'setGroupPins');
+    const before = b.get();
+    const body = { action: 'setNonWorking', nonWorking: ['2026-11-04'] };
+    expect(b.post(body)).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.post({ ...body, pin: '000000' })).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.post({ ...body, pin: groupPins['СР1'] })).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.post({ ...body, group: 'СР1', groupPin: groupPins['СР1'] })).toEqual({ ok: false, error: 'invalid_pin' });
+    expect(b.get()).toEqual(before);
+  });
+});
+
 describe('ручные правки и расходы РГ', () => {
   const TODAY = '2026-11-12';
   const setOverride = (b, extra = {}) => admin(b, 'setOverride', { date: TODAY, group: 'СР1', kind: 'piles', delta: 2, ...extra });
@@ -1015,6 +1129,175 @@ describe('отсутствия', () => {
     for (const body of bad) expect(admin(b, 'setAbsence', body), JSON.stringify(body)).toEqual({ ok: false, error: 'bad_request' });
     expect(admin(b, 'removeAbsence', { employeeId: e, from: 'x' })).toEqual({ ok: false, error: 'bad_request' });
     expect(b.get().absences).toEqual([]);
+  });
+});
+
+describe('Правки фактов', () => {
+  const CORRECTIONS_HEADER = ['id', 'date', 'employeeId', 'kind', 'delta', 'base', 'ref'];
+  const add = (b, items, ref = 'ref-1', extra = {}) => admin(b, 'addCorrections', { items, ref, ...extra });
+  const remove = (b, id) => admin(b, 'removeCorrection', { id });
+  function withIds() {
+    const { b, id } = withStaff();
+    const ivan = id['Иванов Иван'];
+    const item = (extra = {}) => ({ date: '2026-11-10', employeeId: ivan, kind: 'quality', delta: 1, base: 3, ...extra });
+    return { b, id, ivan, item };
+  }
+
+  test('три записи одним запросом: три id по порядку, версия +1, в GET с base и без ref, лист с ref', () => {
+    const { b, id, ivan, item } = withIds();
+    const petr = id['Петров Пётр'];
+    expect(b.get().corrections).toEqual([]);
+    const v0 = b.get().version;
+    const r = add(b, [item(), item({ employeeId: petr, kind: 'long', delta: -2, base: 0 }), item({ date: '2026-11-11', kind: 'payments', delta: 4, base: 7 })], 'secret-ref-77');
+    expect(r).toEqual({ ok: true, version: v0 + 1, ids: [1, 2, 3] });
+    const snapshot = b.get();
+    expect(snapshot.version).toBe(v0 + 1);
+    expect(snapshot.corrections).toEqual([
+      { id: 1, date: '2026-11-10', employeeId: ivan, kind: 'quality', delta: 1, base: 3 },
+      { id: 2, date: '2026-11-10', employeeId: petr, kind: 'long', delta: -2, base: 0 },
+      { id: 3, date: '2026-11-11', employeeId: ivan, kind: 'payments', delta: 4, base: 7 },
+    ]);
+    expect(JSON.stringify(snapshot)).not.toContain('secret-ref-77');
+    expect(b.sheet('Corrections').rows[0]).toEqual(CORRECTIONS_HEADER);
+    expect(b.sheet('Corrections').rows[1]).toEqual(['1', '2026-11-10', ivan, 'quality', '1', '3', 'secret-ref-77']);
+    expect(add(b, [item({ delta: 2 })], 'ref-2')).toEqual({ ok: true, version: v0 + 2, ids: [4] });
+    expect(b.get().corrections.map((c) => c.id)).toEqual([1, 2, 3, 4]);
+  });
+
+  test('границы: сегодня минус день, первый день игры, delta ±50, base 0 и 10000 принимаются', () => {
+    const { b, item } = withIds();
+    expect(add(b, [item({ date: '2026-11-11' }), item({ date: '2026-11-02', delta: 50, base: 10000 }), item({ delta: -50, base: 0 })]).ids).toEqual([1, 2, 3]);
+  });
+
+  test('повтор того же ref: duplicate, прежние id, версия и число записей не растут; другой ref — новые записи', () => {
+    const { b, item } = withIds();
+    const first = add(b, [item(), item({ kind: 'long' })], 'same-ref');
+    const v1 = b.get().version;
+    expect(add(b, [item(), item({ kind: 'long' })], 'same-ref')).toEqual({ ok: true, version: v1, ids: first.ids, duplicate: true });
+    expect(b.get().version).toBe(v1);
+    expect(b.get().corrections).toHaveLength(2);
+    expect(add(b, [item()], 'other-ref')).toEqual({ ok: true, version: v1 + 1, ids: [3] });
+    expect(add(b, [item()], 'other-ref').duplicate).toBe(true);
+    expect(b.get().corrections).toHaveLength(3);
+  });
+
+  test('одна плохая запись из трёх — bad_request, ничего не записано (ни записей, ни версии)', () => {
+    const { b, ivan, item } = withIds();
+    add(b, [item()], 'seed');
+    const before = b.get();
+    const rowsBefore = JSON.stringify(b.sheet('Corrections').rows);
+    const bad = [
+      { delta: 0 }, { delta: 51 }, { delta: -51 }, { delta: 1.5 }, { delta: '1' }, { delta: null }, { delta: undefined },
+      { kind: 'toys' }, { kind: 'piles' }, { kind: undefined },
+      { employeeId: 'e999' }, { employeeId: undefined }, { employeeId: 5 }, { employeeId: null },
+      { date: '2026-11-12' }, { date: '2026-11-13' }, { date: '2026-11-01' }, { date: '2026-11-23' },
+      { date: 'x' }, { date: '2026-02-30' }, { date: undefined }, { date: 20261110 },
+      { base: -1 }, { base: 10001 }, { base: 1.5 }, { base: '3' }, { base: null }, { base: undefined },
+    ];
+    for (const extra of bad) {
+      for (const at of [0, 1, 2]) {
+        const items = [item(), item({ kind: 'long' }), item({ employeeId: ivan, kind: 'payments' })];
+        items[at] = { ...items[at], ...extra };
+        expect(add(b, items, `ref-${at}`), `${at} ${JSON.stringify(extra)}`).toEqual({ ok: false, error: 'bad_request' });
+      }
+    }
+    for (const broken of [null, 5, 'x', [], undefined]) {
+      expect(add(b, [item(), broken, item()], 'ref-x'), JSON.stringify(broken)).toEqual({ ok: false, error: 'bad_request' });
+    }
+    expect(b.get()).toEqual(before);
+    expect(JSON.stringify(b.sheet('Corrections').rows)).toBe(rowsBefore);
+  });
+
+  test('дата строго раньше сегодня и в пределах игры: после конца игры 22.11 верхней границей служит конец игры', () => {
+    const { b, item } = withIds();
+    b.advance(13 * 24 * 60 * MIN);
+    expect(b.get().serverNow).toBe('2026-11-25T10:00:00+03:00');
+    expect(add(b, [item({ date: '2026-11-22' })], 'a').ok).toBe(true);
+    for (const date of ['2026-11-23', '2026-11-24', '2026-11-25']) expect(add(b, [item({ date })], `r-${date}`), date).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.get().corrections).toHaveLength(1);
+  });
+
+  test('запрос целиком негоден: пустой items, 4 записи, не массив, ref пустой / длиннее 64 / не строка — bad_request', () => {
+    const { b, item } = withIds();
+    const before = b.get();
+    for (const items of [[], [item(), item(), item(), item()], null, undefined, 'x', { 0: item() }]) {
+      expect(add(b, items), JSON.stringify(items)).toEqual({ ok: false, error: 'bad_request' });
+    }
+    for (const ref of ['', 'x'.repeat(65), undefined, null, 5, {}]) {
+      expect(admin(b, 'addCorrections', { items: [item()], ref }), JSON.stringify(ref)).toEqual({ ok: false, error: 'bad_request' });
+    }
+    expect(b.get()).toEqual(before);
+    expect(add(b, [item()], 'x'.repeat(64)).ok).toBe(true);
+  });
+
+  test('записей не больше 2000: 2001-я — bad_request, повтор уже записанного ref остаётся duplicate, после удаления место есть', () => {
+    const { b, item } = withIds();
+    for (let i = 0; i < 666; i++) expect(add(b, [item(), item(), item()], `r${i}`).ok, `r${i}`).toBe(true);
+    const last = add(b, [item(), item()], 'last');
+    expect(last.ids).toEqual([1999, 2000]);
+    const before = b.get();
+    expect(add(b, [item()], 'over')).toEqual({ ok: false, error: 'bad_request' });
+    expect(add(b, [item(), item(), item()], 'over3')).toEqual({ ok: false, error: 'bad_request' });
+    expect(add(b, [item(), item()], 'last')).toEqual({ ok: true, version: before.version, ids: [1999, 2000], duplicate: true });
+    expect(b.get()).toEqual(before);
+    expect(remove(b, 5).removed).toBe(1);
+    expect(add(b, [item()], 'again')).toMatchObject({ ok: true, ids: [2001] });
+    expect(add(b, [item()], 'again2')).toEqual({ ok: false, error: 'bad_request' });
+  });
+
+  test('removeCorrection удаляет запись (версия +1, остальные на месте); id следующей записи — максимум + 1', () => {
+    const { b, item } = withIds();
+    add(b, [item(), item({ kind: 'long' }), item({ kind: 'payments' })]);
+    const v1 = b.get().version;
+    expect(remove(b, 2)).toEqual({ ok: true, version: v1 + 1, removed: 1 });
+    expect(b.get().corrections.map((c) => [c.id, c.kind])).toEqual([[1, 'quality'], [3, 'payments']]);
+    expect(add(b, [item()], 'ref-2').ids).toEqual([4]);
+    expect(remove(b, 4).removed).toBe(1);
+    expect(remove(b, 3).removed).toBe(1);
+    expect(remove(b, 1).removed).toBe(1);
+    expect(b.get().corrections).toEqual([]);
+    expect(add(b, [item()], 'ref-3').ids).toEqual([1]);
+  });
+
+  test('removeCorrection повторно или по неизвестному id: ok, removed 0, версия та же', () => {
+    const { b, item } = withIds();
+    add(b, [item()]);
+    expect(remove(b, 1).removed).toBe(1);
+    const v = b.get().version;
+    expect(remove(b, 1)).toEqual({ ok: true, version: v, removed: 0 });
+    expect(remove(b, 99)).toEqual({ ok: true, version: v, removed: 0 });
+    expect(b.get().version).toBe(v);
+  });
+
+  test('removeCorrection: id не целое положительное число — bad_request', () => {
+    const { b, item } = withIds();
+    add(b, [item()]);
+    const before = b.get();
+    for (const id of ['x', '1', 1.5, 0, -1, null, undefined, [], {}]) expect(remove(b, id), JSON.stringify(id)).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.get()).toEqual(before);
+  });
+
+  test('только админ: без PIN, с неверным и с PIN группы — invalid_pin, ничего не пишется и не удаляется', () => {
+    const { b, item } = withIds();
+    const { groupPins } = admin(b, 'setGroupPins');
+    add(b, [item()]);
+    const before = b.get();
+    const bodies = [{ action: 'addCorrections', items: [item()], ref: 'z' }, { action: 'removeCorrection', id: 1 }];
+    for (const body of bodies) {
+      expect(b.post(body)).toEqual({ ok: false, error: 'invalid_pin' });
+      expect(b.post({ ...body, pin: '000000' })).toEqual({ ok: false, error: 'invalid_pin' });
+      expect(b.post({ ...body, pin: groupPins['СР1'] })).toEqual({ ok: false, error: 'invalid_pin' });
+      expect(b.post({ ...body, group: 'СР1', groupPin: groupPins['СР1'] })).toEqual({ ok: false, error: 'invalid_pin' });
+    }
+    expect(b.get()).toEqual(before);
+  });
+
+  test('правки хранятся отдельно от файлов: повторный импорт воронки их не трогает', () => {
+    const { b, ivan, item } = withIds();
+    add(b, [item()]);
+    admin(b, 'importFunnel', { through: '2026-11-10', rows: [{ name: 'Иванов Иван', date: '2026-11-10', quality: 3, long: 1 }] });
+    admin(b, 'importFunnel', { through: '2026-11-10', rows: [{ name: 'Иванов Иван', date: '2026-11-10', quality: 5, long: 1 }] });
+    expect(b.get().corrections).toEqual([{ id: 1, date: '2026-11-10', employeeId: ivan, kind: 'quality', delta: 1, base: 3 }]);
   });
 });
 
