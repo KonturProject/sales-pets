@@ -27,6 +27,15 @@ export interface ReloadDone {
 }
 
 /**
+ * `removed`: правка отменена. Не отменена (`false`), если вместо этого выяснялась неотвеченная запись: отмена идёт
+ * только на свежих данных, следующим нажатием. `refreshError` — сбой чтения после этого.
+ */
+export interface RemoveDone {
+  removed: boolean;
+  refreshError: unknown;
+}
+
+/**
  * Порядок записей вкладки «Итоги», без DOM. Одна запись за раз (и чтения тоже): пока идёт правка, отмена или
  * «Обновить», остальное отклоняется (`WriteRefused`), а `setBusy(true)` блокирует всю вкладку. Снимок читается заново
  * после каждой записи.
@@ -37,7 +46,9 @@ export interface ReloadDone {
  * и недописанного не видит. Поэтому те же значения — это и есть повтор; другие значения сначала повторяют прошлый
  * запрос и уходят в `changed` (новые не отправляются: считались от старых данных); «Обновить» и новая вкладка тоже
  * сперва повторяют. Не получил повтор ответа — запрос остаётся ожидать, вкладка «устарела», новых записей нет.
- * Ожидание лежит в `pending` вне вкладки, чтобы пережить смену вкладки админки.
+ * «Отменить» при неотвеченной записи тоже ничего не удаляет, а выясняет её (повтор, чтение): удаляют по номеру строки,
+ * и отменённая правка оставила бы ожидание, чей повтор потом записал бы её заново. Ожидание лежит в `pending` вне
+ * вкладки, чтобы пережить смену вкладки админки.
  *
  * Пока запись не видна в свежем снимке, вкладка «устарела» (`setStale(true)`): правки и отмены отклоняются, ничего не
  * отправляя, потому что любое новое число считалось бы от таблицы, которая врёт. Так после записи, после отмены и
@@ -84,6 +95,18 @@ export function createResultsFlow<S>(deps: {
     return error;
   }
 
+  /** Выяснить неотвеченную запись (если есть) повтором и прочитать снимок. Повтор без ответа — ожидание остаётся, вкладка устарела. */
+  async function check(): Promise<ReloadDone> {
+    let checked: boolean;
+    try {
+      checked = await saver.resolve();
+    } catch (error) {
+      setStale(true);
+      return { checked: false, error };
+    }
+    return { checked, error: await settle() };
+  }
+
   /** `write`: запись, а не чтение. Её отклоняет и «устаревшая» вкладка; отказ приходит до `setBusy`, вкладка не мигает. */
   async function exclusive<T>(run: () => Promise<T>, write = true): Promise<T> {
     if (busy) throw new WriteRefused(BUSY_TEXT);
@@ -106,17 +129,7 @@ export function createResultsFlow<S>(deps: {
       return stale;
     },
     /** «Обновить» и открытие вкладки: повторить неотвеченный запрос (если он есть), затем прочитать снимок заново. */
-    reload: (): Promise<ReloadDone> =>
-      exclusive(async () => {
-        let checked: boolean;
-        try {
-          checked = await saver.resolve();
-        } catch (error) {
-          setStale(true); // повтор снова без ответа: запрос остаётся ожидать, вкладка закрыта
-          return { checked: false, error };
-        }
-        return { checked, error: await settle() };
-      }, false),
+    reload: (): Promise<ReloadDone> => exclusive(check, false),
     /** Ошибку запроса пробрасывает; после неё снимок не читается (потерянный ответ берёт под охрану `saver`). */
     correct: (items: CorrectionItem[]): Promise<WriteDone> =>
       exclusive(async () => {
@@ -132,8 +145,13 @@ export function createResultsFlow<S>(deps: {
         if (result === 'busy') throw new WriteRefused(BUSY_TEXT);
         return { result, refreshError: await settle() };
       }),
-    remove: (id: number): Promise<{ refreshError: unknown }> =>
+    remove: (id: number): Promise<RemoveDone> =>
       exclusive(async () => {
+        if (saver.hasPending) {
+          const done = await check();
+          if (!done.checked) throw done.error; // повтор без ответа: ничего не удалено, вкладка устарела
+          return { removed: false, refreshError: done.error };
+        }
         try {
           await deps.remove(id);
         } catch (e) {
@@ -141,7 +159,7 @@ export function createResultsFlow<S>(deps: {
           if (!wasRejected(e)) await settle();
           throw e;
         }
-        return { refreshError: await settle() };
+        return { removed: true, refreshError: await settle() };
       }),
   };
 }

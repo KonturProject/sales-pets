@@ -46,7 +46,7 @@ describe('createResultsFlow: запись и перечитывание', () => 
 
   test('отмена: removeCorrection и перечитывание', async () => {
     const { flow, remove, apply, setBusy } = setup();
-    expect(await flow.remove(5)).toEqual({ refreshError: null });
+    expect(await flow.remove(5)).toEqual({ removed: true, refreshError: null });
     expect(remove).toHaveBeenCalledWith(5);
     expect(apply).toHaveBeenCalledWith(1);
     expect(setBusy.mock.calls).toEqual([[true], [false]]);
@@ -137,13 +137,25 @@ describe('createResultsFlow: обрыв связи', () => {
     expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-1', 'ref-2']);
   });
 
-  test('перечитывание само ничего не доказывает: после отмены ожидание остаётся, другое значение сначала повторяет прошлый запрос', async () => {
-    const { flow, send, load } = setup({ send: lost() });
+  test('«Отменить» при неотвеченной записи ничего не удаляет: сначала повтор и перечитывание, отмена — следующим нажатием', async () => {
+    const { flow, send, remove, load } = setup({ send: lost() });
     await expect(flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
-    await flow.remove(5);
-    expect(load).toHaveBeenCalledTimes(1);
-    expect(await flow.correct([item(8)])).toMatchObject({ result: 'changed' });
+    expect(await flow.remove(5)).toEqual({ removed: false, refreshError: null });
+    expect(remove).not.toHaveBeenCalled();
     expect(send.mock.calls).toEqual([[[item(7)], 'ref-1'], [[item(7)], 'ref-1']]);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(await flow.remove(5)).toEqual({ removed: true, refreshError: null }); // ожидания нет — обычная отмена
+    expect(remove).toHaveBeenCalledWith(5);
+  });
+
+  test('«Отменить» при неотвеченной записи, а повтор без ответа: ничего не удаляется, вкладка устарела, ошибка пробрасывается', async () => {
+    const down = vi.fn().mockRejectedValue(new ApiError('network', 'Нет связи'));
+    const { flow, remove, setStale } = setup({ send: down });
+    await expect(flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
+    await expect(flow.remove(5)).rejects.toMatchObject({ code: 'network' });
+    expect(remove).not.toHaveBeenCalled();
+    expect(setStale.mock.calls).toEqual([[true]]);
+    await expect(flow.remove(5)).rejects.toThrow(STALE_TEXT);
   });
 
   test('«changed» и сбой чтения снимка: результат сохранён, ошибка чтения отдельно', async () => {
@@ -201,21 +213,32 @@ describe('createResultsFlow: пока снимок после записи не 
     expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-1', 'ref-2']);
   });
 
-  test('отмена прошла, снимок не прочитан: ничего не уходит; потерянную запись «Обновить» проверяет повтором, а потом читает', async () => {
+  test('отмена прошла, снимок не прочитан: ничего не уходит, пока не нажали «Обновить»', async () => {
+    const state = { fail: true };
+    const { flow, send, remove } = setup({ load: flaky(state) });
+    expect(await flow.remove(5)).toMatchObject({ removed: true, refreshError: expect.any(ApiError) });
+    await expect(flow.correct([item(7)])).rejects.toThrow(STALE_TEXT);
+    await expect(flow.correct([item(8)])).rejects.toThrow(STALE_TEXT);
+    await expect(flow.remove(6)).rejects.toThrow(STALE_TEXT);
+    expect(send).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledTimes(1);
+    state.fail = false;
+    expect(await flow.reload()).toEqual({ checked: false, error: null });
+    expect(await flow.correct([item(8)])).toMatchObject({ result: 'saved' });
+  });
+
+  test('потерянная запись, «Отменить», а перечитать не удалось: повтор был, ничего не удалено, вкладка закрыта', async () => {
     const state = { fail: false };
     const { flow, send, remove } = setup({ send: lostFirst(), load: flaky(state) });
     await expect(flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
     state.fail = true;
-    expect(await flow.remove(5)).toMatchObject({ refreshError: expect.any(ApiError) });
-    await expect(flow.correct([item(7)])).rejects.toThrow(STALE_TEXT);
+    expect(await flow.remove(5)).toMatchObject({ removed: false, refreshError: expect.any(ApiError) });
+    expect(remove).not.toHaveBeenCalled();
     await expect(flow.correct([item(8)])).rejects.toThrow(STALE_TEXT);
     await expect(flow.remove(6)).rejects.toThrow(STALE_TEXT);
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(remove).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls).toEqual([[[item(7)], 'ref-1'], [[item(7)], 'ref-1']]); // повтор слово в слово, «8» не уходило
     state.fail = false;
-    expect(await flow.reload()).toEqual({ checked: true, error: null });
-    expect(send.mock.calls[1]).toEqual([[item(7)], 'ref-1']); // повтор слово в слово
-    // ожидание снято только повтором: другое значение уходит с новым ref
+    expect(await flow.reload()).toEqual({ checked: false, error: null }); // повтор уже получил ответ
     expect(await flow.correct([item(8)])).toMatchObject({ result: 'saved' });
     expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-1', 'ref-2']);
   });
@@ -262,20 +285,24 @@ describe('createResultsFlow: пока снимок после записи не 
 });
 
 /**
- * Сервер, как Apps Script: запись идёт под замком, повтор с тем же `ref` ничего не пишет, а чтение (doGet) замка не
- * берёт и недописанного не видит. Первый запрос клиент «не дождался» (таймаут 30 с, холодный старт до 35 с): сервер
- * его ещё пишет и допишет, когда до замка дойдёт следующий запрос.
+ * Сервер, как Apps Script: запись идёт под замком, повтор с тем же `ref` ничего не пишет (пока строки с ним есть), строки
+ * удаляются по номеру, а чтение (doGet) замка не берёт и недописанного не видит. Первый запрос клиент «не дождался»
+ * (таймаут 30 с, холодный старт до 35 с): либо сервер его ещё пишет и допишет, когда до замка дойдёт следующий запрос
+ * (`lateFirst`), либо запись дошла, а ответ потерян (`landedFirst`).
  */
 function fakeServer() {
-  const rows: Array<{ ref: string; delta: number }> = [];
+  let rows: Array<{ id: number; ref: string; delta: number }> = [];
+  let nextId = 1;
   let writing: { items: CorrectionItem[]; ref: string } | null = null;
   const write = (items: CorrectionItem[], ref: string) => {
-    if (!rows.some((r) => r.ref === ref)) for (const it of items) rows.push({ ref, delta: it.delta });
+    if (!rows.some((r) => r.ref === ref)) for (const it of items) rows.push({ id: nextId++, ref, delta: it.delta });
   };
   const server = {
     down: false,
     lateFirst: true,
+    landedFirst: false,
     sent: [] as Array<{ items: CorrectionItem[]; ref: string }>,
+    removed: [] as number[],
     total: () => rows.reduce((sum, r) => sum + r.delta, 0),
     send: async (items: CorrectionItem[], ref: string): Promise<unknown> => {
       server.sent.push({ items, ref });
@@ -290,6 +317,15 @@ function fakeServer() {
         writing = null;
       }
       write(items, ref);
+      if (server.landedFirst) {
+        server.landedFirst = false;
+        throw new ApiError('network', 'Нет связи');
+      }
+      return { ok: true };
+    },
+    remove: async (id: number): Promise<unknown> => {
+      server.removed.push(id);
+      rows = rows.filter((r) => r.id !== id);
       return { ok: true };
     },
     load: async (): Promise<number> => server.total(),
@@ -303,7 +339,7 @@ function openTab(server: ReturnType<typeof fakeServer>, pending: PendingHolder, 
   const setStale = vi.fn();
   const flow = createResultsFlow<number>({
     send: server.send,
-    remove: vi.fn().mockResolvedValue({ ok: true }),
+    remove: server.remove,
     load: server.load,
     apply: (total) => { seen.total = total; },
     setBusy: vi.fn(),
@@ -379,5 +415,31 @@ describe('createResultsFlow: потерянная запись проверяе�
     expect(setStale).not.toHaveBeenCalled();
     expect(await flow.reload()).toEqual({ checked: false, error: null });
     expect(server.sent).toHaveLength(0);
+  });
+
+  test('+7 дошёл, ответ потерян; «Отменить» на чужой строке проверяет запись, а отменённая +7 потом не воскресает', async () => {
+    const server = fakeServer();
+    server.lateFirst = false;
+    server.landedFirst = true;
+    const pending: PendingHolder = { current: null };
+    const newRef = refs();
+    const { flow, seen } = openTab(server, pending, newRef);
+    await expect(flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
+    expect(server.total()).toBe(7);
+    // «Отменить» на строке, которой в таблице ещё нет +7: сначала выясняется потерянная запись, ничего не удаляется
+    expect(await flow.remove(99)).toEqual({ removed: false, refreshError: null });
+    expect(server.removed).toEqual([]);
+    expect(seen.total).toBe(7);
+    expect(server.sent).toHaveLength(2); // потерянный запрос и его повтор («уже есть»)
+    // на свежих данных отмена +7 (строка 1) обычная
+    expect(await flow.remove(1)).toEqual({ removed: true, refreshError: null });
+    expect(server.total()).toBe(0);
+    // ни «Обновить», ни другая правка, ни новая вкладка +7 не воскрешают: повторять больше нечего
+    expect(await flow.reload()).toEqual({ checked: false, error: null });
+    expect(await flow.correct([item(3)])).toMatchObject({ result: 'saved' });
+    const later = openTab(server, pending, newRef);
+    expect(later.flow.stale).toBe(false);
+    expect(server.total()).toBe(3);
+    expect(server.sent.filter((x) => x.ref === 'ref-1')).toHaveLength(2);
   });
 });

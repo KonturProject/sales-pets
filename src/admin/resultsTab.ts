@@ -77,7 +77,11 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
     status.textContent = '';
     try {
       const done = await flow.remove(id);
-      if (done.refreshError) alert.textContent = `Правка отменена, но обновить таблицу не удалось: ${errorText(done.refreshError)}.`;
+      if (done.refreshError) {
+        alert.textContent = done.removed
+          ? `Правка отменена, но обновить таблицу не удалось: ${errorText(done.refreshError)}.`
+          : `Связь прерывалась: прошлая правка проверена, но данные перечитать не удалось: ${errorText(done.refreshError)}.`;
+      } else if (!done.removed) alert.textContent = INTERRUPTED_TEXT; // правка не отменена: нажмите «Отменить» ещё раз на свежих данных
       else status.textContent = 'Правка отменена';
     } catch (e) {
       alert.textContent = e instanceof WriteRefused ? e.message : errorText(e);

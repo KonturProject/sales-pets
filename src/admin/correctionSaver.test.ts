@@ -141,6 +141,56 @@ describe('createCorrectionSaver', () => {
   });
 });
 
+describe('createCorrectionSaver: ушедший с экрана экземпляр', () => {
+  /** Обещание, которое завершается вручную. */
+  const hold = () => {
+    let resolve: (v: unknown) => void = () => {};
+    let reject: (e: unknown) => void = () => {};
+    const promise = new Promise<unknown>((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+  };
+  /** Держатель с запросом p, который повторяет «старый» экземпляр; пока его ответ в пути, держатель получает новый запрос. */
+  async function lateAnswer(settle: (gate: ReturnType<typeof hold>) => void, act: (saver: ReturnType<typeof createCorrectionSaver>) => Promise<unknown>) {
+    const pending: PendingHolder = { current: null };
+    const lostSend = vi.fn().mockRejectedValue(network());
+    await expect(createCorrectionSaver({ send: lostSend, newRef: refs(), pending }).save([item(7)])).rejects.toBeInstanceOf(ApiError);
+    const gate = hold();
+    const old = createCorrectionSaver({ send: vi.fn(() => gate.promise), newRef: refs(), pending });
+    const running = act(old);
+    const newer = { items: [item(9)], ref: 'ref-9' };
+    pending.current = newer; // за это время другой экземпляр потерял свою запись
+    settle(gate);
+    await running.catch(() => {});
+    return { pending, newer };
+  }
+
+  test('запоздалый ответ на повтор не стирает более новое ожидание', async () => {
+    const { pending, newer } = await lateAnswer((g) => g.resolve({ ok: true }), (saver) => saver.resolve());
+    expect(pending.current).toBe(newer);
+  });
+
+  test('запоздалый отказ сервера на повтор тоже не стирает более новое ожидание', async () => {
+    const { pending, newer } = await lateAnswer((g) => g.reject(new ApiError('bad_request', 'bad_request')), (saver) => saver.resolve());
+    expect(pending.current).toBe(newer);
+  });
+
+  test('так же для повтора тех же правок через save()', async () => {
+    const ok = await lateAnswer((g) => g.resolve({ ok: true }), (saver) => saver.save([item(7)]));
+    expect(ok.pending.current).toBe(ok.newer);
+    const refused = await lateAnswer((g) => g.reject(new ApiError('bad_request', 'bad_request')), (saver) => saver.save([item(7)]));
+    expect(refused.pending.current).toBe(refused.newer);
+  });
+
+  test('повтор получил ответ, а ожидание то же самое — оно снимается', async () => {
+    const pending: PendingHolder = { current: null };
+    const send = vi.fn().mockRejectedValueOnce(network()).mockResolvedValue({ ok: true });
+    const saver = createCorrectionSaver({ send, newRef: refs(), pending });
+    await expect(saver.save([item(7)])).rejects.toBeInstanceOf(ApiError);
+    await saver.resolve();
+    expect(pending.current).toBeNull();
+  });
+});
+
 describe('randomRef', () => {
   test('не длиннее 64 символов и каждый раз новый', () => {
     const a = randomRef();

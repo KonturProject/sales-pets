@@ -4,6 +4,7 @@ import { h, tabs, errorText, newVersionSlot } from './dom';
 import type { PendingHolder } from './correctionSaver';
 import type { AdminCtx } from './ctx';
 import { importTab } from './importTab';
+import { createNavLock } from './navLock';
 import { normsTab } from './normsTab';
 import { overridesTab } from './overridesTab';
 import { paymentsTab } from './payments';
@@ -36,9 +37,9 @@ const tracked: Session = {
   },
 };
 /** Смена вкладки или выход посреди записи убрали бы вкладку из-под неё, а новая прочла бы данные раньше записи. */
-const lockNav: AdminCtx['lockNav'] = (locked) => {
+const lockNav: AdminCtx['lockNav'] = createNavLock((locked) => {
   for (const b of root.querySelectorAll<HTMLButtonElement>('header button, [role="tablist"] button')) b.disabled = locked;
-};
+});
 /** Правка «Итогов», на которую не пришёл ответ: переживает смену вкладки админки (см. `PendingHolder`). */
 const pendingCorrection: PendingHolder = { current: null };
 const ctx: AdminCtx = { session: tracked, snapshot, lockNav, pendingCorrection };

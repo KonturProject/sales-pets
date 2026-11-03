@@ -51,24 +51,34 @@ export function createCorrectionSaver(opts: {
   const pending = opts.pending ?? { current: null };
   let busy = false;
 
+  /**
+   * Снять ожидание, но только то, которое этот вызов и повторял: ответ запоздалого экземпляра (вкладку успели сменить)
+   * не должен стереть более новое ожидание, которое появилось за это время.
+   */
+  const clear = (p: PendingWrite): void => {
+    if (pending.current === p) pending.current = null;
+  };
+  const refused = (e: unknown): boolean => e instanceof ApiError && e.code === 'bad_request';
+
   /** Повтор слово в слово. Ответ сервера (в том числе отказ) снимает ожидание; любая ошибка пробрасывается. */
   async function sendPending(p: PendingWrite): Promise<void> {
     try {
       await opts.send(p.items, p.ref);
     } catch (e) {
-      if (e instanceof ApiError && e.code === 'bad_request') pending.current = null;
+      if (refused(e)) clear(p);
       throw e;
     }
-    pending.current = null;
+    clear(p);
   }
 
   /** То же, но отказ сервера не ошибка: ответ получен, ожидание снято. */
   async function replay(p: PendingWrite): Promise<void> {
     try {
-      await sendPending(p);
+      await opts.send(p.items, p.ref);
     } catch (e) {
-      if (pending.current !== null) throw e;
+      if (!refused(e)) throw e;
     }
+    clear(p);
   }
 
   /** Есть ожидание, и правки не те же: такая запись сначала повторит прошлую. */

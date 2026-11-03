@@ -1405,6 +1405,80 @@ try {
     await waitForText(admin, `tr[data-employee-row="${idB}"]`, 'правки +6');
     check(JSON.stringify(await serverDeltas()) === '[7,1,5,1]', `после «Обновить» правка шла не от свежего значения: ${JSON.stringify(await serverDeltas())}`);
   });
+
+  await scenario('итоги: «Отменить» при потерянной записи сначала выясняет её, отменённая правка не воскресает', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    const adds = []; // тела addCorrections
+    const removes = []; // номера в removeCorrection
+    let mode = 'normal';
+    const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    await admin.route(`${mock.url}**`, async (route) => {
+      const request = route.request();
+      if (request.method() !== 'POST') return route.continue();
+      const body = JSON.parse(request.postData() ?? '{}');
+      if (body.action === 'removeCorrection') removes.push(body.id);
+      if (body.action !== 'addCorrections') return route.continue();
+      adds.push(body);
+      if (mode === 'lost') {
+        // сервер запись принял, а ответ до страницы не дошёл
+        mode = 'normal';
+        await route.fetch();
+        return route.fulfill({ status: 200, contentType: 'text/plain', body: 'timeout' });
+      }
+      return route.continue();
+    });
+    await loginAdmin(admin, urls.admin);
+    const shown = await admin.waitForSelector('table.results', { timeout: 8_000 }).then(() => true, () => false);
+    check(shown, 'вкладка «Итоги»: нет таблицы');
+    if (!shown) return;
+    const g = 'СР6';
+    const serverCorrections = async () => (await publicSnapshot(mock)).corrections ?? [];
+    await admin.click(`[data-group-toggle="${g}"]`);
+    const [idA, idB] = await admin.$$eval(`tbody[data-group="${g}"] tr[data-employee-row]`, (r) => r.map((x) => x.dataset.employeeRow));
+    const open = async (id, value) => {
+      await admin.click(`button[data-correct="${id}"]`);
+      await admin.fill('[data-edit="long"]', String(value));
+    };
+    const INTERRUPTED = 'Связь прерывалась: прошлая правка проверена, данные перечитаны. Проверьте значение и поправьте ещё раз, если нужно.';
+
+    // чужая правка у idB, затем +7 у idA дошло до сервера, а ответ потерян
+    await open(idB, 3);
+    await admin.click('[data-save="correction"]');
+    await waitForText(admin, `tr[data-employee-row="${idB}"]`, 'правки +3');
+    const [other] = await serverCorrections();
+    mode = 'lost';
+    await open(idA, 7);
+    await admin.click('[data-save="correction"]');
+    check((await waitForText(admin, '[data-alert="correction"]', 'Нет связи')).includes('Нет связи'), 'обрыв не показан');
+    check((await serverCorrections()).length === 2, 'контроль: +7 должна быть на сервере');
+
+    // «Отменить» на чужой строке: ничего не удаляется, потерянная запись проверяется, в списке появляется +7
+    await admin.click(`[data-remove-correction="${other.id}"]`);
+    const checkedText = await waitForText(admin, '[data-alert="results"]', 'прошлая правка проверена');
+    check(checkedText.includes(INTERRUPTED), `«Отменить» при потерянной записи: «${checkedText}»`);
+    check(removes.length === 0, `«Отменить» удалила, не выяснив запись: ${JSON.stringify(removes)}`);
+    check((await serverCorrections()).length === 2, 'после проверки на сервере не две правки');
+    check(await admin.locator('[data-correction]').count() === 2, 'после проверки в списке не две правки');
+    check(adds.length === 3 && adds[2].ref === adds[1].ref, 'проверка потерянной записи ушла не повтором с тем же ref');
+
+    // отмена +7 на свежих данных
+    const plus7 = (await serverCorrections()).find((c) => c.delta === 7);
+    await admin.click(`[data-remove-correction="${plus7.id}"]`);
+    await admin.waitForFunction(() => document.querySelectorAll('[data-correction]').length === 1);
+    check(removes.length === 1 && removes[0] === plus7.id, `отмена +7: ${JSON.stringify(removes)}`);
+
+    // смена вкладки и возврат: повторять нечего, +7 не воскресает
+    const addsBefore = adds.length;
+    await admin.click('[role="tab"][data-tab="payments"]');
+    await admin.waitForSelector('[role="tabpanel"][data-tab="payments"]');
+    await admin.click('[role="tab"][data-tab="results"]');
+    await admin.waitForSelector('table.results', { timeout: 8_000 });
+    await pause(1_000);
+    check(adds.length === addsBefore, `на возврате к «Итогам» ушёл повтор отменённой записи: ${adds.length - addsBefore}`);
+    const deltas = (await serverCorrections()).map((c) => c.delta);
+    check(JSON.stringify(deltas) === '[3]', `отменённая +7 воскресла: ${JSON.stringify(deltas)}`);
+    check(await admin.evaluate(() => document.querySelector('[data-stale]')?.hidden === true), 'на возврате к «Итогам» вкладка открылась «устаревшей»');
+  });
 } finally {
   await browser.close();
   await server.close();
