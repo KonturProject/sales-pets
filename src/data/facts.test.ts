@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { defaultConfig } from '@/engine/config';
 import type { Absence, Employee } from '@/engine/staff';
 import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
-import { groupRanking } from '@/engine/ranking';
+import { groupRanking, topOverall } from '@/engine/ranking';
 import { groupFunnel } from '@/game/tv/metrics';
 import type { Snapshot, SnapshotCorrection, SnapshotOverride } from './api';
 import { buildFacts, effectiveFacts, normalizeName } from './facts';
@@ -431,6 +431,26 @@ describe('ручные правки фактов (corrections)', () => {
     });
     expect(effectiveFacts(s).paymentsByDay.СР1['2026-11-12']).toBe(5);
     expect(buildFacts(s, '2026-11-12').states.СР1.totalPayments).toBe(5);
+  });
+
+  test('правка оплаты скрытого из рейтинга и отсутствующего в тот день идёт группе, но не рейтингу', () => {
+    const hidden = emp('h', 'Тест Скрытый', 'СР1', { hiddenFromRating: true });
+    const absent = emp('a', 'Тест Отпускник');
+    const ok = emp('p', 'Тест Рабочий');
+    const day = '2026-11-05'; // рабочий день (04.11 — праздник); отпуск ровно на этот день
+    const vacation: Absence = { employeeId: 'a', kind: 'vacation', from: day, to: day };
+    const s = snap({
+      staff: [hidden, absent, ok], absences: [vacation],
+      corrections: [corr(1, day, 'h', 'payments', 2), corr(2, day, 'a', 'payments', 2), corr(3, day, 'p', 'payments', 2)],
+    });
+    // группе идут все три правки: оплата отсутствующего и скрытого — оплата группы, как и обычная
+    expect(effectiveFacts(s).paymentsByDay.СР1[day]).toBe(6);
+    expect(buildFacts(s, '2026-11-12').states.СР1.totalPayments).toBe(6);
+    // в рейтинг идёт только правка присутствующего в рейтинге
+    const { rank } = buildFacts(s, '2026-11-12');
+    const rows = groupRanking('СР1', '2026-11-02', '2026-11-12', rank);
+    expect(rows.map((r) => [r.employeeId, r.value])).toEqual([['p', 2], ['a', 0]]); // скрытого в рейтинге группы нет вовсе
+    expect(topOverall('2026-11-02', '2026-11-12', rank).map((r) => [r.employeeId, r.value])).toEqual([['p', 2]]);
   });
 
   test('правка неизвестного сотрудника игнорируется', () => {
