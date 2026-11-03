@@ -14,13 +14,17 @@ export function randomRef(): string {
 /** Ответ сервера «нет» без записи: повторять тот же `ref` незачем. */
 const REJECTED = new Set(['bad_request', 'invalid_pin', 'locked']);
 
+/** Сервер ответил отказом: записи не было. Любая другая ошибка — результат неизвестен. */
+export const wasRejected = (e: unknown): boolean => e instanceof ApiError && REJECTED.has(e.code);
+
 /**
  * Запись правок одним запросом `addCorrections`. Ответ: `saved` — записано; `busy` — запрос уже идёт, ничего не
  * отправлено; `changed` — ответа на прошлый запрос не было, а правки теперь другие: ничего не отправлено.
  * Если ответа не было (обрыв, таймаут), запрос мог дойти до сервера: повтор с теми же правками уходит с тем же `ref`,
  * и сервер не запишет второй раз. Другие правки отправлять нельзя: разница с файлом посчитана от данных до той записи,
- * и вместе они дали бы лишнее (+7 потерялся, потом «8» ушло как +8 — на сервере 15). Новый `ref` тут тоже не спасает;
- * после `changed` ожидание снято, а правки нужно посчитать заново от перечитанных данных.
+ * и вместе они дали бы лишнее (+7 потерялся, потом «8» ушло как +8 — на сервере 15). Новый `ref` тут тоже не спасает.
+ * Ожидание снимает только `forget()`, и звать его можно лишь после того, как свежие данные прочитаны: `changed` само
+ * его не снимает, иначе при неудачном перечитывании следующая правка ушла бы от устаревших данных.
  */
 export function createCorrectionSaver(opts: {
   send: (items: CorrectionItem[], ref: string) => Promise<unknown>;
@@ -34,7 +38,7 @@ export function createCorrectionSaver(opts: {
     get busy(): boolean {
       return busy;
     },
-    /** Забыть, что прошлый запрос остался без ответа: данные перечитаны, правки считаются заново. */
+    /** Забыть, что прошлый запрос остался без ответа: свежие данные уже прочитаны, правки считаются заново. */
     forget(): void {
       unanswered = null;
     },
@@ -42,17 +46,14 @@ export function createCorrectionSaver(opts: {
     async save(items: CorrectionItem[]): Promise<'saved' | 'busy' | 'changed'> {
       if (busy) return 'busy';
       const key = JSON.stringify(items);
-      if (unanswered && unanswered.key !== key) {
-        unanswered = null;
-        return 'changed';
-      }
+      if (unanswered && unanswered.key !== key) return 'changed';
       busy = true;
       const ref = unanswered ? unanswered.ref : newRef();
       unanswered = null;
       try {
         await opts.send(items, ref);
       } catch (e) {
-        if (!(e instanceof ApiError && REJECTED.has(e.code))) unanswered = { key, ref };
+        if (!wasRejected(e)) unanswered = { key, ref };
         throw e;
       } finally {
         busy = false;

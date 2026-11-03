@@ -5,4 +5,6 @@ import type { Session } from './session';
 export interface AdminCtx {
   session: Session;
   snapshot(): Promise<Snapshot>;
+  /** На время записи: вкладки и «Выйти» недоступны, иначе вкладка с идущей записью исчезнет из-под неё. */
+  lockNav(locked: boolean): void;
 }

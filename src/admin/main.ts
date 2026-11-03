@@ -34,7 +34,11 @@ const tracked: Session = {
     return result;
   },
 };
-const ctx: AdminCtx = { session: tracked, snapshot };
+/** Смена вкладки или выход посреди записи убрали бы вкладку из-под неё, а новая прочла бы данные раньше записи. */
+const lockNav: AdminCtx['lockNav'] = (locked) => {
+  for (const b of root.querySelectorAll<HTMLButtonElement>('header button, [role="tablist"] button')) b.disabled = locked;
+};
+const ctx: AdminCtx = { session: tracked, snapshot, lockNav };
 
 const updateSlot = newVersionSlot();
 

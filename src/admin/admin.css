@@ -619,3 +619,12 @@ td.stale {
   opacity: 0.6;
   cursor: progress;
 }
+
+/* после записи данные не обновились: таблица и список закрыты, «Обновить» доступна */
+.results-tab:not([inert]) [inert] {
+  opacity: 0.6;
+}
+
+.results-stale {
+  color: var(--bad);
+}

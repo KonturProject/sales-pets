@@ -1,7 +1,7 @@
 import { describe, expect, test, vi, type Mock } from 'vitest';
 import { ApiError } from '@/data/api';
 import type { CorrectionItem } from './results';
-import { BUSY_TEXT, WriteRefused, createResultsFlow } from './resultsFlow';
+import { BUSY_TEXT, STALE_TEXT, WriteRefused, createResultsFlow } from './resultsFlow';
 
 const item = (delta: number): CorrectionItem => ({ date: '2026-11-03', employeeId: 'a1', kind: 'long', delta, base: 2 });
 const refs = () => {
@@ -16,7 +16,7 @@ const hold = <T = void>() => {
   return { promise, resolve, reject };
 };
 
-type Over = Partial<Record<'send' | 'remove' | 'load' | 'apply' | 'setBusy', Mock>>;
+type Over = Partial<Record<'send' | 'remove' | 'load' | 'apply' | 'setBusy' | 'setStale', Mock>>;
 
 function setup(over: Over = {}) {
   let version = 0;
@@ -26,14 +26,16 @@ function setup(over: Over = {}) {
     load: over.load ?? vi.fn(async () => ++version),
     apply: over.apply ?? vi.fn(),
     setBusy: over.setBusy ?? vi.fn(),
+    setStale: over.setStale ?? vi.fn(),
   };
   return { flow: createResultsFlow<number>({ ...mocks, newRef: refs() }), ...mocks };
 }
 
 describe('createResultsFlow: запись и перечитывание', () => {
   test('правка: один запрос, свежий снимок применён, вкладка занята только на время записи', async () => {
-    const { flow, send, load, apply, setBusy } = setup();
+    const { flow, send, load, apply, setBusy, setStale } = setup();
     expect(await flow.correct([item(1)])).toEqual({ result: 'saved', refreshError: null });
+    expect(setStale).not.toHaveBeenCalled();
     expect(send.mock.calls).toEqual([[[item(1)], 'ref-1']]);
     expect(load).toHaveBeenCalledTimes(1);
     expect(apply).toHaveBeenCalledWith(1);
@@ -58,18 +60,19 @@ describe('createResultsFlow: запись и перечитывание', () => 
     expect(flow.busy).toBe(false);
   });
 
-  test('ошибка отмены: пробрасывается, вкладка разблокирована', async () => {
+  test('ошибка отмены: пробрасывается, вкладка разблокирована, а результат неизвестен — снимок перечитан', async () => {
     const { flow, setBusy, apply } = setup({ remove: vi.fn().mockRejectedValue(new ApiError('server_error', 'server_error')) });
     await expect(flow.remove(5)).rejects.toMatchObject({ code: 'server_error' });
     expect(setBusy.mock.calls).toEqual([[true], [false]]);
-    expect(apply).not.toHaveBeenCalled();
+    expect(apply).toHaveBeenCalledWith(1);
   });
 
   test('запись прошла, а снимок прочитать не удалось: это не провал записи', async () => {
     const boom = new ApiError('network', 'Нет связи');
-    const { flow, apply } = setup({ load: vi.fn().mockRejectedValue(boom) });
+    const { flow, apply, setStale } = setup({ load: vi.fn().mockRejectedValue(boom) });
     expect(await flow.correct([item(1)])).toEqual({ result: 'saved', refreshError: boom });
     expect(apply).not.toHaveBeenCalled();
+    expect(setStale.mock.calls).toEqual([[true]]); // таблица теперь не показывает записанное
     expect(flow.busy).toBe(false);
   });
 });
@@ -133,11 +136,13 @@ describe('createResultsFlow: обрыв связи', () => {
     expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-2']);
   });
 
-  test('после отмены правки ожидание ответа забыто: та же правка, введённая заново, уходит с новым ref', async () => {
-    const { flow, send } = setup({ send: lost() });
+  test('после отмены и успешного перечитывания ожидание ответа забыто: другое значение уходит сразу, а не «changed»', async () => {
+    // зачем forget(): данные уже перечитаны и показывают, что с потерянной правкой, — повторное «changed» было бы лишним
+    const { flow, send, load } = setup({ send: lost() });
     await expect(flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
     await flow.remove(5);
-    expect(await flow.correct([item(7)])).toMatchObject({ result: 'saved' });
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(await flow.correct([item(8)])).toMatchObject({ result: 'saved' });
     expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-2']);
   });
 
@@ -160,5 +165,111 @@ describe('createResultsFlow: порядок снимков', () => {
     slow.resolve(1);
     await older;
     expect(apply.mock.calls).toEqual([[2]]);
+  });
+});
+
+/** Чтение снимка, которое можно ломать и чинить по ходу теста. */
+const flaky = (state: { fail: boolean }) => vi.fn(async () => {
+  if (state.fail) throw new ApiError('network', 'Нет связи');
+  return 2;
+});
+
+describe('createResultsFlow: пока снимок после записи не прочитан, писать нельзя', () => {
+  const lostFirst = () => vi.fn().mockRejectedValueOnce(new ApiError('network', 'Нет связи')).mockResolvedValue({ ok: true });
+
+  test('запись прошла, снимок не прочитан: правка и отмена ничего не отправляют, пока не нажали «Обновить»', async () => {
+    const state = { fail: true };
+    const { flow, send, remove, apply, setStale } = setup({ load: flaky(state) });
+    expect(await flow.correct([item(1)])).toMatchObject({ result: 'saved', refreshError: expect.any(ApiError) });
+    expect(setStale.mock.calls).toEqual([[true]]);
+    await expect(flow.correct([item(1)])).rejects.toThrow(STALE_TEXT); // повтор того же ввода задвоил бы правку
+    await expect(flow.correct([item(2)])).rejects.toBeInstanceOf(WriteRefused);
+    await expect(flow.remove(5)).rejects.toThrow(STALE_TEXT);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(remove).not.toHaveBeenCalled();
+    // «Обновить» не удалось — по-прежнему закрыто
+    expect(await flow.reload()).toBeInstanceOf(ApiError);
+    await expect(flow.correct([item(1)])).rejects.toThrow(STALE_TEXT);
+    expect(setStale.mock.calls).toEqual([[true]]);
+    state.fail = false;
+    expect(await flow.reload()).toBeNull();
+    expect(apply).toHaveBeenCalledWith(2);
+    expect(setStale.mock.calls).toEqual([[true], [false]]);
+    expect(await flow.correct([item(1)])).toMatchObject({ result: 'saved' });
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  test('потерян ответ, затем другое значение, а перечитать не удалось: дальше не уходит ничего, даже прежнее значение', async () => {
+    const state = { fail: true };
+    const { flow, send, setStale } = setup({ send: lostFirst(), load: flaky(state) });
+    await expect(flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
+    expect(setStale).not.toHaveBeenCalled(); // потерянный ответ сам по себе берёт под охрану только прежний ввод
+    expect(await flow.correct([item(8)])).toMatchObject({ result: 'changed', refreshError: expect.any(ApiError) });
+    expect(setStale.mock.calls).toEqual([[true]]);
+    await expect(flow.correct([item(8)])).rejects.toThrow(STALE_TEXT); // иначе уйдёт +8 от устаревшего значения
+    await expect(flow.correct([item(7)])).rejects.toThrow(STALE_TEXT);
+    expect(send).toHaveBeenCalledTimes(1);
+    state.fail = false;
+    expect(await flow.reload()).toBeNull();
+    expect(await flow.correct([item(8)])).toMatchObject({ result: 'saved' });
+    expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-2']);
+  });
+
+  test('отмена прошла, снимок не прочитан: ничего не уходит; ожидание ответа на прошлую правку снимается лишь после чтения', async () => {
+    const state = { fail: false };
+    const { flow, send, remove } = setup({ send: lostFirst(), load: flaky(state) });
+    await expect(flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
+    state.fail = true;
+    expect(await flow.remove(5)).toMatchObject({ refreshError: expect.any(ApiError) });
+    await expect(flow.correct([item(7)])).rejects.toThrow(STALE_TEXT);
+    await expect(flow.correct([item(8)])).rejects.toThrow(STALE_TEXT);
+    await expect(flow.remove(6)).rejects.toThrow(STALE_TEXT);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledTimes(1);
+    state.fail = false;
+    expect(await flow.reload()).toBeNull();
+    // ожидание снято только теперь: другое значение уходит сразу, с новым ref
+    expect(await flow.correct([item(8)])).toMatchObject({ result: 'saved' });
+    expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-2']);
+  });
+
+  test('отмена без ответа: данные перечитываются, а не вышло — вкладка «устарела»', async () => {
+    const network = () => new ApiError('network', 'Нет связи');
+    const ok = setup({ remove: vi.fn().mockRejectedValue(network()) });
+    await expect(ok.flow.remove(5)).rejects.toMatchObject({ code: 'network' });
+    expect(ok.load).toHaveBeenCalledTimes(1);
+    expect(ok.setStale).not.toHaveBeenCalled();
+    expect(await ok.flow.correct([item(1)])).toMatchObject({ result: 'saved' });
+
+    const down = setup({ remove: vi.fn().mockRejectedValue(network()), load: vi.fn().mockRejectedValue(network()) });
+    await expect(down.flow.remove(5)).rejects.toMatchObject({ code: 'network' });
+    expect(down.setStale.mock.calls).toEqual([[true]]);
+    await expect(down.flow.correct([item(1)])).rejects.toThrow(STALE_TEXT);
+    expect(down.send).not.toHaveBeenCalled();
+  });
+
+  test('отказ сервера (запись не сделана) вкладку не «устаревает» и снимок не перечитывает', async () => {
+    const { flow, load, setStale } = setup({ remove: vi.fn().mockRejectedValue(new ApiError('bad_request', 'bad_request')) });
+    await expect(flow.remove(5)).rejects.toMatchObject({ code: 'bad_request' });
+    expect(load).not.toHaveBeenCalled();
+    expect(setStale).not.toHaveBeenCalled();
+  });
+
+  test('«Обновить» занимает замок вкладки: пока идёт запись, отклоняется', async () => {
+    const gate = hold<unknown>();
+    const { flow, load } = setup({ send: vi.fn().mockReturnValue(gate.promise) });
+    const saving = flow.correct([item(1)]);
+    await expect(flow.reload()).rejects.toThrow(BUSY_TEXT);
+    expect(load).not.toHaveBeenCalled();
+    gate.resolve({ ok: true });
+    await saving;
+  });
+
+  test('«Обновить» без «устаревания»: просто читает и рисует под замком вкладки', async () => {
+    const { flow, setBusy, setStale, apply } = setup();
+    expect(await flow.reload()).toBeNull();
+    expect(apply).toHaveBeenCalledWith(1);
+    expect(setBusy.mock.calls).toEqual([[true], [false]]);
+    expect(setStale).not.toHaveBeenCalled();
   });
 });

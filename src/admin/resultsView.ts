@@ -84,14 +84,17 @@ export function renderResults(lines: GroupLine[], opts: ResultsOpts): HTMLElemen
           if (items.length === 0) return void (alert.textContent = 'Ничего не изменено');
           busy = true;
           lock(true);
+          let failed = false;
           try {
             await opts.onCorrect(e, wanted);
             closeEditor();
           } catch (err) {
+            failed = true;
             alert.textContent = err instanceof WriteRefused ? err.message : errorText(err);
           } finally {
             busy = false;
             lock(false);
+            if (failed) save.focus(); // кнопка была отключена на время записи, фокус с неё ушёл
           }
         },
       },

@@ -3,15 +3,17 @@ import type { DateStr, GroupCode } from '@/engine/types';
 import type { AdminCtx } from './ctx';
 import { errorText, h } from './dom';
 import { correctionItems, correctionViews, dayResults, defaultResultsDay, resultsDays, type EmployeeLine, type Kind } from './results';
-import { INTERRUPTED_TEXT, WriteRefused, createResultsFlow } from './resultsFlow';
+import { INTERRUPTED_TEXT, STALE_TEXT, WriteRefused, createResultsFlow } from './resultsFlow';
 import { KIND_WORD, dayLabel, shortDate, signed, staleText } from './resultsText';
 import { renderResults } from './resultsView';
 
 /**
  * Вкладка «Итоги»: выбор дня, таблица групп с раскрытием в сотрудников, правка факта у сотрудника и список всех правок
  * с «Отменить». Опроса у админки нет: после каждой записи снимок читается заново и всё перерисовывается, а раскрытые
- * группы и выбранный день остаются. Пока идёт запись (правка или отмена), вся вкладка недоступна (`inert`): ни второй
- * редактор, ни раскрытие, ни смена дня, ни «Отменить» не мешают записи и не теряют введённое.
+ * группы и выбранный день остаются. Пока идёт запись (правка или отмена), вся вкладка недоступна (`inert`), а вкладки
+ * админки и «Выйти» отключены: ни второй редактор, ни раскрытие, ни смена дня, ни «Отменить» не мешают записи и не
+ * теряют введённое. Если после записи свежие данные прочитать не удалось, таблица и список закрыты, пока «Обновить» не
+ * получит их: правка, посчитанная от устаревшей таблицы, задвоила бы или исказила запись.
  */
 export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
   let snapshot: Snapshot = await ctx.snapshot();
@@ -32,6 +34,8 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
   });
   const tableBox = h('div', {});
   const listBox = h('section', { 'data-corrections': true });
+  const refreshButton = h('button', { type: 'button', 'data-refresh': true, onclick: () => void reload() }, 'Обновить');
+  const staleBox = h('p', { role: 'alert', class: 'results-stale', 'data-stale': true, hidden: true }, `${STALE_TEXT} `, refreshButton);
   const flow = createResultsFlow<Snapshot>({
     send: (items, ref) => ctx.session.call('addCorrections', { items, ref }),
     remove: (id) => ctx.session.call('removeCorrection', { id }),
@@ -42,6 +46,12 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
     },
     setBusy: (busy) => {
       root.inert = busy;
+      ctx.lockNav(busy);
+    },
+    setStale: (stale) => {
+      staleBox.hidden = !stale;
+      tableBox.inert = stale;
+      listBox.inert = stale;
     },
   });
 
@@ -54,8 +64,8 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
     const done = await flow.correct(items);
     if (done.refreshError) {
       alert.textContent = done.result === 'saved'
-        ? `Правка сохранена, но обновить таблицу не удалось: ${errorText(done.refreshError)}. Откройте вкладку заново.`
-        : `Связь прерывалась, данные перечитать не удалось: ${errorText(done.refreshError)}. Откройте вкладку заново и проверьте правки.`;
+        ? `Правка сохранена, но обновить таблицу не удалось: ${errorText(done.refreshError)}.`
+        : `Связь прерывалась, данные перечитать не удалось: ${errorText(done.refreshError)}.`;
     } else if (done.result === 'changed') alert.textContent = INTERRUPTED_TEXT;
     else status.textContent = 'Правка сохранена';
   }
@@ -65,8 +75,23 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
     status.textContent = '';
     try {
       const done = await flow.remove(id);
-      if (done.refreshError) alert.textContent = `Правка отменена, но обновить таблицу не удалось: ${errorText(done.refreshError)}. Откройте вкладку заново.`;
+      if (done.refreshError) alert.textContent = `Правка отменена, но обновить таблицу не удалось: ${errorText(done.refreshError)}.`;
       else status.textContent = 'Правка отменена';
+    } catch (e) {
+      alert.textContent = e instanceof WriteRefused ? e.message : errorText(e);
+    }
+  }
+
+  /** «Обновить»: перечитать данные, как после записи. Не вышло — вкладка остаётся закрытой. */
+  async function reload(): Promise<void> {
+    alert.textContent = '';
+    status.textContent = '';
+    try {
+      const error = await flow.reload();
+      if (error) {
+        alert.textContent = `Обновить не удалось: ${errorText(error)}`;
+        refreshButton.focus(); // вкладка на время чтения была inert: фокус с кнопки ушёл
+      } else status.textContent = 'Данные обновлены';
     } catch (e) {
       alert.textContent = e instanceof WriteRefused ? e.message : errorText(e);
     }
@@ -113,6 +138,7 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
       h('label', {}, 'День ', day),
       h('p', { class: 'muted' }, 'Факт / план за выбранный день и с начала игры: ✓ — план выполнен, ✗ — нет. «Итог дня» — что даст оценка этого дня на следующий рабочий день. Нажмите на группу, чтобы увидеть сотрудников.'),
       alert,
+      staleBox,
       status,
       tableBox,
     ),

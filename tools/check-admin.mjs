@@ -1121,11 +1121,19 @@ try {
     const lockedWhile = async (what, selectors) => {
       for (const [selector, title] of selectors) check(await allInert(selector), `${what}: «${title}» не заблокированы`);
     };
+    // вкладки и «Выйти» лежат вне вкладки «Итоги»: на время записи они недоступны (disabled)
+    const navDisabled = (want) => admin.$$eval('header button, [role="tablist"] button', (els, disabled) => els.length > 1 && els.every((b) => b.disabled === disabled), want);
+    const navLocked = async (what) => {
+      check(await navDisabled(true), `${what}: вкладки и «Выйти» не заблокированы`);
+      await admin.click('[role="tab"][data-tab="payments"]', { force: true, timeout: 2_000 }).catch(() => {});
+      check(await admin.getAttribute('[role="tabpanel"]', 'data-tab') === 'results', `${what}: нажатие вкладки «Оплаты» увело с «Итогов»`);
+    };
 
     // второй клик, пока первая запись ещё идёт: запрос один, запись одна; вкладка на это время заблокирована
     await open(idA, 5);
     await admin.click('[data-save="correction"]');
     await lockedWhile('запись правки', [['[data-correct]', 'Поправить'], ['[data-group-toggle]', 'раскрытие групп'], ['[data-field="results-day"]', 'выбор дня'], ['[data-save="correction"]', 'Сохранить']]);
+    await navLocked('запись правки');
     await admin.click('[data-save="correction"]', { force: true, timeout: 2_000 }).catch(() => {});
     await admin.click(`[data-group-toggle="СР1"]`, { force: true, timeout: 2_000 }).catch(() => {});
     check(await admin.getAttribute(`[data-group-toggle="СР1"]`, 'aria-expanded') === 'false', 'во время записи нажатие раскрыло другую группу');
@@ -1133,6 +1141,7 @@ try {
     check(await admin.locator('form[data-editor]').count() === 1 && await admin.locator(`form[data-editor="${idB}"]`).count() === 0, 'во время записи открылся второй редактор');
     await waitForText(admin, `tr[data-employee-row="${idA}"]`, 'правки +5');
     check(await unlocked(), 'после записи вкладка осталась заблокированной');
+    check(await navDisabled(false), 'после записи вкладки или «Выйти» остались заблокированными');
     check(bodies.length === 1, `два клика по «Сохранить» — запросов ${bodies.length}`);
     check((await serverCorrections()).length === 1, `два клика — правок на сервере ${(await serverCorrections()).length}`);
     check(await noneInert('[data-correct]') && await noneInert('[data-remove-correction]'), 'после записи кнопки не разблокированы');
@@ -1147,8 +1156,10 @@ try {
     removeSlow = true;
     await admin.click(`[data-remove-correction="${(await serverCorrections())[0].id}"]`);
     await lockedWhile('отмена правки', [['[data-remove-correction]', 'Отменить'], ['[data-correct]', 'Поправить'], ['[data-group-toggle]', 'раскрытие групп'], ['[data-field="results-day"]', 'выбор дня']]);
+    await navLocked('отмена правки');
     await admin.waitForFunction(() => document.querySelectorAll('[data-correction]').length === 1);
     check(await unlocked(), 'после отмены вкладка осталась заблокированной');
+    check(await navDisabled(false), 'после отмены вкладки или «Выйти» остались заблокированными');
     removeSlow = false;
     await admin.click('[data-remove-correction]');
     await admin.waitForFunction(() => document.querySelectorAll('[data-correction]').length === 0);
@@ -1164,6 +1175,8 @@ try {
     check(await admin.inputValue('[data-edit="long"]') === '7', 'после обрыва введённое значение потеряно');
     check((await serverCorrections()).length === 1, 'контроль: после обрыва запись должна быть на сервере');
     check(await unlocked(), 'после обрыва вкладка осталась заблокированной');
+    check(await navDisabled(false), 'после обрыва вкладки или «Выйти» остались заблокированными');
+    check(await admin.evaluate(() => document.activeElement?.matches('[data-save="correction"]') === true), 'после ошибки фокус не вернулся на «Сохранить»');
     await admin.click('[data-save="correction"]');
     await waitForText(admin, `tr[data-employee-row="${idA}"]`, 'правки +7');
     check(bodies.length === 2 && bodies[0].ref === bodies[1].ref && typeof bodies[0].ref === 'string', `повтор ушёл с другим ref: ${JSON.stringify(bodies.map((b) => b.ref))}`);
@@ -1189,6 +1202,108 @@ try {
     check((await textOf(admin, `tr[data-employee-row="${idA}"]`)).includes('правки +3'), 'данные после обрыва не перечитаны: нет «правки +3»');
     await admin.click(`button[data-correct="${idA}"]`);
     check(await admin.inputValue('[data-edit="long"]') === '3', 'после перечитывания в редакторе не записанное значение');
+  });
+
+  await scenario('итоги: если после записи данные не обновились, вкладка закрыта до «Обновить»', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    const writes = []; // записи, дошедшие до сервера: addCorrections / removeCorrection
+    let mode = 'normal';
+    let rereadFails = false;
+    await admin.route(`${mock.url}**`, async (route) => {
+      const request = route.request();
+      if (request.method() === 'GET') {
+        // чтение снимка не удаётся (ответ не JSON), запись при этом идёт
+        if (rereadFails) return route.fulfill({ status: 200, contentType: 'text/plain', body: 'timeout' });
+        return route.continue();
+      }
+      const body = JSON.parse(request.postData() ?? '{}');
+      if (body.action === 'addCorrections' || body.action === 'removeCorrection') writes.push(body.action);
+      if (body.action === 'addCorrections' && mode === 'lost') {
+        mode = 'normal';
+        await route.fetch();
+        return route.fulfill({ status: 200, contentType: 'text/plain', body: 'timeout' });
+      }
+      return route.continue();
+    });
+    await loginAdmin(admin, urls.admin);
+    const shown = await admin.waitForSelector('table.results', { timeout: 8_000 }).then(() => true, () => false);
+    check(shown, 'вкладка «Итоги»: нет таблицы');
+    if (!shown) return;
+    const g = 'СР6';
+    const serverCorrections = async () => (await publicSnapshot(mock)).corrections ?? [];
+    await admin.click(`[data-group-toggle="${g}"]`);
+    const [idA] = await admin.$$eval(`tbody[data-group="${g}"] tr[data-employee-row]`, (r) => r.map((x) => x.dataset.employeeRow));
+    const open = async (id, value) => {
+      await admin.click(`button[data-correct="${id}"]`);
+      await admin.fill('[data-edit="long"]', String(value));
+    };
+    const STALE = 'Данные не обновились после записи — нажмите «Обновить»';
+    const staleShown = () => admin.waitForFunction(() => document.querySelector('[data-stale]') && !document.querySelector('[data-stale]').hidden, null, { timeout: 8_000 }).then(() => true, () => false);
+    const staleGone = () => admin.waitForFunction(() => document.querySelector('[data-stale]')?.hidden === true, null, { timeout: 8_000 }).then(() => true, () => false);
+    const allInert = (selector) => admin.$$eval(selector, (els) => els.length > 0 && els.every((el) => el.closest('[inert]') !== null));
+    const rowText = (id) => textOf(admin, `tr[data-employee-row="${id}"]`);
+    // закрытая вкладка: «Поправить» и «Отменить» недоступны, принудительные клики ничего не открывают и не шлют
+    const closedAfterWrite = async (what, expectedWrites) => {
+      check(await staleShown(), `${what}: нет сообщения «Данные не обновились…»`);
+      check((await textOf(admin, '[data-stale]')).includes(STALE), `${what}: текст сообщения «${await textOf(admin, '[data-stale]')}»`);
+      check(await admin.isVisible('[data-refresh]'), `${what}: нет кнопки «Обновить»`);
+      check(await allInert('[data-correct]'), `${what}: «Поправить» доступны`);
+      await admin.click(`button[data-correct="${idA}"]`, { force: true, timeout: 2_000 }).catch(() => {});
+      for (const el of await admin.$$('[data-remove-correction]')) await el.click({ force: true, timeout: 2_000 }).catch(() => {});
+      check(await admin.locator('form[data-editor]').count() === 0, `${what}: открылся редактор`);
+      check(writes.length === expectedWrites, `${what}: записей на сервере ${writes.length}, ждали ${expectedWrites}`);
+    };
+    const refreshNow = async () => {
+      await admin.click('[data-refresh]');
+      return staleGone();
+    };
+
+    // 1. правка записана, снимок не прочитан: повтор ввода не должен задвоить правку
+    rereadFails = true;
+    await open(idA, 5);
+    await admin.click('[data-save="correction"]');
+    await closedAfterWrite('запись без перечитывания', 1);
+    check(!(await rowText(idA)).includes('правки +5'), 'контроль: таблица не должна была обновиться');
+    check((await serverCorrections()).length === 1, 'контроль: правка должна быть на сервере');
+    await admin.click('[data-refresh]');
+    await admin.waitForTimeout(600);
+    check(await admin.isVisible('[data-stale]'), '«Обновить» при сбое чтения снял блокировку');
+    rereadFails = false;
+    check(await refreshNow(), '«Обновить» не снял блокировку, когда чтение удалось');
+    check((await rowText(idA)).includes('правки +5'), 'после «Обновить» в таблице нет «правки +5»');
+    check(await admin.locator('[data-correction]').count() === 1, 'после «Обновить» в списке не одна правка');
+    check(await admin.evaluate(() => !document.querySelector('[role="tabpanel"] [inert]')), 'после «Обновить» часть вкладки осталась заблокированной');
+
+    // 2. отмена прошла, снимок не прочитан: список ещё старый, но «Отменить» повторно ничего не шлёт
+    rereadFails = true;
+    await admin.click('[data-remove-correction]');
+    await closedAfterWrite('отмена без перечитывания', 2);
+    check(await admin.locator('[data-correction]').count() === 1, 'контроль: список не должен был обновиться');
+    check(await allInert('[data-remove-correction]'), 'отмена без перечитывания: «Отменить» доступна');
+    check((await serverCorrections()).length === 0, 'контроль: правка должна быть снята на сервере');
+    rereadFails = false;
+    check(await refreshNow(), 'после отмены «Обновить» не снял блокировку');
+    check(await admin.locator('[data-correction]').count() === 0, 'после «Обновить» в списке остались правки');
+
+    // 3. ответ потерян, затем другое значение, а чтение не удалось: ничего не уходит, пока не «Обновить»
+    mode = 'lost';
+    await open(idA, 3);
+    await admin.click('[data-save="correction"]');
+    check((await waitForText(admin, '[data-alert="correction"]', 'Нет связи')).includes('Нет связи'), 'обрыв не показан');
+    rereadFails = true;
+    await admin.fill('[data-edit="long"]', '4');
+    await admin.click('[data-save="correction"]');
+    await closedAfterWrite('обрыв, другое значение, чтение не удалось', 3);
+    const lostOnServer = await serverCorrections();
+    check(lostOnServer.length === 1 && lostOnServer[0].delta === 3, `на сервере после обрыва: ${JSON.stringify(lostOnServer)}`);
+    rereadFails = false;
+    check(await refreshNow(), 'после обрыва «Обновить» не снял блокировку');
+    check((await rowText(idA)).includes('правки +3'), 'после «Обновить» нет «правки +3»');
+    await open(idA, 4);
+    await admin.click('[data-save="correction"]');
+    await waitForText(admin, `tr[data-employee-row="${idA}"]`, 'правки +4');
+    const finalOnServer = (await serverCorrections()).map((c) => c.delta);
+    check(finalOnServer.join() === '3,1', `после «Обновить» поправка шла от свежего значения: ${JSON.stringify(finalOnServer)}`);
   });
 } finally {
   await browser.close();

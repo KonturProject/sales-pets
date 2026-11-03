@@ -48,7 +48,18 @@ describe('createCorrectionSaver', () => {
     await expect(saver.save([item(7)])).rejects.toBeInstanceOf(ApiError);
     expect(await saver.save([item(8)])).toBe('changed');
     expect(send).toHaveBeenCalledTimes(1);
-    // после «changed» ожидание ответа снято: следующая запись обычная, с новым ref
+    // «changed» ожидание не снимает: его снимает только forget() — когда данные перечитаны. Раньше — «changed» снова
+    expect(await saver.save([item(8)])).toBe('changed');
+    expect(await saver.save([item(7)])).toBe('saved'); // а прежние правки по-прежнему повтор с тем же ref
+    expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-1']);
+  });
+
+  test('после forget() ожидание ответа снято: следующая запись обычная, с новым ref', async () => {
+    const send = vi.fn().mockRejectedValueOnce(new ApiError('network', 'Нет связи')).mockResolvedValue({ ok: true });
+    const saver = createCorrectionSaver({ send, newRef: refs() });
+    await expect(saver.save([item(7)])).rejects.toBeInstanceOf(ApiError);
+    expect(await saver.save([item(8)])).toBe('changed');
+    saver.forget();
     expect(await saver.save([item(8)])).toBe('saved');
     expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-2']);
   });
