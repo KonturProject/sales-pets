@@ -218,3 +218,79 @@ describe('uniqueInvoices', () => {
     expect(uniqueInvoices([x, y], byAuthor)[0]).toBe(x);
   });
 });
+
+describe('правки оплат (paymentCorrections)', () => {
+  const fix = (employeeId: string, date: string, delta: number) => ({ employeeId, date, delta });
+  const values = (rows: { employeeId: string; value: number }[]) => rows.map((x) => [x.employeeId, x.value]);
+
+  test('правка прибавляется к оплатам сотрудника в рейтинге группы и в общем топе', () => {
+    const d = data({
+      staff: [emp('a'), emp('b')],
+      payments: [pay('a', '2026-11-02', '1'), pay('b', '2026-11-02', '2'), pay('b', '2026-11-03', '3')],
+      paymentCorrections: [fix('a', '2026-11-05', 2), fix('b', '2026-11-05', -1)],
+    });
+    expect(values(groupRanking('СР1', from, to, d))).toEqual([['a', 3], ['b', 1]]);
+    expect(values(topOverall(from, to, d))).toEqual([['a', 3], ['b', 1]]);
+  });
+
+  test('сотрудник без файловых оплат поднимается правкой', () => {
+    const d = data({ staff: [emp('a')], paymentCorrections: [fix('a', '2026-11-05', 4)] });
+    expect(values(topOverall(from, to, d))).toEqual([['a', 4]]);
+  });
+
+  test('минус больше засчитанного: 0, в общий топ не попадает', () => {
+    const d = data({
+      staff: [emp('a'), emp('b')],
+      payments: [pay('a', '2026-11-02', '1')],
+      paymentCorrections: [fix('a', '2026-11-05', -3), fix('b', '2026-11-05', -2)],
+    });
+    expect(values(groupRanking('СР1', from, to, d))).toEqual([['a', 0], ['b', 0]]);
+    expect(topOverall(from, to, d)).toEqual([]);
+  });
+
+  test('скрытому из рейтинга и отсутствующему в день правки она не идёт', () => {
+    const d = data({
+      staff: [emp('a'), emp('b'), emp('h', 'СР1', { hiddenFromRating: true })],
+      absences: [{ employeeId: 'a', kind: 'vacation', from: '2026-11-05', to: '2026-11-05' }],
+      payments: [pay('a', '2026-11-02', '1')],
+      paymentCorrections: [fix('a', '2026-11-05', 5), fix('b', '2026-11-05', 2), fix('h', '2026-11-05', 5)],
+    });
+    expect(values(groupRanking('СР1', from, to, d))).toEqual([['b', 2], ['a', 1]]);
+    expect(values(topOverall(from, to, d))).toEqual([['b', 2], ['a', 1]]);
+  });
+
+  test('правка вне окна не считается; окно по датам включает границы', () => {
+    const d = data({
+      staff: [emp('a')],
+      paymentCorrections: [fix('a', '2026-11-04', 1), fix('a', '2026-11-05', 2), fix('a', '2026-11-06', 4), fix('a', '2026-11-07', 8)],
+    });
+    expect(groupRanking('СР1', '2026-11-05', '2026-11-06', d)[0].value).toBe(6);
+  });
+
+  test('правка идёт в группу сотрудника на дату правки', () => {
+    const moved = emp('a', 'СР1', { transfers: [{ date: '2026-11-05', group: 'СР2' }] });
+    const d = data({ staff: [moved], paymentCorrections: [fix('a', '2026-11-03', 1), fix('a', '2026-11-05', 2)] });
+    expect(values(groupRanking('СР1', from, '2026-11-04', d))).toEqual([['a', 1]]);
+    expect(values(groupRanking('СР2', from, to, d))).toEqual([['a', 2]]);
+    expect(topOverall(from, to, d)[0]).toMatchObject({ value: 3, group: 'СР2' });
+  });
+
+  test('итог по группе не ниже нуля, правки других групп его не гасят', () => {
+    const moved = emp('a', 'СР1', { transfers: [{ date: '2026-11-05', group: 'СР2' }] });
+    const d = data({
+      staff: [moved], payments: [pay('a', '2026-11-03', '1'), pay('a', '2026-11-03', '2')],
+      paymentCorrections: [fix('a', '2026-11-05', -4)],
+    });
+    expect(values(groupRanking('СР1', from, to, d))).toEqual([['a', 2]]); // минус СР2 не вычитается из СР1
+    expect(values(groupRanking('СР2', from, to, d))).toEqual([['a', 0]]);
+  });
+
+  test('герои дня: оплата-правка считается при равных процентах', () => {
+    const row = (employeeId: string) => ({ employeeId, date: '2026-11-10', quality: 5, long: 3 });
+    const staff = [emp('a'), emp('b')];
+    const base = data({ staff, funnel: [row('a'), row('b')] });
+    expect(heroesOfDay('2026-11-10', base).map((x) => x.employeeId)).toEqual(['a', 'b']); // ничья — по имени
+    const fixed = { ...base, paymentCorrections: [fix('b', '2026-11-10', 1)] };
+    expect(heroesOfDay('2026-11-10', fixed).map((x) => x.employeeId)).toEqual(['b', 'a']);
+  });
+});

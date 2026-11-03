@@ -33,6 +33,8 @@ export interface RankData {
   absences: Absence[];
   payments: PaymentRow[];
   funnel: FunnelDay[];
+  /** ручные правки оплат (в рейтинг идут по тем же правилам, что обычные оплаты) */
+  paymentCorrections?: { employeeId: string; date: DateStr; delta: number }[];
   /** настройки на «сегодня» расчёта */
   cfg: Config;
   /** настройки на дату (нормы меняются с даты); без неё везде действует `cfg` */
@@ -79,18 +81,30 @@ export function uniqueInvoices<T extends { date: DateStr; invoice: string }>(row
  * Один счёт — одна оплата (`uniqueInvoices`: ранняя дата, при равенстве меньший id сотрудника), и только
  * потом проверяются окно и право на рейтинг. Оплата, сделанная в день отсутствия или скрытым сотрудником,
  * в рейтинг не идёт (группе она всё равно засчитана), а дубль того же счёта её не оживляет.
+ * Ручные правки оплат (`paymentCorrections`) идут по тем же условиям: дата в окне, сотрудник в рейтинге в день
+ * правки, группа — на этот день. Итог сотрудника по группе за период не бывает меньше 0.
  */
 function countedPayments(d: RankData, from: DateStr, to: DateStr): Map<string, Map<GroupCode, number>> {
   const byId = new Map(d.staff.map((e) => [e.id, e]));
   const result = new Map<string, Map<GroupCode, number>>();
+  const add = (e: Employee, date: DateStr, n: number) => {
+    const g = groupOn(e, date);
+    const groups = result.get(e.id) ?? new Map<GroupCode, number>();
+    groups.set(g, (groups.get(g) ?? 0) + n);
+    result.set(e.id, groups);
+  };
   for (const p of uniqueInvoices(d.payments, (r) => r.employeeId)) {
     if (p.date < from || p.date > to) continue;
     const e = byId.get(p.employeeId);
-    if (!e || !countsInRating(e, p.date, d.absences)) continue;
-    const g = groupOn(e, p.date);
-    const groups = result.get(e.id) ?? new Map<GroupCode, number>();
-    groups.set(g, (groups.get(g) ?? 0) + 1);
-    result.set(e.id, groups);
+    if (e && countsInRating(e, p.date, d.absences)) add(e, p.date, 1);
+  }
+  for (const c of d.paymentCorrections ?? []) {
+    if (c.date < from || c.date > to) continue;
+    const e = byId.get(c.employeeId);
+    if (e && countsInRating(e, c.date, d.absences)) add(e, c.date, c.delta);
+  }
+  for (const groups of result.values()) {
+    for (const [g, n] of groups) if (n < 0) groups.set(g, 0);
   }
   return result;
 }

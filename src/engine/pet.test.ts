@@ -309,3 +309,26 @@ describe('оплаты в день надгробия', () => {
     expect(simulate(withSat, '2026-11-16', cfg)).toMatchObject({ alive: true, generation: 1, totalPayments: 1, phase: 'egg1' });
   });
 });
+
+describe('noPayDays: рабочие дни подряд без оплат (счёт болезни)', () => {
+  const f = facts({ paymentsByDay: { '2026-11-02': 6 } });
+  const noPay = (g: GroupFacts, asOf: DateStr) => simulate(g, asOf, cfg).noPayDays;
+
+  test('текущий день ещё не завершён и не считается; завершённые рабочие дни без оплат — да', () => {
+    expect(noPay(f, '2026-11-02')).toBe(0);
+    expect(noPay(f, '2026-11-03')).toBe(0);
+    expect(noPay(f, '2026-11-05')).toBe(1); // 11-03 без оплат (11-04 — праздник)
+    expect(noPay(f, '2026-11-06')).toBe(2);
+    expect(simulate(f, '2026-11-06', cfg).mood).toBe('sick'); // тот же счёт ведёт к болезни
+  });
+  test('оплата сегодня обнуляет серию, выходной без оплат её не удлиняет', () => {
+    expect(noPay(facts({ paymentsByDay: { '2026-11-02': 6, '2026-11-06': 1 } }), '2026-11-06')).toBe(0);
+    expect(noPay(f, '2026-11-07')).toBe(3); // 11-03, 11-05, 11-06
+    expect(noPay(f, '2026-11-08')).toBe(3);
+    expect(noPay(facts({ paymentsByDay: { '2026-11-02': 6, '2026-11-07': 1 } }), '2026-11-07')).toBe(0);
+  });
+  test('аптечка обнуляет серию', () => {
+    const o = [ov('2026-11-06', 'medkits'), ov('2026-11-06', 'useMedkit')];
+    expect(noPay({ ...f, overrides: o }, '2026-11-06')).toBe(0);
+  });
+});

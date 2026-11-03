@@ -13,6 +13,17 @@ export interface SnapshotOverride {
   delta: number;
 }
 
+/** Ручная правка факта сотрудника за день: к строке воронки или к оплатам. `base` — значение «из файла», которое админ видел. */
+export interface SnapshotCorrection {
+  id: number;
+  date: DateStr;
+  employeeId: string;
+  kind: 'quality' | 'long' | 'payments';
+  /** целая прибавка (может быть < 0) */
+  delta: number;
+  base: number;
+}
+
 /**
  * Настройки, которые админ меняет через `setConfig`; чего нет — берётся из `defaultConfig`. Даты игры не правятся,
  * выходные (`nonWorking`) хранит сервер на всю игру и меняет только `setNonWorking`: `setConfig` их не принимает.
@@ -50,6 +61,8 @@ export interface Snapshot {
   provisional: { date: DateStr; group: GroupCode; count: number }[];
   funnel: FunnelDay[];
   overrides: SnapshotOverride[];
+  /** Правки фактов; у бэкенда без этой возможности поля нет — тогда правок нет (читать через `effectiveFacts`). */
+  corrections?: SnapshotCorrection[];
 }
 
 /** Ответ на `get(since)` при той же версии: данных нет, но есть «сейчас» сервера (у старого бэкенда его может не быть). */

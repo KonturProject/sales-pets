@@ -8,7 +8,7 @@ import { dayLine, freshLine, groupFunnel, partyBanner, paymentGains, tickerItems
 
 const state = (o: Partial<PetState> = {}): PetState => ({
   alive: true, generation: 0, totalPayments: 0, phase: 'egg0', stage: 0, planPercent: null,
-  medkits: 0, toys: 0, piles: 0, mood: 'ok', satiety: 0, ...o,
+  medkits: 0, toys: 0, piles: 0, mood: 'ok', satiety: 0, noPayDays: 0, ...o,
 });
 
 describe('tickerItems: цифры табло комнаты', () => {

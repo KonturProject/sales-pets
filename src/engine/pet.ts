@@ -39,6 +39,8 @@ export interface PetState {
   mood: Mood;
   /** 0..1: оплаты сегодня к дневной норме */
   satiety: number;
+  /** рабочих дней подряд без оплат на asOf: тот же счёт ведёт к болезни, аптечка его обнуляет */
+  noPayDays: number;
 }
 
 export const HATCH_AT = 5;
@@ -182,6 +184,7 @@ export function simulate(facts: GroupFacts, asOf: DateStr, cfg: Config, cfgOn: (
   return {
     alive, generation, totalPayments: total, phase, stage, planPercent, medkits, toys, piles, mood,
     satiety: Math.min(1, (todayP * 100) / dayCents),
+    noPayDays: sickStreak,
   };
 }
 

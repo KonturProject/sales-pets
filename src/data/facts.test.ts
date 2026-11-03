@@ -2,8 +2,10 @@ import { describe, expect, test } from 'vitest';
 import { defaultConfig } from '@/engine/config';
 import type { Absence, Employee } from '@/engine/staff';
 import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
-import type { Snapshot, SnapshotOverride } from './api';
-import { buildFacts, normalizeName } from './facts';
+import { groupRanking } from '@/engine/ranking';
+import { groupFunnel } from '@/game/tv/metrics';
+import type { Snapshot, SnapshotCorrection, SnapshotOverride } from './api';
+import { buildFacts, effectiveFacts, normalizeName } from './facts';
 
 const emp = (id: string, name: string, group: GroupCode = 'СР1', extra: Partial<Employee> = {}): Employee => ({
   id, name, shortName: name, group, hireDate: null, fireDate: null, baseLevel: 'experienced',
@@ -324,5 +326,179 @@ describe('buildFacts', () => {
     expect(rank.staff).toBe(s.staff);
     expect(rank.absences).toBe(s.absences);
     expect(rank.cfg).toBe(defaultConfig);
+  });
+});
+
+describe('ручные правки фактов (corrections)', () => {
+  const corr = (id: number, date: DateStr, employeeId: string, kind: SnapshotCorrection['kind'], delta: number, base = 0): SnapshotCorrection => ({
+    id, date, employeeId, kind, delta, base,
+  });
+  const ivanov = emp('e1', 'Тест Иванов');
+  // норма группы: 1 качественный и 10 длинных (один опытный)
+  const strict = { norms: { experienced: { quality: 1, long: 10 } } };
+  const longDay = (long: number, extra: Partial<Snapshot> = {}) =>
+    snap({
+      staff: [ivanov], config: strict, funnelThrough: '2026-11-02',
+      funnel: [{ employeeId: 'e1', date: '2026-11-02', quality: 1, long }], ...extra,
+    });
+
+  test('снимок без поля corrections или с пустым списком считается одинаково', () => {
+    const s = withStock();
+    expect(s.corrections).toBeUndefined();
+    expect(buildFacts({ ...s, corrections: [] }, '2026-11-12').states).toEqual(buildFacts(s, '2026-11-12').states);
+    expect(effectiveFacts({ ...s, corrections: [] }).funnel).toEqual(effectiveFacts(s).funnel);
+  });
+
+  test('длинные +1 при факте 9 и норме 10: кучки нет, аптечка — на следующий рабочий день', () => {
+    expect(buildFacts(longDay(9), '2026-11-03').states.СР1).toMatchObject({ piles: 1, medkits: 0 });
+    const fixed = longDay(9, { corrections: [corr(1, '2026-11-02', 'e1', 'long', 1, 9)] });
+    expect(buildFacts(fixed, '2026-11-03').states.СР1).toMatchObject({ piles: 0, medkits: 1 });
+    expect(buildFacts(fixed, '2026-11-02').states.СР1.medkits).toBe(0); // награда за день приходит со следующего
+  });
+
+  test('длинные −5 при факте 2: факт сотрудника 0, а не −3', () => {
+    // норма на каждого: 2 длинных (группа 4); у e2 факт 6. Без отсечения −3 + 6 = 3 < 4, с отсечением 0 + 6 ≥ 4
+    const staff = [ivanov, emp('e2', 'Тест Петров')];
+    const s = snap({
+      staff, config: { norms: { experienced: { quality: 1, long: 2 } } }, funnelThrough: '2026-11-02',
+      funnel: [
+        { employeeId: 'e1', date: '2026-11-02', quality: 1, long: 2 },
+        { employeeId: 'e2', date: '2026-11-02', quality: 1, long: 6 },
+      ],
+      corrections: [corr(1, '2026-11-02', 'e1', 'long', -5, 2)],
+    });
+    const { states, rank } = buildFacts(s, '2026-11-03');
+    expect(rank.funnel.find((r) => r.employeeId === 'e1')).toMatchObject({ long: 0 });
+    expect(states.СР1).toMatchObject({ piles: 0, medkits: 1 });
+  });
+
+  test('правка за день после funnelThrough не действует, пока воронка не загружена до этого дня', () => {
+    const rows = [
+      { employeeId: 'e1', date: '2026-11-02', quality: 1, long: 9 },
+      { employeeId: 'e1', date: '2026-11-03', quality: 1, long: 10 },
+    ];
+    const of = (through: DateStr, corrections: SnapshotCorrection[]) =>
+      snap({ staff: [ivanov], config: strict, funnelThrough: through, funnel: rows, corrections });
+    const fix = [corr(1, '2026-11-03', 'e1', 'long', -10, 10)];
+    // воронка по 02.11: правка 03.11 ждёт загрузки, состояние и рейтинг те же, что без неё
+    expect(buildFacts(of('2026-11-02', fix), '2026-11-05').states).toEqual(buildFacts(of('2026-11-02', []), '2026-11-05').states);
+    expect(buildFacts(of('2026-11-02', fix), '2026-11-05').rank.funnel.map((r) => r.date)).toEqual(['2026-11-02']);
+    // воронка дошла до 03.11: 10 − 10 = 0 длинных, день не выполнен (без правки был выполнен)
+    expect(buildFacts(of('2026-11-03', []), '2026-11-05').states.СР1).toMatchObject({ piles: 0, medkits: 1 });
+    expect(buildFacts(of('2026-11-03', fix), '2026-11-05').states.СР1).toMatchObject({ piles: 2, medkits: 0 });
+  });
+
+  test('правка воронки на пару без строки файла создаёт строку: файл считается нулём', () => {
+    const s = snap({
+      staff: [ivanov], funnelThrough: '2026-11-03',
+      corrections: [corr(1, '2026-11-03', 'e1', 'quality', 4), corr(2, '2026-11-03', 'e1', 'long', -2)],
+    });
+    expect(effectiveFacts(s).funnel).toEqual([{ employeeId: 'e1', date: '2026-11-03', quality: 4, long: 0 }]);
+    expect(effectiveFacts(s).fileFunnel.size).toBe(0);
+  });
+
+  test('правка оплат сотруднику, переведённому с даты, идёт новой группе, а не прежней', () => {
+    const moved = emp('e1', 'Тест Иванов', 'СР1', { transfers: [{ date: '2026-11-05', group: 'СР2' }] });
+    const s = snap({ staff: [moved], corrections: [corr(1, '2026-11-05', 'e1', 'payments', 2), corr(2, '2026-11-03', 'e1', 'payments', 1)] });
+    const { states } = buildFacts(s, '2026-11-05');
+    expect(states.СР2.totalPayments).toBe(2); // в день перевода — уже СР2
+    expect(states.СР1.totalPayments).toBe(1); // до перевода — СР1
+  });
+
+  test('оплаты-правки влияют как обычные: вылупление', () => {
+    const payments = Array.from({ length: 3 }, (_, i) => pay('2026-11-03', 'СР1', 'Тест Иванов', `A-${i}`));
+    const s = snap({ staff: [ivanov], payments, corrections: [corr(1, '2026-11-03', 'e1', 'payments', 2, 3)] });
+    expect(buildFacts(snap({ staff: [ivanov], payments }), '2026-11-03').states.СР1.phase).toBe('egg2');
+    expect(buildFacts(s, '2026-11-03').states.СР1).toMatchObject({ phase: 'pet', totalPayments: 5 });
+  });
+
+  test('минус больше оплат группы за день: 0 оплат, не отрицательно; отсекается сумма правок дня', () => {
+    const payments = Array.from({ length: 3 }, (_, i) => pay('2026-11-03', 'СР1', 'Тест Иванов', `A-${i}`));
+    // 3 − 5 + 1 = −1 → 0 (отсечение после каждой правки дало бы 1)
+    const s = snap({ staff: [ivanov], payments, corrections: [corr(1, '2026-11-03', 'e1', 'payments', -5, 3), corr(2, '2026-11-03', 'e1', 'payments', 1, 3)] });
+    expect(effectiveFacts(s).paymentsByDay.СР1['2026-11-03']).toBe(0);
+    expect(buildFacts(s, '2026-11-03').states.СР1.totalPayments).toBe(0);
+    // день без оплат: минус остаётся нулём
+    const empty = snap({ staff: [ivanov], corrections: [corr(1, '2026-11-03', 'e1', 'payments', -1)] });
+    expect(effectiveFacts(empty).paymentsByDay.СР1['2026-11-03'] ?? 0).toBe(0);
+    expect(buildFacts(empty, '2026-11-03').states.СР1.totalPayments).toBe(0);
+  });
+
+  test('правка ложится и поверх предварительных чисел дня', () => {
+    const s = snap({
+      staff: [ivanov], provisional: [{ date: '2026-11-12', group: 'СР1', count: 3 }],
+      corrections: [corr(1, '2026-11-12', 'e1', 'payments', 2)],
+    });
+    expect(effectiveFacts(s).paymentsByDay.СР1['2026-11-12']).toBe(5);
+    expect(buildFacts(s, '2026-11-12').states.СР1.totalPayments).toBe(5);
+  });
+
+  test('правка неизвестного сотрудника игнорируется', () => {
+    const s = snap({ staff: [ivanov], corrections: [corr(1, '2026-11-03', 'ghost', 'payments', 4), corr(2, '2026-11-03', 'ghost', 'long', 4)] });
+    const ef = effectiveFacts(s);
+    expect(ef.funnel).toEqual([]);
+    expect(ef.paymentCorrections).toEqual([]);
+    expect(buildFacts(s, '2026-11-12').states.СР1.totalPayments).toBe(0);
+  });
+
+  test('rank.funnel и табло комнаты включают правки', () => {
+    const s = snap({
+      staff: [ivanov], funnelThrough: '2026-11-03',
+      funnel: [{ employeeId: 'e1', date: '2026-11-02', quality: 5, long: 3 }],
+      corrections: [corr(1, '2026-11-02', 'e1', 'long', 2, 3), corr(2, '2026-11-03', 'e1', 'quality', 4, 0)],
+    });
+    const { rank } = buildFacts(s, '2026-11-12');
+    expect(rank.funnel).toEqual([
+      { employeeId: 'e1', date: '2026-11-02', quality: 5, long: 5 },
+      { employeeId: 'e1', date: '2026-11-03', quality: 4, long: 0 },
+    ]);
+    expect(groupFunnel(rank, '2026-11-12').СР1).toEqual({ quality: 9, long: 5 });
+  });
+
+  test('rank получает правки оплат, и рейтинг их учитывает', () => {
+    const s = snap({ staff: [ivanov], payments: [pay('2026-11-03', 'СР1', 'Тест Иванов', 'A-1')], corrections: [corr(1, '2026-11-03', 'e1', 'payments', 2, 1)] });
+    const { rank } = buildFacts(s, '2026-11-12');
+    expect(rank.paymentCorrections).toEqual([{ employeeId: 'e1', date: '2026-11-03', delta: 2 }]);
+    expect(groupRanking('СР1', '2026-11-02', '2026-11-12', rank)[0].value).toBe(3);
+  });
+
+  describe('effectiveFacts: общая основа для расчёта и «Итогов»', () => {
+    const s = snap({
+      staff: [ivanov],
+      payments: [
+        pay('2026-11-03', 'СР1', 'Тест Иванов', 'A-1'),
+        pay('2026-11-03', 'СР1', 'Тест Иванов', 'A-2'),
+        pay('2026-11-03', 'СР2', 'Некто Чужой', 'B-1'),
+      ],
+      provisional: [{ date: '2026-11-12', group: 'СР1', count: 2 }],
+      funnel: [{ employeeId: 'e1', date: '2026-11-03', quality: 2, long: 1 }],
+      corrections: [corr(1, '2026-11-03', 'e1', 'payments', 3, 2), corr(2, '2026-11-03', 'e1', 'quality', 1, 2)],
+    });
+    test('значения «из файла» остаются файловыми, итоговые строки — с правками', () => {
+      const ef = effectiveFacts(s);
+      expect(ef.fileFunnel.get('e1|2026-11-03')).toEqual({ quality: 2, long: 1 });
+      expect(ef.funnel).toEqual([{ employeeId: 'e1', date: '2026-11-03', quality: 3, long: 1 }]);
+      expect(ef.fileInvoices.get('e1|2026-11-03')).toBe(2);
+      expect(ef.unmatched.get('СР2|2026-11-03')).toBe(1);
+      expect(ef.unmatched.has('СР1|2026-11-03')).toBe(false);
+    });
+
+    test('оплаты группы по дням: файл, предварительные числа и правки', () => {
+      const ef = effectiveFacts(s);
+      expect(ef.paymentsByDay.СР1['2026-11-03']).toBe(5);
+      expect(ef.paymentsByDay.СР1['2026-11-12']).toBe(2);
+      expect(ef.paymentsByDay.СР2['2026-11-03']).toBe(1);
+      expect(ef.rankPayments).toEqual([
+        { employeeId: 'e1', date: '2026-11-03', invoice: 'A-1' },
+        { employeeId: 'e1', date: '2026-11-03', invoice: 'A-2' },
+      ]);
+      expect(ef.paymentCorrections).toEqual([{ employeeId: 'e1', date: '2026-11-03', delta: 3 }]);
+    });
+
+    test('на объект снимка считается один раз', () => {
+      const ef = effectiveFacts(s);
+      expect(effectiveFacts(s)).toBe(ef);
+      expect(effectiveFacts({ ...s })).not.toBe(ef);
+    });
   });
 });

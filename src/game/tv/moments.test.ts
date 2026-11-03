@@ -6,7 +6,7 @@ import { careRooms, growthMoments, MAX_MOMENTS } from './moments';
 
 const pet = (o: Partial<PetState> = {}): PetState => ({
   alive: true, generation: 1, totalPayments: 0, phase: 'egg0', stage: 0, planPercent: null,
-  medkits: 0, toys: 0, piles: 0, mood: 'ok', satiety: 0, ...o,
+  medkits: 0, toys: 0, piles: 0, mood: 'ok', satiety: 0, noPayDays: 0, ...o,
 });
 const all = (o: Partial<Record<GroupCode, Partial<PetState>>> = {}) =>
   Object.fromEntries(GROUPS.map((g) => [g, pet(o[g])])) as Record<GroupCode, PetState>;
