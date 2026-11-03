@@ -1,16 +1,17 @@
-import { createCorrectionSaver, wasRejected } from './correctionSaver';
+import { createCorrectionSaver, wasRejected, type PendingHolder } from './correctionSaver';
 import type { CorrectionItem } from './results';
 
 export const BUSY_TEXT = 'Идёт запись…';
 export const STALE_TEXT = 'Данные не обновились после записи — нажмите «Обновить»';
-export const INTERRUPTED_TEXT = 'Связь прерывалась: данные перечитаны. Проверьте значение и поправьте ещё раз, если нужно.';
+export const INTERRUPTED_TEXT = 'Связь прерывалась: прошлая правка проверена, данные перечитаны. Проверьте значение и поправьте ещё раз, если нужно.';
 
 /** Запись не начата по понятной человеку причине: `message` показывается как есть. */
 export class WriteRefused extends Error {}
 
 /**
- * `result`: `saved` — правка записана; `changed` — после обрыва связи значения другие, запрос не отправлен, данные
- * перечитаны. `refreshError` — сбой чтения свежего снимка после этого (сама запись при этом не провалена).
+ * `result`: `saved` — правка записана; `changed` — прошлый запрос остался без ответа, а значения теперь другие:
+ * повторён только он, новые не отправлены, данные перечитаны. `refreshError` — сбой чтения свежего снимка после этого
+ * (сама запись при этом не провалена).
  */
 export interface WriteDone {
   result: 'saved' | 'changed';
@@ -18,15 +19,30 @@ export interface WriteDone {
 }
 
 /**
- * Порядок записей вкладки «Итоги», без DOM. Одна запись за раз: пока идёт правка или отмена, вторая отклоняется
- * (`WriteRefused`), а `setBusy(true)` блокирует всю вкладку. После записи снимок читается заново; из нескольких
- * чтений рисуется только самое новое. Правка после обрыва связи: те же значения — тот же `ref` (сервер узнает
- * повтор), другие — запрос не уходит, потому что первая запись могла дойти, а разница считалась от старых данных.
+ * `checked`: был неотвеченный запрос, и повтор получил ответ. `error`: повтор или чтение не удались (иначе null).
+ */
+export interface ReloadDone {
+  checked: boolean;
+  error: unknown;
+}
+
+/**
+ * Порядок записей вкладки «Итоги», без DOM. Одна запись за раз (и чтения тоже): пока идёт правка, отмена или
+ * «Обновить», остальное отклоняется (`WriteRefused`), а `setBusy(true)` блокирует всю вкладку. Снимок читается заново
+ * после каждой записи.
+ *
+ * Запрос `addCorrections` без ответа (обрыв, таймаут) мог дойти или ещё дописываться на сервере. Исход узнаётся только
+ * повтором того же запроса, слово в слово (те же правки, тот же `ref`): сервер запишет, если не писал, или ответит «уже
+ * есть», а запись идёт под замком, так что повтор дождётся незаконченной. Перечитать данные мало: чтение замка не берёт
+ * и недописанного не видит. Поэтому те же значения — это и есть повтор; другие значения сначала повторяют прошлый
+ * запрос и уходят в `changed` (новые не отправляются: считались от старых данных); «Обновить» и новая вкладка тоже
+ * сперва повторяют. Не получил повтор ответа — запрос остаётся ожидать, вкладка «устарела», новых записей нет.
+ * Ожидание лежит в `pending` вне вкладки, чтобы пережить смену вкладки админки.
  *
  * Пока запись не видна в свежем снимке, вкладка «устарела» (`setStale(true)`): правки и отмены отклоняются, ничего не
  * отправляя, потому что любое новое число считалось бы от таблицы, которая врёт. Так после записи, после отмены и
- * после «changed», если перечитать не удалось. Снимает это только удачное чтение («Обновить» — `reload`): оно же
- * забывает ожидание ответа на потерянный запрос (`forget`).
+ * после «changed», если перечитать не удалось, и сразу в новой вкладке, если от прошлой остался неотвеченный запрос.
+ * Снимает это только `reload` («Обновить»): повтор, если он нужен, затем чтение.
  */
 export function createResultsFlow<S>(deps: {
   send: (items: CorrectionItem[], ref: string) => Promise<unknown>;
@@ -35,32 +51,31 @@ export function createResultsFlow<S>(deps: {
   apply: (snapshot: S) => void;
   setBusy: (busy: boolean) => void;
   setStale: (stale: boolean) => void;
+  pending?: PendingHolder;
   newRef?: () => string;
 }) {
-  const saver = createCorrectionSaver({ send: deps.send, newRef: deps.newRef });
+  const saver = createCorrectionSaver({ send: deps.send, newRef: deps.newRef, pending: deps.pending });
   let busy = false;
   let stale = false;
-  let latest = 0;
 
   const setStale = (value: boolean): void => {
     if (stale === value) return;
     stale = value;
     deps.setStale(value);
   };
+  // от прошлой вкладки остался запрос без ответа: писать нельзя, пока его не повторят
+  if (saver.hasPending) setStale(true);
 
-  async function refresh(): Promise<void> {
-    const mine = ++latest;
-    const snapshot = await deps.load();
-    if (mine !== latest) return;
-    deps.apply(snapshot);
-    // свежие данные прочитаны и нарисованы: писать снова можно, а ожидание ответа на потерянный запрос уже не нужно —
-    // иначе следующее другое значение получило бы лишний «changed» после перечитывания, которое уже всё показало
-    saver.forget();
+  /** Чтение под замком вкладки, поэтому два чтения не обгоняют друг друга. Сбой чтения не провал сделанной записи. */
+  async function refreshQuietly(): Promise<unknown> {
+    try {
+      deps.apply(await deps.load());
+    } catch (e) {
+      return e;
+    }
     setStale(false);
+    return null;
   }
-
-  /** Сбой чтения не должен выдавать уже сделанную запись за неудачную. */
-  const refreshQuietly = (): Promise<unknown> => refresh().then(() => null, (e: unknown) => e);
 
   /** После записи: перечитать снимок; не вышло — вкладка устарела, пока чтение не удастся. */
   async function settle(): Promise<unknown> {
@@ -84,16 +99,36 @@ export function createResultsFlow<S>(deps: {
   }
 
   return {
-    refresh,
     get busy(): boolean {
       return busy;
     },
-    /** «Обновить»: прочитать снимок заново. Возвращает ошибку чтения или null; если вкладка устарела, чтение её «чинит». */
-    reload: (): Promise<unknown> => exclusive(refreshQuietly, false),
+    get stale(): boolean {
+      return stale;
+    },
+    /** «Обновить» и открытие вкладки: повторить неотвеченный запрос (если он есть), затем прочитать снимок заново. */
+    reload: (): Promise<ReloadDone> =>
+      exclusive(async () => {
+        let checked: boolean;
+        try {
+          checked = await saver.resolve();
+        } catch (error) {
+          setStale(true); // повтор снова без ответа: запрос остаётся ожидать, вкладка закрыта
+          return { checked: false, error };
+        }
+        return { checked, error: await settle() };
+      }, false),
     /** Ошибку запроса пробрасывает; после неё снимок не читается (потерянный ответ берёт под охрану `saver`). */
     correct: (items: CorrectionItem[]): Promise<WriteDone> =>
       exclusive(async () => {
-        const result = await saver.save(items);
+        const other = saver.differs(items);
+        let result: Awaited<ReturnType<typeof saver.save>>;
+        try {
+          result = await saver.save(items);
+        } catch (e) {
+          // повтор прошлого запроса не получил ответа: его исход неизвестен, новых записей нет, пока он не пройдёт
+          if (other) setStale(true);
+          throw e;
+        }
         if (result === 'busy') throw new WriteRefused(BUSY_TEXT);
         return { result, refreshError: await settle() };
       }),

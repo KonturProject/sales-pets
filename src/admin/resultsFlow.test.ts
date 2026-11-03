@@ -1,5 +1,6 @@
 import { describe, expect, test, vi, type Mock } from 'vitest';
 import { ApiError } from '@/data/api';
+import type { PendingHolder } from './correctionSaver';
 import type { CorrectionItem } from './results';
 import { BUSY_TEXT, STALE_TEXT, WriteRefused, createResultsFlow } from './resultsFlow';
 
@@ -18,7 +19,7 @@ const hold = <T = void>() => {
 
 type Over = Partial<Record<'send' | 'remove' | 'load' | 'apply' | 'setBusy' | 'setStale', Mock>>;
 
-function setup(over: Over = {}) {
+function setup(over: Over = {}, pending?: PendingHolder) {
   let version = 0;
   const mocks = {
     send: over.send ?? vi.fn().mockResolvedValue({ ok: true }),
@@ -28,7 +29,7 @@ function setup(over: Over = {}) {
     setBusy: over.setBusy ?? vi.fn(),
     setStale: over.setStale ?? vi.fn(),
   };
-  return { flow: createResultsFlow<number>({ ...mocks, newRef: refs() }), ...mocks };
+  return { flow: createResultsFlow<number>({ ...mocks, newRef: refs(), pending }), ...mocks };
 }
 
 describe('createResultsFlow: запись и перечитывание', () => {
@@ -123,27 +124,26 @@ describe('createResultsFlow: обрыв связи', () => {
     expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-1']);
   });
 
-  test('другие значения после обрыва (+7 потерян, теперь 8): запрос не уходит, данные перечитываются', async () => {
+  test('другие значения после обрыва (+7 потерян, теперь 8): уходит повтор прошлого запроса, а не «8»; потом данные перечитываются', async () => {
     const { flow, send, load, apply } = setup({ send: lost() });
     await expect(flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
     expect(load).not.toHaveBeenCalled();
     expect(await flow.correct([item(8)])).toEqual({ result: 'changed', refreshError: null });
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls).toEqual([[[item(7)], 'ref-1'], [[item(7)], 'ref-1']]);
     expect(load).toHaveBeenCalledTimes(1);
     expect(apply).toHaveBeenCalledTimes(1);
     // дальше обычная запись: значение посчитано уже от перечитанных данных, ref новый
     expect(await flow.correct([item(1)])).toMatchObject({ result: 'saved' });
-    expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-2']);
+    expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-1', 'ref-2']);
   });
 
-  test('после отмены и успешного перечитывания ожидание ответа забыто: другое значение уходит сразу, а не «changed»', async () => {
-    // зачем forget(): данные уже перечитаны и показывают, что с потерянной правкой, — повторное «changed» было бы лишним
+  test('перечитывание само ничего не доказывает: после отмены ожидание остаётся, другое значение сначала повторяет прошлый запрос', async () => {
     const { flow, send, load } = setup({ send: lost() });
     await expect(flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
     await flow.remove(5);
     expect(load).toHaveBeenCalledTimes(1);
-    expect(await flow.correct([item(8)])).toMatchObject({ result: 'saved' });
-    expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-2']);
+    expect(await flow.correct([item(8)])).toMatchObject({ result: 'changed' });
+    expect(send.mock.calls).toEqual([[[item(7)], 'ref-1'], [[item(7)], 'ref-1']]);
   });
 
   test('«changed» и сбой чтения снимка: результат сохранён, ошибка чтения отдельно', async () => {
@@ -151,20 +151,6 @@ describe('createResultsFlow: обрыв связи', () => {
     const { flow } = setup({ send: lost(), load: vi.fn().mockRejectedValue(boom) });
     await expect(flow.correct([item(7)])).rejects.toBeInstanceOf(ApiError);
     expect(await flow.correct([item(8)])).toEqual({ result: 'changed', refreshError: boom });
-  });
-});
-
-describe('createResultsFlow: порядок снимков', () => {
-  test('старый снимок не рисуется поверх нового, даже если пришёл позже', async () => {
-    const slow = hold<number>();
-    const loads = [slow.promise, Promise.resolve(2)];
-    const { flow, apply } = setup({ load: vi.fn(() => loads.shift()!) });
-    const older = flow.refresh();
-    const newer = flow.refresh();
-    await newer;
-    slow.resolve(1);
-    await older;
-    expect(apply.mock.calls).toEqual([[2]]);
   });
 });
 
@@ -188,11 +174,11 @@ describe('createResultsFlow: пока снимок после записи не 
     expect(send).toHaveBeenCalledTimes(1);
     expect(remove).not.toHaveBeenCalled();
     // «Обновить» не удалось — по-прежнему закрыто
-    expect(await flow.reload()).toBeInstanceOf(ApiError);
+    expect((await flow.reload()).error).toBeInstanceOf(ApiError);
     await expect(flow.correct([item(1)])).rejects.toThrow(STALE_TEXT);
     expect(setStale.mock.calls).toEqual([[true]]);
     state.fail = false;
-    expect(await flow.reload()).toBeNull();
+    expect(await flow.reload()).toEqual({ checked: false, error: null });
     expect(apply).toHaveBeenCalledWith(2);
     expect(setStale.mock.calls).toEqual([[true], [false]]);
     expect(await flow.correct([item(1)])).toMatchObject({ result: 'saved' });
@@ -208,14 +194,14 @@ describe('createResultsFlow: пока снимок после записи не 
     expect(setStale.mock.calls).toEqual([[true]]);
     await expect(flow.correct([item(8)])).rejects.toThrow(STALE_TEXT); // иначе уйдёт +8 от устаревшего значения
     await expect(flow.correct([item(7)])).rejects.toThrow(STALE_TEXT);
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(2); // потерянный запрос и его повтор; «8» не уходило
     state.fail = false;
-    expect(await flow.reload()).toBeNull();
+    expect(await flow.reload()).toEqual({ checked: false, error: null });
     expect(await flow.correct([item(8)])).toMatchObject({ result: 'saved' });
-    expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-2']);
+    expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-1', 'ref-2']);
   });
 
-  test('отмена прошла, снимок не прочитан: ничего не уходит; ожидание ответа на прошлую правку снимается лишь после чтения', async () => {
+  test('отмена прошла, снимок не прочитан: ничего не уходит; потерянную запись «Обновить» проверяет повтором, а потом читает', async () => {
     const state = { fail: false };
     const { flow, send, remove } = setup({ send: lostFirst(), load: flaky(state) });
     await expect(flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
@@ -227,10 +213,11 @@ describe('createResultsFlow: пока снимок после записи не 
     expect(send).toHaveBeenCalledTimes(1);
     expect(remove).toHaveBeenCalledTimes(1);
     state.fail = false;
-    expect(await flow.reload()).toBeNull();
-    // ожидание снято только теперь: другое значение уходит сразу, с новым ref
+    expect(await flow.reload()).toEqual({ checked: true, error: null });
+    expect(send.mock.calls[1]).toEqual([[item(7)], 'ref-1']); // повтор слово в слово
+    // ожидание снято только повтором: другое значение уходит с новым ref
     expect(await flow.correct([item(8)])).toMatchObject({ result: 'saved' });
-    expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-2']);
+    expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-1', 'ref-2']);
   });
 
   test('отмена без ответа: данные перечитываются, а не вышло — вкладка «устарела»', async () => {
@@ -267,9 +254,130 @@ describe('createResultsFlow: пока снимок после записи не 
 
   test('«Обновить» без «устаревания»: просто читает и рисует под замком вкладки', async () => {
     const { flow, setBusy, setStale, apply } = setup();
-    expect(await flow.reload()).toBeNull();
+    expect(await flow.reload()).toEqual({ checked: false, error: null });
     expect(apply).toHaveBeenCalledWith(1);
     expect(setBusy.mock.calls).toEqual([[true], [false]]);
     expect(setStale).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Сервер, как Apps Script: запись идёт под замком, повтор с тем же `ref` ничего не пишет, а чтение (doGet) замка не
+ * берёт и недописанного не видит. Первый запрос клиент «не дождался» (таймаут 30 с, холодный старт до 35 с): сервер
+ * его ещё пишет и допишет, когда до замка дойдёт следующий запрос.
+ */
+function fakeServer() {
+  const rows: Array<{ ref: string; delta: number }> = [];
+  let writing: { items: CorrectionItem[]; ref: string } | null = null;
+  const write = (items: CorrectionItem[], ref: string) => {
+    if (!rows.some((r) => r.ref === ref)) for (const it of items) rows.push({ ref, delta: it.delta });
+  };
+  const server = {
+    down: false,
+    lateFirst: true,
+    sent: [] as Array<{ items: CorrectionItem[]; ref: string }>,
+    total: () => rows.reduce((sum, r) => sum + r.delta, 0),
+    send: async (items: CorrectionItem[], ref: string): Promise<unknown> => {
+      server.sent.push({ items, ref });
+      if (server.lateFirst) {
+        server.lateFirst = false;
+        writing = { items, ref };
+        throw new ApiError('network', 'Нет связи');
+      }
+      if (server.down) throw new ApiError('network', 'Нет связи');
+      if (writing) {
+        write(writing.items, writing.ref);
+        writing = null;
+      }
+      write(items, ref);
+      return { ok: true };
+    },
+    load: async (): Promise<number> => server.total(),
+  };
+  return server;
+}
+
+/** Вкладка «Итоги» поверх сервера; `seen` — последняя нарисованная сумма. */
+function openTab(server: ReturnType<typeof fakeServer>, pending: PendingHolder, newRef: () => string) {
+  const seen = { total: 0 };
+  const setStale = vi.fn();
+  const flow = createResultsFlow<number>({
+    send: server.send,
+    remove: vi.fn().mockResolvedValue({ ok: true }),
+    load: server.load,
+    apply: (total) => { seen.total = total; },
+    setBusy: vi.fn(),
+    setStale,
+    newRef,
+    pending,
+  });
+  return { flow, seen, setStale };
+}
+
+describe('createResultsFlow: потерянная запись проверяется повтором с тем же ключом, а не перечитыванием', () => {
+  test('+7 клиент не дождался, сервер ещё пишет; админ вводит 8: на сервере в итоге 8, а не 15', async () => {
+    const server = fakeServer();
+    const { flow, seen } = openTab(server, { current: null }, refs());
+    await expect(flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
+    expect(server.total()).toBe(0); // сервер ещё не дописал
+    // «8» админ посчитал от устаревших данных
+    expect(await flow.correct([item(8)])).toEqual({ result: 'changed', refreshError: null });
+    expect(seen.total).toBe(7); // повтор встал в очередь за той записью, и чтение видит её
+    // 8 от свежих данных — это +1
+    expect(await flow.correct([item(8 - seen.total)])).toMatchObject({ result: 'saved' });
+    expect(server.total()).toBe(8);
+  });
+
+  test('повтор не дошёл: новая запись не уходит, вкладка закрыта; «Обновить» повторяет запрос, пока он не пройдёт', async () => {
+    const server = fakeServer();
+    const { flow, seen, setStale } = openTab(server, { current: null }, refs());
+    await expect(flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
+    server.down = true;
+    await expect(flow.correct([item(8)])).rejects.toMatchObject({ code: 'network' });
+    expect(setStale.mock.calls).toEqual([[true]]);
+    await expect(flow.correct([item(8)])).rejects.toThrow(STALE_TEXT);
+    await expect(flow.correct([item(7)])).rejects.toThrow(STALE_TEXT);
+    await expect(flow.remove(5)).rejects.toThrow(STALE_TEXT);
+    expect(server.sent).toHaveLength(2); // потерянный запрос и один повтор; новое не уходило
+    expect((await flow.reload()).error).toMatchObject({ code: 'network' });
+    expect(server.sent).toHaveLength(3);
+    expect(server.sent[2]).toEqual({ items: [item(7)], ref: 'ref-1' });
+    server.down = false;
+    expect(await flow.reload()).toEqual({ checked: true, error: null });
+    expect(server.sent[3]).toEqual({ items: [item(7)], ref: 'ref-1' });
+    expect(seen.total).toBe(7);
+    expect(setStale.mock.calls).toEqual([[true], [false]]);
+    expect(await flow.correct([item(1)])).toMatchObject({ result: 'saved' });
+    expect(server.total()).toBe(8);
+  });
+
+  test('смена вкладки админки: новая вкладка начинает «устаревшей» и повторяет запрос прежде любой записи', async () => {
+    const server = fakeServer();
+    const pending: PendingHolder = { current: null };
+    const newRef = refs();
+    const first = openTab(server, pending, newRef);
+    await expect(first.flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
+    const second = openTab(server, pending, newRef); // вкладку закрыли и открыли снова
+    expect(second.flow.stale).toBe(true);
+    expect(second.setStale.mock.calls).toEqual([[true]]);
+    await expect(second.flow.correct([item(1)])).rejects.toThrow(STALE_TEXT);
+    await expect(second.flow.remove(5)).rejects.toThrow(STALE_TEXT);
+    expect(server.sent).toHaveLength(1);
+    expect(await second.flow.reload()).toEqual({ checked: true, error: null });
+    expect(server.sent[1]).toEqual({ items: [item(7)], ref: 'ref-1' });
+    expect(second.seen.total).toBe(7);
+    expect(second.setStale.mock.calls).toEqual([[true], [false]]);
+    expect(await second.flow.correct([item(1)])).toMatchObject({ result: 'saved' });
+    expect(server.total()).toBe(8);
+  });
+
+  test('без неотвеченной записи новая вкладка не «устаревшая» и ничего не повторяет', async () => {
+    const server = fakeServer();
+    server.lateFirst = false;
+    const { flow, setStale } = openTab(server, { current: null }, refs());
+    expect(flow.stale).toBe(false);
+    expect(setStale).not.toHaveBeenCalled();
+    expect(await flow.reload()).toEqual({ checked: false, error: null });
+    expect(server.sent).toHaveLength(0);
   });
 });

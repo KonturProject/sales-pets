@@ -1,6 +1,7 @@
 import './admin.css';
 import { api } from '@/data/api';
 import { h, tabs, errorText, newVersionSlot } from './dom';
+import type { PendingHolder } from './correctionSaver';
 import type { AdminCtx } from './ctx';
 import { importTab } from './importTab';
 import { normsTab } from './normsTab';
@@ -38,7 +39,9 @@ const tracked: Session = {
 const lockNav: AdminCtx['lockNav'] = (locked) => {
   for (const b of root.querySelectorAll<HTMLButtonElement>('header button, [role="tablist"] button')) b.disabled = locked;
 };
-const ctx: AdminCtx = { session: tracked, snapshot, lockNav };
+/** Правка «Итогов», на которую не пришёл ответ: переживает смену вкладки админки (см. `PendingHolder`). */
+const pendingCorrection: PendingHolder = { current: null };
+const ctx: AdminCtx = { session: tracked, snapshot, lockNav, pendingCorrection };
 
 const updateSlot = newVersionSlot();
 

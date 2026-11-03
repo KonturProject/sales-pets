@@ -1183,7 +1183,8 @@ try {
     check((await serverCorrections()).length === 1, `повтор после обрыва задвоил правку: ${(await serverCorrections()).length}`);
     check(await admin.locator('[data-correction]').count() === 1, 'после повтора в списке не одна правка');
 
-    // обрыв, затем другое значение: запись могла дойти, поэтому ничего не отправляется — данные перечитываются
+    // обрыв, затем другое значение: запись могла дойти, поэтому уходит только повтор прошлого запроса слово в слово
+    // (не «4»), затем данные перечитываются
     await admin.click('[data-remove-correction]');
     await admin.waitForFunction(() => document.querySelectorAll('[data-correction]').length === 0);
     mode = 'lost';
@@ -1194,8 +1195,11 @@ try {
     await admin.fill('[data-edit="long"]', '4');
     await admin.click('[data-save="correction"]');
     const reread = await waitForText(admin, '[data-alert="results"]', 'Связь прерывалась');
-    check(reread.includes('Связь прерывалась: данные перечитаны. Проверьте значение и поправьте ещё раз, если нужно.'), `после обрыва и другого значения: «${reread}»`);
-    check(bodies.length === 1, `другое значение после обрыва ушло на сервер: запросов ${bodies.length}`);
+    check(reread.includes('Связь прерывалась: прошлая правка проверена, данные перечитаны. Проверьте значение и поправьте ещё раз, если нужно.'), `после обрыва и другого значения: «${reread}»`);
+    check(
+      bodies.length === 2 && bodies[1].ref === bodies[0].ref && JSON.stringify(bodies[1].items) === JSON.stringify(bodies[0].items) && bodies[1].items[0].delta === 3,
+      `после обрыва и другого значения ушёл не повтор прошлого запроса: ${JSON.stringify(bodies.map((b) => [b.ref, b.items.map((i) => i.delta)]))}`,
+    );
     check(await admin.locator('form[data-editor]').count() === 0, 'после обрыва и другого значения редактор остался открытым');
     const now = await serverCorrections();
     check(now.length === 1 && now[0].delta === 3, `на сервере после обрыва и другого значения: ${JSON.stringify(now)}`);
@@ -1207,6 +1211,7 @@ try {
   await scenario('итоги: если после записи данные не обновились, вкладка закрыта до «Обновить»', async ({ mock, newPage, check, urls }) => {
     const admin = await newPage();
     const writes = []; // записи, дошедшие до сервера: addCorrections / removeCorrection
+    const adds = []; // тела запросов addCorrections
     let mode = 'normal';
     let rereadFails = false;
     await admin.route(`${mock.url}**`, async (route) => {
@@ -1218,6 +1223,7 @@ try {
       }
       const body = JSON.parse(request.postData() ?? '{}');
       if (body.action === 'addCorrections' || body.action === 'removeCorrection') writes.push(body.action);
+      if (body.action === 'addCorrections') adds.push(body);
       if (body.action === 'addCorrections' && mode === 'lost') {
         mode = 'normal';
         await route.fetch();
@@ -1293,7 +1299,9 @@ try {
     rereadFails = true;
     await admin.fill('[data-edit="long"]', '4');
     await admin.click('[data-save="correction"]');
-    await closedAfterWrite('обрыв, другое значение, чтение не удалось', 3);
+    // уходит только повтор потерянного запроса (тот же ref и правки, не «4»), чтение после него не удалось
+    await closedAfterWrite('обрыв, другое значение, чтение не удалось', 4);
+    check(adds.length === 3 && adds[2].ref === adds[1].ref && JSON.stringify(adds[2].items) === JSON.stringify(adds[1].items), `вместо повтора ушло другое: ${JSON.stringify(adds.map((b) => [b.ref, b.items.map((i) => i.delta)]))}`);
     const lostOnServer = await serverCorrections();
     check(lostOnServer.length === 1 && lostOnServer[0].delta === 3, `на сервере после обрыва: ${JSON.stringify(lostOnServer)}`);
     rereadFails = false;
@@ -1304,6 +1312,98 @@ try {
     await waitForText(admin, `tr[data-employee-row="${idA}"]`, 'правки +4');
     const finalOnServer = (await serverCorrections()).map((c) => c.delta);
     check(finalOnServer.join() === '3,1', `после «Обновить» поправка шла от свежего значения: ${JSON.stringify(finalOnServer)}`);
+  });
+
+  await scenario('итоги: потерянная запись проверяется повтором с тем же ключом, а не перечитыванием', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    const adds = []; // тела запросов addCorrections, дошедших до страницы-перехватчика
+    let mode = 'normal';
+    let down = false;
+    const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    await admin.route(`${mock.url}**`, async (route) => {
+      const request = route.request();
+      if (request.method() !== 'POST') return route.continue();
+      const text = request.postData() ?? '{}';
+      const body = JSON.parse(text);
+      if (body.action !== 'addCorrections') return route.continue();
+      adds.push(body);
+      if (down) return route.fulfill({ status: 200, contentType: 'text/plain', body: 'timeout' });
+      if (mode === 'late') {
+        // клиент не дождался, а сервер ещё пишет (холодный старт Apps Script): запрос дойдёт позже
+        mode = 'normal';
+        setTimeout(() => { fetch(mock.url, { method: 'POST', body: text }).catch(() => {}); }, 2_500);
+        return route.fulfill({ status: 200, contentType: 'text/plain', body: 'timeout' });
+      }
+      if (mode === 'lost') {
+        // сервер запись принял, а ответ до страницы не дошёл
+        mode = 'normal';
+        await route.fetch();
+        return route.fulfill({ status: 200, contentType: 'text/plain', body: 'timeout' });
+      }
+      return route.continue();
+    });
+    await loginAdmin(admin, urls.admin);
+    const shown = await admin.waitForSelector('table.results', { timeout: 8_000 }).then(() => true, () => false);
+    check(shown, 'вкладка «Итоги»: нет таблицы');
+    if (!shown) return;
+    const g = 'СР6';
+    const serverDeltas = async () => ((await publicSnapshot(mock)).corrections ?? []).map((c) => c.delta);
+    await admin.click(`[data-group-toggle="${g}"]`);
+    const [idA, idB] = await admin.$$eval(`tbody[data-group="${g}"] tr[data-employee-row]`, (r) => r.map((x) => x.dataset.employeeRow));
+    const open = async (id, value) => {
+      await admin.click(`button[data-correct="${id}"]`);
+      await admin.fill('[data-edit="long"]', String(value));
+    };
+    const rowText = (id) => textOf(admin, `tr[data-employee-row="${id}"]`);
+    const same = (a, b) => a.ref === b.ref && JSON.stringify(a.items) === JSON.stringify(b.items);
+    const INTERRUPTED = 'Связь прерывалась: прошлая правка проверена, данные перечитаны. Проверьте значение и поправьте ещё раз, если нужно.';
+
+    // 1. +7 клиент не дождался, сервер допишет позже; админ сразу вводит 8: итог 8, а не 15
+    mode = 'late';
+    await open(idA, 7);
+    await admin.click('[data-save="correction"]');
+    check((await waitForText(admin, '[data-alert="correction"]', 'Нет связи')).includes('Нет связи'), 'обрыв не показан');
+    check((await serverDeltas()).length === 0, 'контроль: сервер не должен был успеть записать');
+    await admin.fill('[data-edit="long"]', '8');
+    await admin.click('[data-save="correction"]');
+    const checkedText = await waitForText(admin, '[data-alert="results"]', 'прошлая правка проверена');
+    check(checkedText.includes(INTERRUPTED), `после обрыва и другого значения: «${checkedText}»`);
+    check(adds.length === 2 && same(adds[0], adds[1]) && adds[1].items[0].delta === 7, `ушёл не повтор прошлого запроса: ${JSON.stringify(adds.map((b) => [b.ref, b.items.map((i) => i.delta)]))}`);
+    check((await rowText(idA)).includes('правки +7'), 'повтор не дождался записи: перечитывание не видит «правки +7»');
+    await pause(3_200); // «опоздавший» оригинал доходит до сервера и распознаётся как повтор
+    check(JSON.stringify(await serverDeltas()) === '[7]', `опоздавший запрос задвоил правку: ${JSON.stringify(await serverDeltas())}`);
+    await open(idA, 8);
+    await admin.click('[data-save="correction"]');
+    await waitForText(admin, `tr[data-employee-row="${idA}"]`, 'правки +8');
+    check(JSON.stringify(await serverDeltas()) === '[7,1]', `после ввода 8 на сервере ${JSON.stringify(await serverDeltas())} вместо [7,1]`);
+
+    // 2. ответ потерян, вкладку сменили, повтор на возврате не прошёл: запись закрыта до «Обновить»
+    mode = 'lost';
+    adds.length = 0;
+    await open(idB, 5);
+    await admin.click('[data-save="correction"]');
+    check((await waitForText(admin, '[data-alert="correction"]', 'Нет связи')).includes('Нет связи'), 'второй обрыв не показан');
+    down = true;
+    await admin.click('[role="tab"][data-tab="payments"]');
+    await admin.waitForSelector('[role="tabpanel"][data-tab="payments"]');
+    await admin.click('[role="tab"][data-tab="results"]');
+    const stale = await admin.waitForFunction(() => document.querySelector('[data-stale]') && !document.querySelector('[data-stale]').hidden, null, { timeout: 8_000 }).then(() => true, () => false);
+    check(stale, 'на возврате к «Итогам» нет сообщения «Данные не обновились…»');
+    check(adds.length === 2 && same(adds[0], adds[1]), `на возврате ушло не повторение потерянного запроса: ${JSON.stringify(adds.map((b) => [b.ref, b.items.map((i) => i.delta)]))}`);
+    check(await admin.$eval('table.results', (el) => el.closest('[inert]') !== null), 'повтор не прошёл, а таблица открыта для правок');
+    check(await admin.locator('form[data-editor]').count() === 0, 'повтор не прошёл, а редактор открыт');
+    down = false;
+    await admin.click('[data-refresh]');
+    await admin.waitForFunction(() => document.querySelector('[data-stale]')?.hidden === true, null, { timeout: 8_000 }).catch(() => {});
+    check((await textOf(admin, '[data-alert="results"]')).includes(INTERRUPTED), `после «Обновить» нет сообщения о проверенной правке: «${await textOf(admin, '[data-alert="results"]')}»`);
+    check(adds.length === 3 && same(adds[0], adds[2]), '«Обновить» не повторил потерянный запрос слово в слово');
+    check(JSON.stringify(await serverDeltas()) === '[7,1,5]', `после проверки на сервере ${JSON.stringify(await serverDeltas())} вместо [7,1,5]`);
+    await admin.click(`[data-group-toggle="${g}"]`);
+    check((await rowText(idB)).includes('правки +5'), 'после «Обновить» нет «правки +5»');
+    await open(idB, 6);
+    await admin.click('[data-save="correction"]');
+    await waitForText(admin, `tr[data-employee-row="${idB}"]`, 'правки +6');
+    check(JSON.stringify(await serverDeltas()) === '[7,1,5,1]', `после «Обновить» правка шла не от свежего значения: ${JSON.stringify(await serverDeltas())}`);
   });
 } finally {
   await browser.close();

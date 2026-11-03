@@ -13,7 +13,8 @@ import { renderResults } from './resultsView';
  * группы и выбранный день остаются. Пока идёт запись (правка или отмена), вся вкладка недоступна (`inert`), а вкладки
  * админки и «Выйти» отключены: ни второй редактор, ни раскрытие, ни смена дня, ни «Отменить» не мешают записи и не
  * теряют введённое. Если после записи свежие данные прочитать не удалось, таблица и список закрыты, пока «Обновить» не
- * получит их: правка, посчитанная от устаревшей таблицы, задвоила бы или исказила запись.
+ * получит их: правка, посчитанная от устаревшей таблицы, задвоила бы или исказила запись. Если от прошлого открытия
+ * вкладки остался запрос правки без ответа, вкладка открывается «устаревшей» и сразу повторяет его (см. `resultsFlow`).
  */
 export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
   let snapshot: Snapshot = await ctx.snapshot();
@@ -44,6 +45,7 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
       snapshot = fresh;
       paint();
     },
+    pending: ctx.pendingCorrection,
     setBusy: (busy) => {
       root.inert = busy;
       ctx.lockNav(busy);
@@ -65,7 +67,7 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
     if (done.refreshError) {
       alert.textContent = done.result === 'saved'
         ? `Правка сохранена, но обновить таблицу не удалось: ${errorText(done.refreshError)}.`
-        : `Связь прерывалась, данные перечитать не удалось: ${errorText(done.refreshError)}.`;
+        : `Связь прерывалась: прошлая правка проверена, но данные перечитать не удалось: ${errorText(done.refreshError)}.`;
     } else if (done.result === 'changed') alert.textContent = INTERRUPTED_TEXT;
     else status.textContent = 'Правка сохранена';
   }
@@ -82,16 +84,17 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
     }
   }
 
-  /** «Обновить»: перечитать данные, как после записи. Не вышло — вкладка остаётся закрытой. */
+  /** «Обновить» и открытие вкладки: проверить потерянную запись повтором, прочитать данные. Не вышло — вкладка закрыта. */
   async function reload(): Promise<void> {
     alert.textContent = '';
     status.textContent = '';
     try {
-      const error = await flow.reload();
-      if (error) {
-        alert.textContent = `Обновить не удалось: ${errorText(error)}`;
+      const done = await flow.reload();
+      if (done.error) {
+        alert.textContent = `Обновить не удалось: ${errorText(done.error)}`;
         refreshButton.focus(); // вкладка на время чтения была inert: фокус с кнопки ушёл
-      } else status.textContent = 'Данные обновлены';
+      } else if (done.checked) alert.textContent = INTERRUPTED_TEXT;
+      else status.textContent = 'Данные обновлены';
     } catch (e) {
       alert.textContent = e instanceof WriteRefused ? e.message : errorText(e);
     }
@@ -144,5 +147,6 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
     ),
     listBox,
   );
+  if (flow.stale) void reload(); // от прошлого открытия остался запрос без ответа
   return root;
 }
