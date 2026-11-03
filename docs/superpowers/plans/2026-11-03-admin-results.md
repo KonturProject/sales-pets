@@ -47,7 +47,7 @@
   - `addCorrections {pin, items: {date, employeeId, kind, delta, base}[], ref}` → `{ok, version, ids: number[]}`; повтор `ref` → `{ok, version (текущая), ids, duplicate: true}`.
   - `removeCorrection {pin, id}` → `{ok, version, removed: 1}` или `{ok, version (текущая), removed: 0}`.
   - GET: `corrections: {id: number, date, employeeId, kind, delta: number, base: number}[]`; `config.nonWorking` отдаётся как сохранён.
-  - Лист `Corrections`: `['id', 'date', 'employeeId', 'kind', 'delta', 'base', 'ref']`; `id` — max+1.
+  - Лист `Corrections`: `['id', 'date', 'employeeId', 'kind', 'delta', 'base', 'ref']`; `id` не повторяются: max(`Settings.correctionsLastId`, max в листе) + 1.
 
 - [ ] **Step 1: Тесты (падают).** В `backend.test.mjs` новые `describe`:
   - `'Дробные нормы'`: `setConfig {norms: {experienced: {long: 1.5, quality: 2.25}}}` → ok, в GET `config.norms.experienced.long === 1.5`; `long: 1.555` → `bad_request`; `long: 50.01` → `bad_request`.
