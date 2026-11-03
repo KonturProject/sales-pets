@@ -1245,7 +1245,7 @@ describe('Правки фактов', () => {
     expect(add(b, [item()], 'again2')).toEqual({ ok: false, error: 'bad_request' });
   });
 
-  test('removeCorrection удаляет запись (версия +1, остальные на месте); id следующей записи — максимум + 1', () => {
+  test('removeCorrection удаляет запись (версия +1, остальные на месте); id следующей записи — следующий неиспользованный', () => {
     const { b, item } = withIds();
     add(b, [item(), item({ kind: 'long' }), item({ kind: 'payments' })]);
     const v1 = b.get().version;
@@ -1256,7 +1256,25 @@ describe('Правки фактов', () => {
     expect(remove(b, 3).removed).toBe(1);
     expect(remove(b, 1).removed).toBe(1);
     expect(b.get().corrections).toEqual([]);
-    expect(add(b, [item()], 'ref-3').ids).toEqual([1]);
+    expect(add(b, [item()], 'ref-3').ids).toEqual([5]);
+  });
+
+  test('номер удалённой правки не выдаётся снова: запоздалое removeCorrection по нему новую запись не трогает', () => {
+    const { b, item } = withIds();
+    add(b, [item(), item({ kind: 'long' })], 'ref-1');
+    expect(remove(b, 2).removed).toBe(1);
+    const fresh = add(b, [item({ kind: 'payments', delta: 4 })], 'ref-2');
+    expect(fresh.ids).toEqual([3]);
+    const v = b.get().version;
+    expect(remove(b, 2)).toEqual({ ok: true, version: v, removed: 0 });
+    expect(b.get().corrections.map((c) => [c.id, c.kind])).toEqual([[1, 'quality'], [3, 'payments']]);
+    // счётчик хранится отдельно от листа: пустой лист номера тоже не обнуляет
+    expect(remove(b, 3).removed).toBe(1);
+    expect(remove(b, 1).removed).toBe(1);
+    expect(add(b, [item(), item()], 'ref-3').ids).toEqual([4, 5]);
+    // испорченный или потерянный счётчик не опускает номер ниже максимума в листе
+    b.sheet('Settings').rows.find((r) => r[0] === 'correctionsLastId')[1] = 'мусор';
+    expect(add(b, [item()], 'ref-4').ids).toEqual([6]);
   });
 
   test('removeCorrection повторно или по неизвестному id: ok, removed 0, версия та же', () => {

@@ -918,9 +918,11 @@ function addCorrectionsAction_(body) {
     };
   }
   if (rows.length + items.length > CORRECTIONS_MAX) fail_();
+  // Правки удаляются, поэтому номер не берётся из листа одним максимумом: последний выданный хранится в Settings
+  // (correctionsLastId) и номера не повторяются, иначе запоздалый removeCorrection снёс бы новую правку.
   let id = rows.reduce(function (max, r) {
     return Math.max(max, Number(r[0]) || 0);
-  }, 0);
+  }, Number(readSettings_().correctionsLastId) || 0);
   const ids = [];
   items.forEach(function (item) {
     id++;
@@ -928,7 +930,7 @@ function addCorrectionsAction_(body) {
     rows.push([String(id), item.date, item.employeeId, item.kind, String(item.delta), String(item.base), ref]);
   });
   writeRows_('Corrections', rows);
-  return { ok: true, version: bump_({}), ids: ids };
+  return { ok: true, version: bump_({ correctionsLastId: String(id) }), ids: ids };
 }
 
 function removeCorrectionAction_(body) {
