@@ -135,6 +135,8 @@ export function withFunnelImport(s: Snapshot, plan: FunnelPlan): Snapshot {
   const seen = new Set(s.staff.map((e) => normalizeName(e.name)));
   for (const p of plan.newStaff) {
     const name = p.name.trim().replace(/\s+/g, ' ');
+    // Расхождение с сервером намеренное: он переписал бы группу у того, кто уже в штате, и отклонил бы повтор ФИО в списке.
+    // planFunnelImport присылает только неизвестных и без повторов, так что здесь эта ветка недостижима.
     if (seen.has(normalizeName(name))) continue;
     seen.add(normalizeName(name));
     added.push({
@@ -147,7 +149,9 @@ export function withFunnelImport(s: Snapshot, plan: FunnelPlan): Snapshot {
   const merged = new Map(s.funnel.map((f) => [`${f.employeeId}|${f.date}`, f]));
   for (const r of plan.rows) {
     const employeeId = idByName.get(normalizeName(r.name));
-    if (employeeId === undefined || r.date > plan.through) continue; // сервер отклонил бы неизвестное ФИО и отбросил бы дни позже through
+    // Неизвестное ФИО сервер отклонил бы весь файл, зеркало строку пропускает: planFunnelImport кладёт каждого неизвестного
+    // в newStaff, поэтому у строк его плана имя всегда известно. Дни позже through сервер отбрасывает (ignored), зеркало тоже.
+    if (employeeId === undefined || r.date > plan.through) continue;
     merged.set(`${employeeId}|${r.date}`, { employeeId, date: r.date, quality: r.quality, long: r.long });
   }
   return { ...s, staff, funnel: [...merged.values()], funnelThrough: plan.through };

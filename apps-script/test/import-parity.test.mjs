@@ -78,6 +78,21 @@ describe('withFunnelImport совпадает с importFunnel и setStaff сер
     expect(byName(mirror)).toEqual(byName(b.get()));
     expect(mirror.funnelThrough).toBe('2026-11-06');
   });
+
+  test('строки позже through: сервер их отбрасывает, зеркало тоже', () => {
+    const b = seeded();
+    const before = b.get();
+    const rows = [
+      { name: 'Тест Альфов', date: '2026-11-10', quality: 4, long: 3 },
+      { name: 'Тест Бетов', date: '2026-11-11', quality: 6, long: 5 }, // позже through
+      { name: 'Тест Ёлкин', date: '2026-11-30', quality: 7, long: 7 }, // «хвост» месяца в файле
+    ];
+    const mirror = withFunnelImport(before, { through: '2026-11-10', rows, newStaff: [], outside: 0, dropped: 0, zeroThrough: false });
+    const reply = admin(b, { action: 'importFunnel', through: '2026-11-10', rows });
+    expect(reply.ignored).toBe(2);
+    expect(byName(mirror)).toEqual(byName(b.get()));
+    expect(mirror.funnel.some((f) => f.date > '2026-11-10')).toBe(false);
+  });
 });
 
 describe('withPaymentsImport совпадает с importPayments сервера', () => {
@@ -110,5 +125,23 @@ describe('withPaymentsImport совпадает с importPayments сервера
     expect(mirror.payments).toEqual(server.payments);
     expect(mirror.paymentsImportedThrough).toBe(server.paymentsImportedThrough);
     expect(server.paymentsImportedThrough).toBe('2026-11-09');
+  });
+
+  test('одинаковые счета в периоде не склеиваются: ни повтор, ни тот же номер у другой группы и автора', () => {
+    const b = seeded();
+    const before = b.get();
+    const rows = [
+      { date: '2026-11-09', group: 'СР1', author: 'Тест Альфов', invoice: 'D-1' },
+      { date: '2026-11-09', group: 'СР1', author: 'Тест Альфов', invoice: 'D-1' }, // повтор строки
+      { date: '2026-11-09', group: 'СР2', author: 'Тест Бетов', invoice: 'D-1' }, // тот же номер, другая группа и автор
+      { date: '2026-11-10', group: 'СР1', author: 'Тест Ёлкин', invoice: 'D-1' }, // тот же номер в другой день
+    ];
+    const plan = { from: '2026-11-09', to: '2026-11-10', rows, dropped: 0 };
+    const mirror = withPaymentsImport(before, plan);
+    admin(b, { action: 'importPayments', from: plan.from, to: plan.to, rows });
+    const server = b.get();
+    expect(mirror.payments).toEqual(server.payments);
+    expect(server.payments.filter((r) => r.invoice === 'D-1')).toHaveLength(4);
+    expect(mirror.provisional).toEqual(server.provisional);
   });
 });

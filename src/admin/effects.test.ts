@@ -105,6 +105,16 @@ describe('effectsOf: что изменится между двумя снимк�
     expect(effectsOf(before, after).stale.map((v) => [v.c.id, v.fileNow])).toEqual([[1, 2]]);
   });
 
+  test('группа, в которой до загрузки никого не было, а после появился сотрудник, — в списке дней', () => {
+    const before = world();
+    const after: Snapshot = {
+      ...withFunnel(before, [fun('c1', '2026-11-02', 4, 2), fun('c1', '2026-11-03', 4, 2)]),
+      staff: [...before.staff, emp('c1', 'Тест Гаммов', 'СР3')],
+    };
+    const { days } = effectsOf(before, after);
+    expect(days.map((d) => `${d.date} ${d.group} → ${d.after}`)).toEqual(['2026-11-02 СР3 → аптечка, игрушка', '2026-11-03 СР3 → аптечка, игрушка']);
+  });
+
   test('ничего не изменилось — три пустых списка', () => {
     const before = world({ corrections: [corr(1, '2026-11-03', 'a1', 'long', 1, 1)] });
     expect(effectsOf(before, { ...before })).toEqual({ days: [], now: [], stale: [] });

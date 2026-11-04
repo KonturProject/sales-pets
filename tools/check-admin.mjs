@@ -503,7 +503,7 @@ try {
     check((await textOf(admin, '[data-corrections] [data-correction]')).includes('⚠'), 'после загрузки устаревшая правка в «Итогах» не помечена');
   });
 
-  await scenario('импорт воронки: если после правки данные не обновились, разбор закрыт до «Обновить», «Загрузить» работает', async ({ mock, newPage, check, urls }) => {
+  await scenario('импорт воронки: если после правки данные не обновились, разбор и «Загрузить» закрыты до «Обновить»', async ({ mock, newPage, check, urls }) => {
     const admin = await newPage();
     let rereadFails = false;
     await admin.route(`${mock.url}**`, (route) => (rereadFails && route.request().method() === 'GET'
@@ -526,13 +526,14 @@ try {
     check(staleShown, 'после записи без перечитывания в разборе нет «Данные не обновились…»');
     check((await publicSnapshot(mock)).corrections?.length === 1, 'контроль: правка должна быть записана');
     check(await admin.evaluate(() => document.querySelector('[data-preview="funnel"] table.results').closest('[inert]') !== null), 'разбор не закрыт, пока данные не обновлены');
-    check(await admin.isEnabled('[data-confirm="funnel"]'), '«Загрузить» закрыта вместе с разбором');
+    check(await admin.isDisabled('[data-confirm="funnel"]'), '«Загрузить» доступна, пока данные не обновлены: загрузка — такая же запись, как правка');
     rereadFails = false;
     await admin.click('[data-refresh="funnel"]');
     const goneStale = await admin.waitForFunction(() => document.querySelector('[data-stale="funnel"]')?.hidden === true, null, { timeout: 8_000 }).then(() => true, () => false);
     check(goneStale, '«Обновить» не снял блокировку разбора');
     check((await textOf(admin, `${box} tbody[data-group="${person.group}"] tr[data-employee-row="${person.id}"]`)).includes('правки +5'), 'после «Обновить» разбор не показал правку +5 (было 4 в файле, стало 9)');
     check(await admin.evaluate(() => !document.querySelector('[data-preview="funnel"] [inert]')), 'после «Обновить» часть разбора осталась закрытой');
+    check(await admin.isEnabled('[data-confirm="funnel"]'), 'после «Обновить» «Загрузить» осталась недоступной');
     await admin.click('[data-confirm="funnel"]');
     check((await waitForText(admin, '[data-report="funnel"]', 'Загружено строк воронки')).includes('Загружено строк воронки'), '«Загрузить» после сбоя чтения не сработала');
   });
@@ -639,6 +640,143 @@ try {
     // файл воронки в этом разборе не загружается: «из файла» — значение сервера, к нему прибавлена правка +5
     const serverLong = before.funnel.find((r) => r.employeeId === person.id && r.date === LAST_DAY).long;
     check(await admin.inputValue(`${payBox} [data-edit="long"]`) === String(serverLong + 5), `в редакторе разбора оплат длинные «${await admin.inputValue(`${payBox} [data-edit="long"]`)}», ждали ${serverLong + 5} (на сервере ${serverLong} и правка +5)`);
+  });
+
+  // Загрузка файла — такая же запись, как правка: второй разбор после неё пересчитывается по снимку, прочитанному ПОСЛЕ загрузки
+  const invoicesOf = (snapshot, name, date) => snapshot.payments.filter((p) => p.date === date && p.author === name).length;
+  const bothPreviews = async (admin, funnelPeople, invoices, group) => {
+    await admin.click('[role="tab"][data-tab="import"]');
+    await admin.setInputFiles('[data-file="funnel"]', xlsxFile('funnel-r1.xlsx', fx.funnelXlsx([DAY_BEFORE, LAST_DAY], [{ group, people: funnelPeople }])));
+    await admin.waitForSelector('[data-report="funnel"] [data-preview="funnel"] table.results', { timeout: 8_000 });
+    await admin.setInputFiles('[data-file="payments"]', xlsxFile('pay-r1.xlsx', fx.paymentsXlsx(invoices)));
+    await admin.waitForSelector('[data-report="payments"] [data-preview="payments"] table.results', { timeout: 8_000 });
+  };
+  const FBOX = '[data-report="funnel"] [data-preview="funnel"]';
+  const PBOX = '[data-report="payments"] [data-preview="payments"]';
+
+  await scenario('импорт: «Загрузить» оплаты — разбор воронки пересчитан, «Поправить» оплаты идёт от значений после неё', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    const before = await publicSnapshot(mock);
+    const person = before.staff.find((e) => e.group === 'СР2');
+    const have = invoicesOf(before, person.name, LAST_DAY);
+    await loginAdmin(admin, urls.admin);
+    const invoices = Array.from({ length: have + 2 }, (_, i) => ({ date: LAST_DAY, group: person.group, author: person.name, invoice: `FXR-${i + 1}` }));
+    await bothPreviews(admin, [{ name: person.name, quality: 3, long: 4 }], invoices, person.group);
+    await admin.click(`${FBOX} [data-group-toggle="${person.group}"]`);
+    await admin.click(`${FBOX} button[data-correct="${person.id}"]`);
+    check(await admin.inputValue(`${FBOX} [data-edit="payments"]`) === String(have), `до загрузки оплат в разборе воронки оплаты сотрудника «${await admin.inputValue(`${FBOX} [data-edit="payments"]`)}», на сервере ${have}`);
+    await admin.click(`${FBOX} [data-cancel="correction"]`);
+
+    await admin.click('[data-confirm="payments"]');
+    check((await waitForText(admin, '[data-report="payments"]', 'Загружено оплат')).includes(`Загружено оплат: ${have + 2}`), 'загрузка оплат не прошла');
+    check(invoicesOf(await publicSnapshot(mock), person.name, LAST_DAY) === have + 2, 'контроль: оплаты на сервере не обновились');
+    // разбор воронки уже пересчитан по снимку после загрузки: в нём новые оплаты, а не старые
+    await admin.click(`${FBOX} button[data-correct="${person.id}"]`);
+    const shown = await admin.inputValue(`${FBOX} [data-edit="payments"]`);
+    check(shown === String(have + 2), `после загрузки оплат в разборе воронки «${shown}», на сервере уже ${have + 2}`);
+    check((await textOf(admin, `${FBOX} [data-caption="payments"]`)).trim() === `из файла ${have + 2}`, `подпись оплат в разборе воронки «${await textOf(admin, `${FBOX} [data-caption="payments"]`)}»`);
+    await admin.fill(`${FBOX} [data-edit="payments"]`, String(have + 3));
+    await admin.click(`${FBOX} [data-save="correction"]`);
+    await waitForText(admin, '[data-status="funnel-preview"]', 'Правка сохранена');
+    const written = (await publicSnapshot(mock)).corrections ?? [];
+    check(
+      written.length === 1 && written[0].kind === 'payments' && written[0].employeeId === person.id && written[0].date === LAST_DAY
+        && written[0].delta === 1 && written[0].base === have + 2,
+      `на сервере после правки оплат в разборе воронки: ${JSON.stringify(written)} (ждали +1 при base ${have + 2})`,
+    );
+    const final = await publicSnapshot(mock);
+    const total = invoicesOf(final, person.name, LAST_DAY) + final.corrections.reduce((sum, c) => sum + c.delta, 0);
+    check(total === have + 3, `у сотрудника оплат ${total}, набрано в редакторе ${have + 3}`);
+    check(await admin.isEnabled('[data-confirm="funnel"]'), '«Загрузить» воронку после правки недоступна');
+  });
+
+  await scenario('импорт: «Загрузить» воронку — разбор оплат пересчитан, «Поправить» воронку идёт от значений после неё', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    const before = await publicSnapshot(mock);
+    const person = before.staff.find((e) => e.group === 'СР2');
+    const serverLong = before.funnel.find((r) => r.employeeId === person.id && r.date === LAST_DAY)?.long ?? 0;
+    check(serverLong !== 4, 'контроль: на сервере длинные уже 4, проверка ничего не докажет');
+    await loginAdmin(admin, urls.admin);
+    await bothPreviews(admin, [{ name: person.name, quality: 3, long: 4 }], [{ date: LAST_DAY, group: person.group, author: person.name, invoice: 'FXS-1' }], person.group);
+    await admin.click('[data-confirm="funnel"]');
+    check((await waitForText(admin, '[data-report="funnel"]', 'Загружено строк воронки')).includes('Загружено строк воронки'), 'загрузка воронки не прошла');
+    await admin.click(`${PBOX} [data-group-toggle="${person.group}"]`);
+    await admin.click(`${PBOX} button[data-correct="${person.id}"]`);
+    const shown = await admin.inputValue(`${PBOX} [data-edit="long"]`);
+    check(shown === '4', `после загрузки воронки в разборе оплат длинные «${shown}», на сервере уже 4 (было ${serverLong})`);
+    check((await textOf(admin, `${PBOX} [data-caption="long"]`)).trim() === 'из файла 4', `подпись длинных в разборе оплат «${await textOf(admin, `${PBOX} [data-caption="long"]`)}»`);
+    await admin.fill(`${PBOX} [data-edit="long"]`, '6');
+    await admin.click(`${PBOX} [data-save="correction"]`);
+    await waitForText(admin, '[data-status="payments-preview"]', 'Правка сохранена');
+    const written = (await publicSnapshot(mock)).corrections ?? [];
+    check(
+      written.length === 1 && written[0].kind === 'long' && written[0].delta === 2 && written[0].base === 4 && written[0].date === LAST_DAY,
+      `на сервере после правки в разборе оплат: ${JSON.stringify(written)} (ждали +2 при base 4)`,
+    );
+    check(await admin.isEnabled('[data-confirm="payments"]'), '«Загрузить» оплаты после правки недоступна');
+  });
+
+  await scenario('импорт: разбор, начатый до загрузки другого файла, не берёт снимок, прочитанный до неё', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    let hold = false;
+    let release = () => {};
+    await admin.route(`${mock.url}**`, async (route) => {
+      if (!hold || route.request().method() !== 'GET') return route.continue();
+      hold = false;
+      const response = await route.fetch(); // тело до загрузки воронки
+      await new Promise((resolve) => { release = resolve; });
+      return route.fulfill({ response });
+    });
+    const before = await publicSnapshot(mock);
+    const person = before.staff.find((e) => e.group === 'СР2');
+    await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="import"]');
+    await admin.setInputFiles('[data-file="funnel"]', xlsxFile('funnel-r1.xlsx', fx.funnelXlsx([DAY_BEFORE, LAST_DAY], [{ group: person.group, people: [{ name: person.name, quality: 3, long: 4 }] }])));
+    await admin.waitForSelector(`${FBOX} table.results`, { timeout: 8_000 });
+    hold = true;
+    await admin.setInputFiles('[data-file="payments"]', xlsxFile('pay-r1.xlsx', fx.paymentsXlsx([{ date: LAST_DAY, group: person.group, author: person.name, invoice: 'FXT-1' }])));
+    for (let i = 0; i < 50 && hold; i++) await new Promise((resolve) => setTimeout(resolve, 100));
+    check(!hold, 'контроль: чтение снимка для файла оплат не перехвачено');
+    await admin.click('[data-confirm="funnel"]');
+    check((await waitForText(admin, '[data-report="funnel"]', 'Загружено строк воронки')).includes('Загружено строк воронки'), 'загрузка воронки не прошла');
+    release();
+    const shown = await admin.waitForSelector(`${PBOX} table.results`, { timeout: 8_000 }).then(() => true, () => false);
+    check(shown, 'разбор оплат не показан');
+    if (!shown) return;
+    await admin.click(`${PBOX} [data-group-toggle="${person.group}"]`);
+    await admin.click(`${PBOX} button[data-correct="${person.id}"]`);
+    const value = await admin.inputValue(`${PBOX} [data-edit="long"]`);
+    check(value === '4', `разбор оплат построен по снимку до загрузки воронки: длинные «${value}», на сервере уже 4`);
+  });
+
+  await scenario('импорт: пока пишется правка, обе «Загрузить» недоступны', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    let hold = false;
+    let release = () => {};
+    await admin.route(`${mock.url}**`, async (route) => {
+      const request = route.request();
+      if (!hold || request.method() !== 'POST' || JSON.parse(request.postData() ?? '{}').action !== 'addCorrections') return route.continue();
+      hold = false;
+      await new Promise((resolve) => { release = resolve; });
+      return route.continue();
+    });
+    const before = await publicSnapshot(mock);
+    const person = before.staff.find((e) => e.group === 'СР3');
+    await loginAdmin(admin, urls.admin);
+    await bothPreviews(admin, [{ name: person.name, quality: 3, long: 4 }], [{ date: LAST_DAY, group: person.group, author: person.name, invoice: 'FXU-1' }], person.group);
+    check(await admin.isEnabled('[data-confirm="funnel"]') && await admin.isEnabled('[data-confirm="payments"]'), 'контроль: до записи кнопки «Загрузить» недоступны');
+    await admin.click(`${FBOX} [data-group-toggle="${person.group}"]`);
+    await admin.click(`${FBOX} button[data-correct="${person.id}"]`);
+    await admin.fill(`${FBOX} [data-edit="long"]`, '9');
+    hold = true;
+    await admin.click(`${FBOX} [data-save="correction"]`);
+    const locked = await admin.waitForFunction(() => document.querySelector('[data-confirm="funnel"]')?.disabled && document.querySelector('[data-confirm="payments"]')?.disabled, null, { timeout: 5_000 }).then(() => true, () => false);
+    check(locked, 'пока пишется правка, «Загрузить» воронку и оплаты доступны');
+    release();
+    const unlocked = await admin.waitForFunction(() => !document.querySelector('[data-confirm="funnel"]')?.disabled && !document.querySelector('[data-confirm="payments"]')?.disabled, null, { timeout: 8_000 }).then(() => true, () => false);
+    check(unlocked, 'после записи правки «Загрузить» осталась недоступной');
+    await admin.click('[data-confirm="payments"]');
+    check((await waitForText(admin, '[data-report="payments"]', 'Загружено оплат')).includes('Загружено оплат'), 'после записи правки загрузка оплат не прошла');
   });
 
   await scenario('импорт: не тот файл', async ({ newPage, check, urls }) => {

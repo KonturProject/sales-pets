@@ -59,8 +59,9 @@ export function effectsOf(before: Snapshot, after: Snapshot): Effects {
     const now = dayResults(after, date);
     for (const group of GROUPS) {
       const line = was.find((l) => l.group === group)!;
-      if (line.employees.length === 0) continue; // в группе в этот день никого: итога дня нет
-      const change = describeDay(line.outcome, now.find((l) => l.group === group)!.outcome);
+      const next = now.find((l) => l.group === group)!;
+      if (line.employees.length === 0 && next.employees.length === 0) continue; // в группе в этот день никого ни до, ни после: итога дня нет
+      const change = describeDay(line.outcome, next.outcome);
       if (change) days.push({ group, date, ...change });
     }
   }

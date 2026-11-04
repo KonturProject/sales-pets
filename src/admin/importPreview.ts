@@ -47,7 +47,7 @@ const list = (lines: string[]) => h('ul', {}, ...lines.map((t) => h('li', {}, t)
  * бы значения без правки, и «Поправить» в нём задвоило бы её. Поэтому вид помнит последний снимок потока и счёт его
  * раздач: блок называет счёт до чтения (`mark`), и если за время чтения поток раздавал данные, разбор строится по ним.
  */
-export function createPreviews(flow: ResultsFlow<Snapshot>) {
+export function createPreviews(flow: ResultsFlow<Snapshot>, onLock: () => void) {
   const live = new Map<string, Live>();
   let latest: Snapshot | null = null;
   let applied = 0;
@@ -61,8 +61,14 @@ export function createPreviews(flow: ResultsFlow<Snapshot>) {
         else live.delete(id); // вкладку сменили или файл загрузили: этот разбор уже не на экране
       }
     },
-    setBusy: (busy) => live.forEach((p) => p.setBusy(busy)),
-    setStale: (stale) => live.forEach((p) => p.setStale(stale)),
+    setBusy: (busy) => {
+      live.forEach((p) => p.setBusy(busy));
+      onLock();
+    },
+    setStale: (stale) => {
+      live.forEach((p) => p.setStale(stale));
+      onLock();
+    },
   };
 
   /** Счёт раздач потока: брать до чтения снимка, а передавать в `add`. */

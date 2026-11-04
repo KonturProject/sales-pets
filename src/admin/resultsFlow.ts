@@ -27,6 +27,15 @@ export interface ReloadDone {
 }
 
 /**
+ * Запись, не являющаяся правкой (загрузка файла): `value` — что вернула сама запись; `refreshError` — сбой чтения свежего
+ * снимка после неё (сама запись при этом не провалена, поток «устарел»).
+ */
+export interface WriteResult<T> {
+  value: T;
+  refreshError: unknown;
+}
+
+/**
  * `removed`: правка отменена. Не отменена (`false`), если вместо этого выяснялась неотвеченная запись: отмена идёт
  * только на свежих данных, следующим нажатием. `refreshError` — сбой чтения после этого.
  */
@@ -202,6 +211,27 @@ export function createResultsFlow<S>(deps: {
         }
         if (result === 'busy') throw new WriteRefused(BUSY_TEXT);
         return { result, refreshError: await settle() };
+      }),
+    /**
+     * Любая другая запись страницы (загрузка файла) под тем же замком: одна запись за раз, вкладки админки заблокированы на
+     * всё время, отклоняется, пока поток «устарел» или правка без ответа не выяснена (тогда он «устаревает»: «Обновить»
+     * повторит запрос). Снимок читается заново и раздаётся виду после записи, и после её сбоя тоже: часть записей могла
+     * дойти. Ошибку записи пробрасывает.
+     */
+    write: <T>(run: () => Promise<T>): Promise<WriteResult<T>> =>
+      exclusive(async () => {
+        if (saver.hasPending) {
+          setStale(true);
+          throw new WriteRefused(STALE_TEXT);
+        }
+        let value: T;
+        try {
+          value = await run();
+        } catch (e) {
+          await settle();
+          throw e;
+        }
+        return { value, refreshError: await settle() };
       }),
     remove: (id: number): Promise<RemoveDone> =>
       exclusive(async () => {

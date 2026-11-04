@@ -5,7 +5,7 @@ import type { AdminCtx } from './ctx';
 import { errorText, h, ruDate } from './dom';
 import { paymentsSummary, planFunnelImport, planPaymentsImport, withFunnelImport, withPaymentsImport, type FunnelPlan } from './importPlan';
 import { createPreviews } from './importPreview';
-import { INTERRUPTED_TEXT } from './resultsFlow';
+import { INTERRUPTED_TEXT, WriteRefused } from './resultsFlow';
 
 /** Ответ `importPayments`; для `dryRun` те же счётчики без записи. */
 interface PaymentsReply { added: number; ignored: number; removed: number; removedProvisional: number }
@@ -20,17 +20,30 @@ const namesByGroup = (people: Person[]) =>
   });
 
 const importError = (e: unknown): string =>
-  e instanceof ApiError && e.code === 'bad_request'
-    ? 'Файл отклонён сервером: проверьте, что это нужный отчёт и даты'
-    : errorText(e);
+  e instanceof WriteRefused
+    ? e.message
+    : e instanceof ApiError && e.code === 'bad_request'
+      ? 'Файл отклонён сервером: проверьте, что это нужный отчёт и даты'
+      : errorText(e);
 
 /**
  * Блок «выбрать файл → разобрать → показать счётчики → подтвердить». `onFile` получает содержимое файла и
  * говорит `show(строки, действие, разбор)`; действие — кнопка подтверждения, её подпись и вызов; разбор — узел между
  * строками и кнопкой, его хозяин перерисовывает на месте, а кнопка остаётся. ФИО на экран не выводятся.
+ * Живая область (`role="status"`) — только строки-итоги; разбор лежит рядом, скринридер его не зачитывает.
+ * `canConfirm` — можно ли сейчас нажимать подтверждение (у блока с общим потоком записи страницы: нельзя, пока поток занят
+ * или «устарел»); кнопка создаётся с этим состоянием, и после отказа не включается, если нельзя.
  */
-export function fileBlock(id: string, title: string, accept: string, onFile: (buf: ArrayBuffer, show: Show) => Promise<void>, hint?: string): HTMLElement {
-  const report = h('div', { 'data-report': id, role: 'status' });
+export function fileBlock(
+  id: string,
+  title: string,
+  accept: string,
+  onFile: (buf: ArrayBuffer, show: Show) => Promise<void>,
+  hint?: string,
+  canConfirm: () => boolean = () => true,
+): HTMLElement {
+  const status = h('div', { role: 'status' });
+  const report = h('div', { 'data-report': id }, status);
   const alert = h('p', { role: 'alert', 'data-alert': id });
   const input = h('input', {
     type: 'file',
@@ -39,26 +52,35 @@ export function fileBlock(id: string, title: string, accept: string, onFile: (bu
     onchange: () => void choose(),
   });
 
+  const clear = () => {
+    status.replaceChildren();
+    report.replaceChildren(status);
+  };
   const fail = (text: string) => {
-    report.replaceChildren();
+    clear();
     alert.textContent = text;
   };
   const show: Show = (lines, action, preview) => {
     alert.textContent = '';
-    const nodes: Node[] = lines.map((t) => h('p', {}, t));
+    status.replaceChildren(...lines.map((t) => h('p', {}, t)));
+    const nodes: Node[] = [status];
     if (preview) nodes.push(preview);
     if (action) {
       const button = h('button', {
         type: 'button',
         'data-confirm': id,
+        disabled: !canConfirm(),
         onclick: () => {
           button.disabled = true;
           alert.textContent = '';
           action.run().then(
-            (done) => report.replaceChildren(...done.map((t) => h('p', {}, t))),
+            (done) => {
+              status.replaceChildren(...done.map((t) => h('p', {}, t)));
+              report.replaceChildren(status);
+            },
             (e) => {
               alert.textContent = importError(e);
-              button.disabled = false;
+              button.disabled = !canConfirm();
             },
           );
         },
@@ -71,7 +93,7 @@ export function fileBlock(id: string, title: string, accept: string, onFile: (bu
   async function choose(): Promise<void> {
     const file = input.files?.[0];
     if (!file) return;
-    report.replaceChildren();
+    clear();
     alert.textContent = '';
     try {
       const buf = await file.arrayBuffer();
@@ -96,9 +118,27 @@ export type Show = (lines: string[], action?: { label: string; run: () => Promis
  */
 export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
   const xlsx = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-  const opening = ctx.resultsFlow.begin();
+  const flow = ctx.resultsFlow;
+  const opening = flow.begin();
   const checked = await opening.open();
-  const previews = createPreviews(ctx.resultsFlow);
+  /** Загрузка файла — такая же запись, как правка: пока поток занят или «устарел», подтверждения недоступны. */
+  const canConfirm = () => !flow.busy && !flow.stale;
+  const lockButtons = () => {
+    for (const b of root?.querySelectorAll<HTMLButtonElement>('[data-confirm]') ?? []) b.disabled = !canConfirm();
+  };
+  const previews = createPreviews(flow, lockButtons);
+  /**
+   * Запись файла под общим потоком записи страницы (одна запись за раз, вкладки заблокированы, снимок читается заново и
+   * раздаётся всем разборам после неё: без этого второй разбор считал бы от данных, которых на сервере уже нет).
+   * Строки итога; если снимок после записи прочитать не удалось, к ним добавлено предупреждение.
+   */
+  const load = async (write: () => Promise<string[]>): Promise<string[]> => {
+    const done = await flow.write(write);
+    return done.refreshError
+      ? [...done.value, `Данные после загрузки перечитать не удалось (${errorText(done.refreshError)}): откройте вкладку заново.`]
+      : done.value;
+  };
+  let root: HTMLElement | undefined;
 
   const payments = fileBlock('payments', '2. Оплаты: «Детальные данные по оплаченным счетам»', xlsx, async (buf, show) => {
     const since = previews.mark();
@@ -123,14 +163,14 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
       ],
       {
         label: 'Загрузить',
-        run: async () => {
+        run: () => load(async () => {
           const done = await ctx.session.call<PaymentsReply>('importPayments', body);
           return [`Загружено оплат: ${done.added}. Период ${ruDate(plan.from)} — ${ruDate(plan.to)}.`];
-        },
+        }),
       },
       table,
     );
-  }, 'После воронки, каждое утро: оплаты по вчерашний день. Повторная загрузка периода заменяет его, предварительные числа этих дней заменятся файлом.');
+  }, 'После воронки, каждое утро: оплаты по вчерашний день. Повторная загрузка периода заменяет его, предварительные числа этих дней заменятся файлом.', canConfirm);
 
   const funnel = fileBlock('funnel', '1. Воронка: «АП_НП_СР_Воронка_Дни…»', xlsx, async (buf, show) => {
     const since = previews.mark();
@@ -152,13 +192,13 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
         ],
         {
           label: `Добавить в штат (${fresh.length})`,
-          run: async () => {
+          run: () => load(async () => {
             await ctx.session.call('setStaff', { staff: fresh });
             return [
               `Добавлено в штат: ${fresh.length} — ${byGroup(fresh)}.`,
               'Дальше: Сотрудники → «Уровни и даты приёма». Показатели воронки загружайте этим же блоком со следующего рабочего дня.',
             ];
-          },
+          }),
         },
       );
     }
@@ -186,17 +226,17 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
     }
     show(lines, {
       label: fresh.length ? `Добавить новых (${fresh.length}) в штат и загрузить` : 'Загрузить',
-      run: async () => {
+      run: () => load(async () => {
         const { newStaff, through, rows } = plan;
         if (newStaff.length) await ctx.session.call('setStaff', { staff: newStaff });
         const done = await ctx.session.call<{ added: number }>('importFunnel', { through, rows });
         return [`Загружено строк воронки: ${done.added}${newStaff.length ? `; добавлено сотрудников: ${newStaff.length}` : ''}.`];
-      },
+      }),
     }, preview);
-  }, 'Каждое утро: отчёт по последний рабочий день. Первая загрузка (02.11) берёт из отчёта только штат; новые люди из отчёта добавляются в штат и в следующие дни.');
+  }, 'Каждое утро: отчёт по последний рабочий день. Первая загрузка (02.11) берёт из отчёта только штат; новые люди из отчёта добавляются в штат и в следующие дни.', canConfirm);
 
   const alert = h('p', { role: 'alert', 'data-alert': 'import-open' });
-  const root = h('div', {}, alert, funnel, payments);
+  root = h('div', {}, alert, funnel, payments);
   if (!opening.attach(previews.view)) return h('div'); // открытие успели сменить более новым: этот экземпляр на экран не попадёт
   if (checked?.error) alert.textContent = `Обновить не удалось: ${errorText(checked.error)}`;
   else if (checked?.checked) alert.textContent = INTERRUPTED_TEXT;

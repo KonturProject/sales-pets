@@ -582,3 +582,88 @@ describe('createResultsFlow: одно состояние записи на вс�
     expect(busy.stale).toBe(false);
   });
 });
+
+describe('createResultsFlow: запись, не правка (загрузка файла)', () => {
+  const boom = new ApiError('network', 'Нет связи');
+
+  test('write: запись под замком страницы, свежий снимок читается после неё и применяется, замок вкладок на всё время', async () => {
+    const order: string[] = [];
+    const lockNav = vi.fn((locked: boolean) => { order.push(locked ? 'lock' : 'unlock'); });
+    const apply = vi.fn(() => { order.push('apply'); });
+    const flow = createResultsFlow<number>({
+      send: vi.fn(), remove: vi.fn(), load: vi.fn(async () => { order.push('load'); return 7; }), lockNav,
+    });
+    flow.begin().attach({ apply, setBusy: vi.fn(), setStale: vi.fn() });
+    expect(await flow.write(async () => { order.push('run'); return 'готово'; })).toEqual({ value: 'готово', refreshError: null });
+    expect(order).toEqual(['lock', 'run', 'load', 'apply', 'unlock']);
+    expect(apply).toHaveBeenCalledWith(7);
+    expect(flow.busy).toBe(false);
+  });
+
+  test('пока идёт загрузка, правка, отмена и вторая загрузка отклоняются и ничего не отправляют; и наоборот', async () => {
+    const gate = hold<string>();
+    const { flow, send, remove } = setup();
+    const importing = flow.write(() => gate.promise);
+    expect(flow.busy).toBe(true);
+    await expect(flow.correct([item(1)])).rejects.toThrow(BUSY_TEXT);
+    await expect(flow.remove(5)).rejects.toThrow(BUSY_TEXT);
+    const second = vi.fn();
+    await expect(flow.write(second)).rejects.toBeInstanceOf(WriteRefused);
+    expect(send).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+    expect(second).not.toHaveBeenCalled();
+    gate.resolve('ok');
+    await importing;
+
+    const sendGate = hold<unknown>();
+    const other = setup({ send: vi.fn().mockReturnValue(sendGate.promise) });
+    const saving = other.flow.correct([item(1)]);
+    const run = vi.fn();
+    await expect(other.flow.write(run)).rejects.toThrow(BUSY_TEXT);
+    expect(run).not.toHaveBeenCalled();
+    sendGate.resolve({ ok: true });
+    await saving;
+  });
+
+  test('поток «устарел» (запись правки прошла, снимок не прочитан): загрузка не выполняется, пока не «Обновить»', async () => {
+    const load = vi.fn().mockRejectedValueOnce(boom).mockResolvedValue(3);
+    const { flow } = setup({ load });
+    await flow.correct([item(1)]);
+    expect(flow.stale).toBe(true);
+    const run = vi.fn();
+    await expect(flow.write(run)).rejects.toThrow(STALE_TEXT);
+    expect(run).not.toHaveBeenCalled();
+    await flow.reload();
+    expect(await flow.write(async () => 1)).toMatchObject({ value: 1 });
+  });
+
+  test('правка без ответа (повтор ещё не прошёл): загрузка не выполняется, поток «устаревает», «Обновить» повторяет запрос', async () => {
+    const send = vi.fn().mockRejectedValueOnce(boom).mockResolvedValue({ ok: true });
+    const { flow, setStale } = setup({ send });
+    await expect(flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
+    expect(flow.stale).toBe(false); // состояние «ожидает» есть, а «устарело» ещё не объявлено
+    const run = vi.fn();
+    await expect(flow.write(run)).rejects.toThrow(STALE_TEXT);
+    expect(run).not.toHaveBeenCalled();
+    expect(flow.stale).toBe(true);
+    expect(setStale).toHaveBeenCalledWith(true);
+    expect(await flow.reload()).toEqual({ checked: true, error: null });
+    expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-1']);
+    expect(await flow.write(async () => 'ok')).toMatchObject({ value: 'ok' });
+  });
+
+  test('загрузка прошла, а снимок прочитать не удалось: ошибка чтения отдельно, поток «устарел»', async () => {
+    const { flow, apply, setStale } = setup({ load: vi.fn().mockRejectedValue(boom) });
+    expect(await flow.write(async () => 'ok')).toEqual({ value: 'ok', refreshError: boom });
+    expect(apply).not.toHaveBeenCalled();
+    expect(setStale.mock.calls).toEqual([[true]]);
+  });
+
+  test('загрузка оборвалась: ошибка пробрасывается, а снимок всё равно перечитан (часть записей могла дойти)', async () => {
+    const { flow, apply, setBusy } = setup();
+    await expect(flow.write(async () => { throw boom; })).rejects.toBe(boom);
+    expect(apply).toHaveBeenCalledWith(1);
+    expect(setBusy.mock.calls).toEqual([[true], [false]]);
+    expect(flow.busy).toBe(false);
+  });
+});
