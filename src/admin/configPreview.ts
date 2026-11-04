@@ -96,18 +96,24 @@ function evaluated(s: Snapshot, from: DateStr, asOf: DateStr): { days: number; t
   return { days: days.length, through: days[days.length - 1] ?? null };
 }
 
+/** Питомцы групп на `asOf` в двух снимках; только те, у которых что-то заметно изменилось (стадия, % плана, запасы). */
+export function petChanges(before: Snapshot, after: Snapshot, asOf: DateStr): GroupChange[] {
+  const was = buildFacts(before, asOf).states;
+  const now = buildFacts(after, asOf).states;
+  const changes: GroupChange[] = [];
+  for (const group of GROUPS) {
+    const change = { group, before: lineOf(was[group]), after: lineOf(now[group]) };
+    if (differences(change).length) changes.push(change);
+  }
+  return changes;
+}
+
 function compare(s: Snapshot, next: ConfigState, from: DateStr | undefined, erased: DateStr[]): ConfigPreview {
   const asOf = serverToday(s);
   const future = from !== undefined && from > asOf;
   const { days, through } = evaluated(s, from ?? configOf(s.config).startDate, asOf);
   // и для будущей даты: норма оплат с неё меняет план группы на всю игру, а значит стадии уже сегодня
-  const changes: GroupChange[] = [];
-  const before = buildFacts(s, asOf).states;
-  const after = buildFacts({ ...s, config: next.config, configChanges: next.configChanges }, asOf).states;
-  for (const group of GROUPS) {
-    const change = { group, before: lineOf(before[group]), after: lineOf(after[group]) };
-    if (differences(change).length) changes.push(change);
-  }
+  const changes = petChanges(s, { ...s, config: next.config, configChanges: next.configChanges }, asOf);
   return { asOf, future, evaluatedDays: days, evaluatedThrough: through, changes, erased };
 }
 

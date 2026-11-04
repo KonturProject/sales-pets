@@ -2,7 +2,8 @@ import { describe, expect, test } from 'vitest';
 import type { DayResult } from '@/engine/evaluate';
 import type { PetState } from '@/engine/pet';
 import {
-  cellText, dayLabel, editorCaption, employeeMarks, nowLines, num, outcomeLines, shortDate, signed, staleText, unassignedLines,
+  cellText, correctionLine, dayLabel, editorCaption, employeeMarks, nowLines, num, outcomeLines, shortDate, signed, staleLine, staleText,
+  unassignedLines,
 } from './resultsText';
 import type { Cell, Outcome } from './results';
 
@@ -141,5 +142,26 @@ describe('staleText', () => {
   test('не устарела — пусто', () => {
     expect(staleText(view({ stale: false }))).toBe('');
     expect(staleText(view({ fileNow: null, stale: false }))).toBe('');
+  });
+});
+
+describe('correctionLine и staleLine: правки в разборе загрузки', () => {
+  const view = (over: Record<string, unknown> = {}) => ({
+    c: { id: 1, date: '2026-11-03', employeeId: 'a1', kind: 'long' as const, delta: 1, base: 2 },
+    group: 'СР3' as const, name: 'Тест Иванов', fileNow: 3, stale: true, ...over,
+  });
+
+  test('устаревшая правка — строкой из спеки: дата, группа, ФИО, показатель, что случилось', () => {
+    expect(staleLine(view())).toBe('03.11, СР3, Тест Иванов, длинные: правка +1 сделана при 2 в файле, теперь в файле 3 — проверьте, не пришёл ли счёт сам');
+  });
+
+  test('правка ушедшего из штата — группа «—»', () => {
+    expect(staleLine(view({ group: null, name: 'нет в штате' }))).toContain('03.11, —, нет в штате, длинные:');
+  });
+
+  test('правка в списке: без пометки, если не устарела, с пометкой, если устарела', () => {
+    expect(correctionLine(view({ stale: false }))).toBe('03.11, СР3, Тест Иванов, длинные: +1');
+    expect(correctionLine(view({ c: { id: 2, date: '2026-11-04', employeeId: 'a1', kind: 'payments', delta: -2, base: 2 }, stale: false }))).toBe('04.11, СР3, Тест Иванов, оплаты: −2');
+    expect(correctionLine(view())).toBe('03.11, СР3, Тест Иванов, длинные: +1 — ⚠ правка +1 сделана при 2 в файле, теперь в файле 3 — проверьте, не пришёл ли счёт сам');
   });
 });

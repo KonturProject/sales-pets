@@ -99,3 +99,15 @@ export function staleText(v: Pick<CorrectionView, 'c' | 'fileNow' | 'stale'>): s
   if (!v.stale || v.fileNow === null) return '';
   return `правка ${signed(v.c.delta)} сделана при ${v.c.base} в файле, теперь в файле ${v.fileNow} — проверьте, не пришёл ли счёт сам`;
 }
+
+type CorrectionLike = Pick<CorrectionView, 'c' | 'group' | 'name' | 'fileNow' | 'stale'>;
+
+/** «03.11, СР3, Иванов И., длинные: » — начало строки про правку; группа на дату правки, «—», если сотрудника нет в штате. */
+const correctionHead = (v: CorrectionLike): string => `${shortDate(v.c.date)}, ${v.group ?? '—'}, ${v.name}, ${KIND_WORD[v.c.kind]}: `;
+
+/** Устаревшая правка в разборе загрузки: «03.11, СР3, Иванов И., длинные: правка +1 сделана при 2 в файле, теперь в файле 3 — …». */
+export const staleLine = (v: CorrectionLike): string => `${correctionHead(v)}${staleText(v)}`;
+
+/** Правка в списке разбора: «03.11, СР3, Иванов И., оплаты: +1», у устаревшей добавлено, что изменилось. */
+export const correctionLine = (v: CorrectionLike): string =>
+  `${correctionHead(v)}${signed(v.c.delta)}${v.stale ? ` — ⚠ ${staleText(v)}` : ''}`;

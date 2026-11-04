@@ -3,7 +3,8 @@ import { defaultConfig } from '@/engine/config';
 import type { Employee } from '@/engine/staff';
 import type { ParsedFunnel } from '@/import/funnel';
 import type { ImportedPayment } from '@/import/payments';
-import { paymentsSummary, planFunnelImport, planPaymentsImport } from './importPlan';
+import type { Snapshot } from '@/data/api';
+import { paymentsSummary, planFunnelImport, planPaymentsImport, withFunnelImport, withPaymentsImport, type FunnelPlan, type PaymentsPlan } from './importPlan';
 
 // Игра идёт со 2 ноября 2026: 4.11 — праздник, 7–8.11 — выходные
 const START = '2026-11-02';
@@ -165,5 +166,130 @@ describe('paymentsSummary: строки превью оплат', () => {
       'Привязано к сотрудникам: 1 из 4 оплат',
       'Авторы не найдены в штате (2): Другой Автор; Новый Автор. Их оплаты кормят питомца, но не идут в рейтинг: проверьте ФИО во вкладке «Сотрудники».',
     ]);
+  });
+});
+
+const snap = (over: Partial<Snapshot> = {}): Snapshot => ({
+  version: 1, serverNow: '2026-11-12T10:00:00+03:00', funnelThrough: '2026-11-10', paymentsImportedThrough: '2026-11-10',
+  config: {}, configChanges: [], staff: [], absences: [], payments: [], provisional: [], funnel: [], overrides: [], ...over,
+});
+const person = (id: string, name: string, group: Employee['group'] = 'СР1'): Employee => ({ ...staffMember(name), id, group });
+
+describe('withFunnelImport: зеркало importFunnel и setStaff сервера', () => {
+  const before = () => snap({
+    staff: [person('e1', 'Тест Один'), person('e2', 'Тест Два', 'СР5')],
+    funnel: [
+      { employeeId: 'e1', date: '2026-11-09', quality: 1, long: 1 },
+      { employeeId: 'e1', date: '2026-11-10', quality: 2, long: 2 },
+      { employeeId: 'e2', date: '2026-11-10', quality: 3, long: 3 },
+    ],
+  });
+  const plan = (over: Partial<FunnelPlan> = {}): FunnelPlan => ({
+    through: '2026-11-11', rows: [], newStaff: [], outside: 0, dropped: 0, zeroThrough: false, ...over,
+  });
+
+  test('строки файла заменяют загруженные по паре «сотрудник, день», остальные остаются', () => {
+    const after = withFunnelImport(before(), plan({
+      rows: [{ name: 'Тест Один', date: '2026-11-10', quality: 9, long: 8 }, { name: 'Тест Один', date: '2026-11-11', quality: 5, long: 4 }],
+    }));
+    const sorted = [...after.funnel].sort((a, b) => (a.employeeId + a.date < b.employeeId + b.date ? -1 : 1));
+    expect(sorted).toEqual([
+      { employeeId: 'e1', date: '2026-11-09', quality: 1, long: 1 },
+      { employeeId: 'e1', date: '2026-11-10', quality: 9, long: 8 },
+      { employeeId: 'e1', date: '2026-11-11', quality: 5, long: 4 },
+      { employeeId: 'e2', date: '2026-11-10', quality: 3, long: 3 },
+    ]);
+  });
+
+  test('funnelThrough становится through, даже если он раньше прежнего: как у сервера, не максимум', () => {
+    expect(withFunnelImport(before(), plan({ through: '2026-11-11' })).funnelThrough).toBe('2026-11-11');
+    expect(withFunnelImport(before(), plan({ through: '2026-11-09' })).funnelThrough).toBe('2026-11-09');
+  });
+
+  test('ФИО сопоставляется без регистра, лишних пробелов и «ё»; одна пара дважды в файле — остаётся последняя строка', () => {
+    const after = withFunnelImport(before(), plan({
+      rows: [
+        { name: 'тест  один', date: '2026-11-11', quality: 1, long: 1 },
+        { name: 'Тест Один', date: '2026-11-11', quality: 7, long: 6 },
+      ],
+    }));
+    expect(after.funnel.filter((f) => f.employeeId === 'e1' && f.date === '2026-11-11')).toEqual([{ employeeId: 'e1', date: '2026-11-11', quality: 7, long: 6 }]);
+  });
+
+  test('новые сотрудники: id new:<n>, опытные, в группе из файла, без дат и скрытия; их строки привязаны', () => {
+    const after = withFunnelImport(before(), plan({
+      newStaff: [{ name: '  Тест  Три ', group: 'СР3' }, { name: 'Четвёртый', group: 'СР9' }],
+      rows: [{ name: 'Тест Три', date: '2026-11-11', quality: 2, long: 1 }, { name: 'Четвёртый', date: '2026-11-11', quality: 0, long: 0 }],
+    }));
+    expect(after.staff.slice(0, 2)).toEqual(before().staff);
+    expect(after.staff.slice(2)).toEqual([
+      { id: 'new:1', name: 'Тест Три', shortName: 'Тест Т.', group: 'СР3', hireDate: null, fireDate: null, baseLevel: 'experienced', hiddenFromRating: false, transfers: [] },
+      { id: 'new:2', name: 'Четвёртый', shortName: 'Четвёртый', group: 'СР9', hireDate: null, fireDate: null, baseLevel: 'experienced', hiddenFromRating: false, transfers: [] },
+    ]);
+    expect(after.funnel).toContainEqual({ employeeId: 'new:1', date: '2026-11-11', quality: 2, long: 1 });
+    expect(after.funnel).toContainEqual({ employeeId: 'new:2', date: '2026-11-11', quality: 0, long: 0 });
+  });
+
+  test('строки позже through не берутся; ФИО вне штата и вне newStaff сервер отклонил бы — строка пропускается', () => {
+    const after = withFunnelImport(before(), plan({
+      rows: [{ name: 'Тест Один', date: '2026-11-12', quality: 5, long: 5 }, { name: 'Чужой', date: '2026-11-11', quality: 5, long: 5 }],
+    }));
+    expect(after.funnel).toEqual(before().funnel);
+  });
+
+  test('исходный снимок не меняется (на него завязан кэш фактов), остальные поля те же', () => {
+    const s = before();
+    const copy = structuredClone(s);
+    const after = withFunnelImport(s, plan({ rows: [{ name: 'Тест Один', date: '2026-11-10', quality: 9, long: 9 }], newStaff: [{ name: 'Тест Три', group: 'СР1' }] }));
+    expect(s).toEqual(copy);
+    expect(after).not.toBe(s);
+    expect(after.staff).not.toBe(s.staff);
+    expect(after.funnel).not.toBe(s.funnel);
+    expect({ ...after, staff: 0, funnel: 0, funnelThrough: 0 }).toEqual({ ...s, staff: 0, funnel: 0, funnelThrough: 0 });
+  });
+});
+
+describe('withPaymentsImport: зеркало importPayments сервера', () => {
+  const p = (date: string, invoice: string, group: ImportedPayment['group'] = 'СР1', author = 'Тест Один'): ImportedPayment => ({ date, group, author, invoice });
+  const before = () => snap({
+    paymentsImportedThrough: '2026-11-09',
+    payments: [p('2026-11-08', 'O1'), p('2026-11-09', 'O2'), p('2026-11-10', 'O3'), p('2026-11-11', 'O4')],
+    provisional: [
+      { date: '2026-11-09', group: 'СР1', count: 3 },
+      { date: '2026-11-10', group: 'СР2', count: 4 },
+      { date: '2026-11-12', group: 'СР1', count: 5 },
+    ],
+  });
+  const plan = (over: Partial<PaymentsPlan> = {}): PaymentsPlan => ({ from: '2026-11-10', to: '2026-11-11', rows: [], dropped: 0, ...over });
+
+  test('оплаты периода заменяются файлом, оплаты вне периода остаются; порядок как у сервера', () => {
+    const after = withPaymentsImport(before(), plan({ rows: [p('2026-11-11', 'N2', 'СР2'), p('2026-11-10', 'N1')] }));
+    expect(after.payments.map((r) => r.invoice)).toEqual(['O1', 'O2', 'N1', 'N2']);
+    expect(after.payments.at(-1)).toMatchObject({ group: 'СР2' });
+  });
+
+  test('автор и номер счёта обрезаются по краям, как на сервере', () => {
+    const after = withPaymentsImport(before(), plan({ rows: [p('2026-11-10', ' N1 ', 'СР1', ' Тест Один  ')] }));
+    expect(after.payments.at(-1)).toEqual(p('2026-11-10', 'N1'));
+  });
+
+  test('предварительные числа периода убираются (в том числе другой группы), прочие остаются', () => {
+    const after = withPaymentsImport(before(), plan());
+    expect(after.provisional).toEqual([{ date: '2026-11-09', group: 'СР1', count: 3 }, { date: '2026-11-12', group: 'СР1', count: 5 }]);
+  });
+
+  test('paymentsImportedThrough — максимум прежнего и конца периода', () => {
+    expect(withPaymentsImport(before(), plan()).paymentsImportedThrough).toBe('2026-11-11');
+    expect(withPaymentsImport({ ...before(), paymentsImportedThrough: '2026-11-11' }, plan({ to: '2026-11-10' })).paymentsImportedThrough).toBe('2026-11-11');
+    expect(withPaymentsImport({ ...before(), paymentsImportedThrough: null }, plan()).paymentsImportedThrough).toBe('2026-11-11');
+  });
+
+  test('исходный снимок не меняется', () => {
+    const s = before();
+    const copy = structuredClone(s);
+    const after = withPaymentsImport(s, plan({ rows: [p('2026-11-10', 'N1')] }));
+    expect(s).toEqual(copy);
+    expect(after.payments).not.toBe(s.payments);
+    expect(after.provisional).not.toBe(s.provisional);
   });
 });

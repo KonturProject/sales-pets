@@ -628,3 +628,18 @@ td.stale {
 .results-stale {
   color: var(--bad);
 }
+
+/* Импорт: разбор загрузки («Итоги» как будто файл уже загружен); при записи правки или устаревших данных он недоступен (inert) */
+.import-preview h3 {
+  margin: 0.8rem 0 0.3rem;
+  font-size: 1rem;
+}
+
+.import-preview [inert] {
+  opacity: 0.6;
+}
+
+.import-preview ul {
+  margin: 0.2rem 0;
+  padding-left: 1.2rem;
+}

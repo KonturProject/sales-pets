@@ -374,6 +374,273 @@ try {
     check(actions.includes('setStaff') && !actions.includes('importFunnel'), `первая воронка: действия ${actions.join(', ')}`);
   });
 
+  // Разбор загрузки: таблица «Итогов» «как будто файл уже загружен». Файлы строятся из штата мока (у новых сотрудников нет «Поправить»).
+  const DAY_BEFORE = '2026-11-10';
+  const LAST_DAY = '2026-11-11';
+  const post = (mock, body) => fetch(mock.url, {
+    method: 'POST', headers: { 'content-type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ pin: MOCK_ADMIN_PIN, ...body }),
+  }).then((r) => r.json());
+  /** Действия POST (без PIN и тел), чтобы проверять, что ушло на сервер. */
+  const trackPosts = (page) => {
+    const posts = [];
+    page.on('request', (r) => {
+      if (r.method() !== 'POST') return;
+      const body = JSON.parse(r.postData() ?? '{}');
+      posts.push({ action: body.action, dryRun: body.dryRun, items: body.items });
+    });
+    return posts;
+  };
+
+  await scenario('импорт воронки: разбор до загрузки, «Поправить» пишет правку и пересчитывает с тем же файлом', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    const posts = trackPosts(admin);
+    await loginAdmin(admin, urls.admin);
+    await admin.waitForSelector('table.results', { timeout: 8_000 });
+    // группа, у которой сейчас (по серверу) за 11.11 «Аптечка»: файл с нулями её перевернёт
+    const outcomes = await admin.$$eval('[data-outcome]', (els) => els.map((e) => [e.dataset.outcome, e.textContent ?? '']));
+    const g = outcomes.find((o) => o[1].includes('Аптечка, −1 кучка'))?.[0];
+    check(Boolean(g), `ни у одной группы нет «Аптечка, −1 кучка»: ${JSON.stringify(outcomes)}`);
+    if (!g) return;
+    const before = await publicSnapshot(mock);
+    const other = before.staff.find((e) => e.group !== g);
+    const file = xlsxFile('funnel-zero.xlsx', fx.funnelXlsx([DAY_BEFORE, LAST_DAY], [
+      { group: g, people: before.staff.filter((e) => e.group === g).map((e) => ({ name: e.name, quality: 0, long: 0 })) },
+      { group: other.group, people: [{ name: other.name, quality: 1, long: 1 }] },
+    ]));
+
+    await admin.click('[role="tab"][data-tab="import"]');
+    await admin.setInputFiles('[data-file="funnel"]', file);
+    const box = '[data-report="funnel"] [data-preview="funnel"]';
+    const shown = await admin.waitForSelector(`${box} table.results`, { timeout: 8_000 }).then(() => true, () => false);
+    check(shown, 'разбор воронки: нет таблицы «Итогов» до загрузки');
+    if (!shown) return;
+    const text = (selector) => textOf(admin, selector);
+    check((await text(box)).includes('Итоги за 11.11'), `разбор воронки: заголовок таблицы «${(await text(box)).slice(0, 80)}»`);
+    check(await admin.locator(`${box} tbody[data-group]`).count() === GROUP_CODES.length, 'разбор воронки: в таблице не шесть групп');
+    const outcome = await text(`${box} [data-outcome="${g}"]`);
+    check(outcome.includes('+1 кучка') && !outcome.includes('Аптечка'), `итог дня ${g} в разборе (файл с нулями): «${outcome}»`);
+    const days = await text(`${box} [data-effects="days"]`);
+    check(days.includes('Изменятся итоги прошлых дней') && new RegExp(`${g} 11[.]11: аптечка[^→]* → [+]1 кучка`).test(days), `«Изменятся итоги прошлых дней»: «${days}»`);
+    const now = await text(`${box} [data-effects="now"]`);
+    check(now.includes('Сейчас станет') && now.includes(`${g}:`), `«Сейчас станет»: «${now}»`);
+    check(await admin.locator(`${box} [data-effects="stale"]`).count() === 0, 'разбор воронки: устаревшие правки там, где правок нет');
+    const unchanged = await publicSnapshot(mock);
+    check(unchanged.funnelThrough === before.funnelThrough && unchanged.funnel.length === before.funnel.length, 'разбор воронки записал данные до «Загрузить»');
+    check(!posts.some((p) => p.action === 'importFunnel' || p.action === 'addCorrections'), `разбор воронки: до «Загрузить» ушло ${JSON.stringify(posts.map((p) => p.action))}`);
+
+    // «Поправить» в разборе: значения «после загрузки файла», а не те, что лежат на сервере
+    await admin.evaluate(() => { window.__confirm = document.querySelector('[data-confirm="funnel"]'); });
+    await admin.click(`${box} [data-group-toggle="${g}"]`);
+    const ids = await admin.$$eval(`${box} tbody[data-group="${g}"] tr[data-employee-row]`, (rows) => rows.filter((r) => !(r.textContent ?? '').includes('не входит в итог группы')).map((r) => r.dataset.employeeRow));
+    const serverLong = (id) => before.funnel.find((r) => r.employeeId === id && r.date === LAST_DAY)?.long ?? 0;
+    const id = ids.find((x) => serverLong(x) > 0) ?? ids[0];
+    check(serverLong(id) > 0, 'контроль: у выбранного сотрудника на сервере длинные за 11.11 равны 0, проверка ничего не докажет');
+    await admin.click(`${box} button[data-correct="${id}"]`);
+    check(await admin.inputValue(`${box} [data-edit="long"]`) === '0', `в редакторе разбора длинные «${await admin.inputValue(`${box} [data-edit="long"]`)}», в файле 0 (на сервере ${serverLong(id)})`);
+    check((await text(`${box} [data-caption="long"]`)).trim() === 'из файла 0', `подпись длинных в разборе «${await text(`${box} [data-caption="long"]`)}»`);
+    const cell = `${box} tbody[data-group="${g}"] .group-row [data-cell="day-long"]`;
+    const [, , planText] = (await text(cell)).replace(/,/g, '.').match(/^(\d+(?:\.\d+)?) \/ (\d+(?:\.\d+)?)/) ?? [];
+    const need = Math.ceil(Number(planText));
+    check(need > 0 && need <= 50, `план длинных группы в разборе «${await text(cell)}»`);
+    await admin.fill(`${box} [data-edit="long"]`, String(need));
+    await admin.click(`${box} [data-save="correction"]`);
+    const flipped = await waitForText(admin, `${box} [data-outcome="${g}"]`, 'Аптечка, −1 кучка');
+    check(flipped.includes('Аптечка, −1 кучка'), `после правки в разборе итог дня «${flipped}» / «${await text(`${box} [data-alert="correction"]`)}»`);
+    const written = (await publicSnapshot(mock)).corrections ?? [];
+    check(
+      written.length === 1 && written[0].employeeId === id && written[0].kind === 'long' && written[0].date === LAST_DAY
+        && written[0].delta === need && written[0].base === 0,
+      `на сервере после правки в разборе: ${JSON.stringify(written)} (ждали +${need} при base 0 за ${LAST_DAY})`,
+    );
+    check(posts.filter((p) => p.action === 'addCorrections').length === 1, 'одно «Сохранить» — не один запрос addCorrections');
+    check(!posts.some((p) => p.action === 'importFunnel'), 'правка в разборе загрузила файл');
+    check((await text(cell)).includes(`правки +${need}`), `ячейка группы в разборе без отметки правки: «${await text(cell)}»`);
+    check(await admin.getAttribute(`${box} [data-group-toggle="${g}"]`, 'aria-expanded') === 'true', 'после пересчёта разбора группа свернулась');
+    check(
+      await admin.evaluate(() => window.__confirm === document.querySelector('[data-confirm="funnel"]') && window.__confirm.isConnected && !window.__confirm.disabled),
+      '«Загрузить» после правки пересоздана или недоступна',
+    );
+
+    // «Загрузить»: файл ложится, правка остаётся и не считается устаревшей
+    await admin.click('[data-confirm="funnel"]');
+    const done = await waitForText(admin, '[data-report="funnel"]', 'Загружено строк воронки');
+    check(done.includes('Загружено строк воронки'), `загрузка из разбора: «${done}» / «${await text('[data-alert="funnel"]')}»`);
+    const after = await publicSnapshot(mock);
+    check(after.funnel.find((r) => r.employeeId === id && r.date === LAST_DAY)?.long === 0, 'файл из разбора не загружен');
+    check(JSON.stringify(after.corrections) === JSON.stringify(written), `правка изменилась при загрузке: ${JSON.stringify(after.corrections)}`);
+    await admin.click('[role="tab"][data-tab="results"]');
+    await admin.waitForSelector('table.results', { timeout: 8_000 });
+    check((await waitForText(admin, `[data-outcome="${g}"]`, 'Аптечка, −1 кучка')).includes('Аптечка, −1 кучка'), 'после загрузки и правки итог дня в «Итогах» не «Аптечка»');
+    check(!(await text('[data-corrections] [data-correction]')).includes('⚠'), 'после загрузки правка помечена устаревшей');
+  });
+
+  await scenario('импорт воронки: устаревшая правка названа в разборе, где «из файла» взято после загрузки', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    const before = await publicSnapshot(mock);
+    const person = before.staff.find((e) => e.group === 'СР2');
+    const row = before.funnel.find((r) => r.employeeId === person.id && r.date === LAST_DAY);
+    // счёт засчитали вручную при row.long в файле; потом пришёл новый отчёт, где уже row.long + 2
+    const added = await post(mock, { action: 'addCorrections', ref: 'check-stale', items: [{ date: LAST_DAY, employeeId: person.id, kind: 'long', delta: 1, base: row.long }] });
+    check(added.ok === true, `правка для проверки: ${added.error}`);
+    await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="import"]');
+    const file = xlsxFile('funnel-more.xlsx', fx.funnelXlsx([DAY_BEFORE, LAST_DAY], [{ group: person.group, people: [{ name: person.name, quality: row.quality, long: row.long + 2 }] }]));
+    await admin.setInputFiles('[data-file="funnel"]', file);
+    const box = '[data-report="funnel"] [data-preview="funnel"]';
+    const stale = await admin.waitForSelector(`${box} [data-effects="stale"]`, { timeout: 8_000 }).then(() => true, () => false);
+    check(stale, 'в разборе нет раздела об устаревших правках');
+    if (!stale) return;
+    const line = await textOf(admin, `${box} [data-effects="stale"]`);
+    const want = `11.11, ${person.group}, ${person.name}, длинные: правка +1 сделана при ${row.long} в файле, теперь в файле ${row.long + 2} — проверьте, не пришёл ли счёт сам`;
+    check(line.includes(want), `устаревшая правка в разборе: «${line}», ждали «${want}»`);
+    // до загрузки правка не устарела: сервер ещё держит прежнее значение
+    const serverView = (await publicSnapshot(mock)).funnel.find((r) => r.employeeId === person.id && r.date === LAST_DAY);
+    check(serverView.long === row.long, 'разбор изменил воронку на сервере');
+    await admin.click('[data-confirm="funnel"]');
+    await waitForText(admin, '[data-report="funnel"]', 'Загружено строк воронки');
+    await admin.click('[role="tab"][data-tab="results"]');
+    await admin.waitForSelector('[data-correction]', { timeout: 8_000 });
+    check((await textOf(admin, '[data-corrections] [data-correction]')).includes('⚠'), 'после загрузки устаревшая правка в «Итогах» не помечена');
+  });
+
+  await scenario('импорт воронки: если после правки данные не обновились, разбор закрыт до «Обновить», «Загрузить» работает', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    let rereadFails = false;
+    await admin.route(`${mock.url}**`, (route) => (rereadFails && route.request().method() === 'GET'
+      ? route.fulfill({ status: 200, contentType: 'text/plain', body: 'timeout' })
+      : route.continue()));
+    const before = await publicSnapshot(mock);
+    const person = before.staff.find((e) => e.group === 'СР3');
+    const file = xlsxFile('funnel-one.xlsx', fx.funnelXlsx([DAY_BEFORE, LAST_DAY], [{ group: person.group, people: [{ name: person.name, quality: 3, long: 4 }] }]));
+    await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="import"]');
+    await admin.setInputFiles('[data-file="funnel"]', file);
+    const box = '[data-report="funnel"] [data-preview="funnel"]';
+    await admin.waitForSelector(`${box} table.results`, { timeout: 8_000 });
+    await admin.click(`${box} [data-group-toggle="${person.group}"]`);
+    await admin.click(`${box} button[data-correct="${person.id}"]`);
+    await admin.fill(`${box} [data-edit="long"]`, '9');
+    rereadFails = true;
+    await admin.click(`${box} [data-save="correction"]`);
+    const staleShown = await admin.waitForFunction(() => { const el = document.querySelector('[data-stale="funnel"]'); return el && !el.hidden; }, null, { timeout: 8_000 }).then(() => true, () => false);
+    check(staleShown, 'после записи без перечитывания в разборе нет «Данные не обновились…»');
+    check((await publicSnapshot(mock)).corrections?.length === 1, 'контроль: правка должна быть записана');
+    check(await admin.evaluate(() => document.querySelector('[data-preview="funnel"] table.results').closest('[inert]') !== null), 'разбор не закрыт, пока данные не обновлены');
+    check(await admin.isEnabled('[data-confirm="funnel"]'), '«Загрузить» закрыта вместе с разбором');
+    rereadFails = false;
+    await admin.click('[data-refresh="funnel"]');
+    const goneStale = await admin.waitForFunction(() => document.querySelector('[data-stale="funnel"]')?.hidden === true, null, { timeout: 8_000 }).then(() => true, () => false);
+    check(goneStale, '«Обновить» не снял блокировку разбора');
+    check((await textOf(admin, `${box} tbody[data-group="${person.group}"] tr[data-employee-row="${person.id}"]`)).includes('правки +5'), 'после «Обновить» разбор не показал правку +5 (было 4 в файле, стало 9)');
+    check(await admin.evaluate(() => !document.querySelector('[data-preview="funnel"] [inert]')), 'после «Обновить» часть разбора осталась закрытой');
+    await admin.click('[data-confirm="funnel"]');
+    check((await waitForText(admin, '[data-report="funnel"]', 'Загружено строк воронки')).includes('Загружено строк воронки'), '«Загрузить» после сбоя чтения не сработала');
+  });
+
+  await scenario('импорт оплат: разбор до загрузки, список правок оплат за период, «Поправить»', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    const posts = trackPosts(admin);
+    const before = await publicSnapshot(mock);
+    const person = before.staff.find((e) => e.group === 'СР2');
+    const have = before.payments.filter((p) => p.date === LAST_DAY && p.author === person.name).length;
+    const added = await post(mock, { action: 'addCorrections', ref: 'check-pay', items: [{ date: LAST_DAY, employeeId: person.id, kind: 'payments', delta: 1, base: have }] });
+    check(added.ok === true, `правка оплат для проверки: ${added.error}`);
+    await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="import"]');
+    const invoices = Array.from({ length: have + 3 }, (_, i) => ({ date: LAST_DAY, group: person.group, author: person.name, invoice: `FXP-${i + 1}` }));
+    await admin.setInputFiles('[data-file="payments"]', xlsxFile('pay-people.xlsx', fx.paymentsXlsx(invoices)));
+    const box = '[data-report="payments"] [data-preview="payments"]';
+    const shown = await admin.waitForSelector(`${box} table.results`, { timeout: 8_000 }).then(() => true, () => false);
+    check(shown, 'разбор оплат: нет таблицы «Итогов» до загрузки');
+    if (!shown) return;
+    const text = (selector) => textOf(admin, selector);
+    check((await text(box)).includes('Итоги за 11.11'), 'разбор оплат: нет заголовка таблицы за последний день периода');
+    check((await text(`${box} [data-effects="now"]`)).includes('Сейчас станет'), 'разбор оплат: нет «Сейчас станет»');
+    check(await admin.locator(`${box} [data-effects="days"]`).count() === 0, 'разбор оплат: показаны «итоги прошлых дней», хотя оплаты оценку не меняют');
+    const list = await text(`${box} [data-effects="period-corrections"]`);
+    check(
+      list.includes(`11.11, ${person.group}, ${person.name}, оплаты: +1`) && list.includes(`при ${have} в файле, теперь в файле ${have + 3}`),
+      `список правок оплат за период: «${list}»`,
+    );
+    check(await admin.locator(`${box} [data-effects="stale"]`).count() === 0, 'разбор оплат: правка в списке периода названа ещё раз отдельным разделом');
+    check(!posts.some((p) => p.action === 'importPayments' && p.dryRun !== true), 'разбор оплат записал данные до «Загрузить»');
+
+    // «Поправить»: «из файла» — после загрузки (have + 3), текущее — вместе с уже сделанной правкой +1
+    await admin.evaluate(() => { window.__confirm = document.querySelector('[data-confirm="payments"]'); });
+    await admin.click(`${box} [data-group-toggle="${person.group}"]`);
+    await admin.click(`${box} button[data-correct="${person.id}"]`);
+    check(await admin.inputValue(`${box} [data-edit="payments"]`) === String(have + 4), `оплаты в редакторе разбора «${await admin.inputValue(`${box} [data-edit="payments"]`)}», ждали ${have + 4}`);
+    check((await text(`${box} [data-caption="payments"]`)).trim() === `из файла ${have + 3}, правки +1`, `подпись оплат «${await text(`${box} [data-caption="payments"]`)}»`);
+    await admin.fill(`${box} [data-edit="payments"]`, String(have + 6));
+    await admin.click(`${box} [data-save="correction"]`);
+    const grew = await waitForText(admin, `${box} [data-effects="period-corrections"]`, 'оплаты: +2');
+    check(grew.includes('оплаты: +2'), `после правки в разборе оплат список периода «${grew}»`);
+    const written = (await publicSnapshot(mock)).corrections ?? [];
+    const mine = written.find((c) => c.delta === 2);
+    check(
+      written.length === 2 && mine && mine.employeeId === person.id && mine.kind === 'payments' && mine.date === LAST_DAY && mine.base === have + 3,
+      `на сервере после правки в разборе оплат: ${JSON.stringify(written)}`,
+    );
+    check(
+      await admin.evaluate(() => window.__confirm === document.querySelector('[data-confirm="payments"]') && window.__confirm.isConnected && !window.__confirm.disabled),
+      '«Загрузить» оплаты после правки пересоздана или недоступна',
+    );
+    await admin.click('[data-confirm="payments"]');
+    check((await waitForText(admin, '[data-report="payments"]', 'Загружено оплат')).includes(`Загружено оплат: ${have + 3}`), 'загрузка оплат из разбора не прошла');
+    const after = await publicSnapshot(mock);
+    check(after.payments.filter((p) => p.date === LAST_DAY && p.author === person.name).length === have + 3, 'оплаты сотрудника после загрузки не те');
+    check((after.corrections ?? []).length === 2, 'правки изменились при загрузке оплат');
+  });
+
+  await scenario('импорт: разбор, начатый до записи правки, не берёт снимок, прочитанный до неё', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    let hold = false;
+    let release = () => {};
+    // следующее чтение снимка получает тело ДО записи и ждёт, пока его отпустят
+    await admin.route(`${mock.url}**`, async (route) => {
+      if (!hold || route.request().method() !== 'GET') return route.continue();
+      hold = false;
+      const response = await route.fetch();
+      await new Promise((resolve) => { release = resolve; });
+      return route.fulfill({ response });
+    });
+    const before = await publicSnapshot(mock);
+    const person = before.staff.find((e) => e.group === 'СР3');
+    await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="import"]');
+    await admin.setInputFiles('[data-file="funnel"]', xlsxFile('funnel-one.xlsx', fx.funnelXlsx([DAY_BEFORE, LAST_DAY], [{ group: person.group, people: [{ name: person.name, quality: 3, long: 4 }] }])));
+    const funnelBox = '[data-report="funnel"] [data-preview="funnel"]';
+    await admin.waitForSelector(`${funnelBox} table.results`, { timeout: 8_000 });
+
+    // выбран файл оплат, его чтение снимка зависло; пока оно висит, в разборе воронки записана правка
+    hold = true;
+    await admin.setInputFiles('[data-file="payments"]', xlsxFile('pay-one.xlsx', fx.paymentsXlsx([{ date: LAST_DAY, group: person.group, author: person.name, invoice: 'FXQ-1' }])));
+    for (let i = 0; i < 50 && hold; i++) await new Promise((resolve) => setTimeout(resolve, 100));
+    check(!hold, 'контроль: чтение снимка для файла оплат не перехвачено');
+    await admin.click(`${funnelBox} [data-group-toggle="${person.group}"]`);
+    await admin.click(`${funnelBox} button[data-correct="${person.id}"]`);
+    await admin.fill(`${funnelBox} [data-edit="long"]`, '9');
+    await admin.click(`${funnelBox} [data-save="correction"]`);
+    const rowText = await waitForText(admin, `${funnelBox} tr[data-employee-row="${person.id}"]`, 'правки +5');
+    check(rowText.includes('правки +5'), `контроль: правка в разборе воронки не записана («${rowText}»)`);
+    check((await publicSnapshot(mock)).corrections?.length === 1, 'контроль: правка должна быть на сервере');
+
+    // чтение отпущено: разбор оплат должен показать правку, а не таблицу «до записи»
+    release();
+    const payBox = '[data-report="payments"] [data-preview="payments"]';
+    const shown = await admin.waitForSelector(`${payBox} table.results`, { timeout: 8_000 }).then(() => true, () => false);
+    check(shown, 'разбор оплат не показан');
+    if (!shown) return;
+    const cell = `${payBox} tbody[data-group="${person.group}"] .group-row [data-cell="day-long"]`;
+    const text = await textOf(admin, cell);
+    check(text.includes('правки +5'), `разбор оплат построен по снимку до записи правки, в ячейке «${text}»`);
+    await admin.click(`${payBox} [data-group-toggle="${person.group}"]`);
+    await admin.click(`${payBox} button[data-correct="${person.id}"]`);
+    // файл воронки в этом разборе не загружается: «из файла» — значение сервера, к нему прибавлена правка +5
+    const serverLong = before.funnel.find((r) => r.employeeId === person.id && r.date === LAST_DAY).long;
+    check(await admin.inputValue(`${payBox} [data-edit="long"]`) === String(serverLong + 5), `в редакторе разбора оплат длинные «${await admin.inputValue(`${payBox} [data-edit="long"]`)}», ждали ${serverLong + 5} (на сервере ${serverLong} и правка +5)`);
+  });
+
   await scenario('импорт: не тот файл', async ({ newPage, check, urls }) => {
     const admin = await newPage();
     await loginAdmin(admin, urls.admin);
@@ -1521,4 +1788,4 @@ if (failures.length) {
   console.error(`FAIL (${failures.length}):\n- ${failures.join('\n- ')}`);
   process.exit(1);
 }
-console.log('OK: админка — вход и блокировка, «Итоги» с правкой и отменой, оплаты → экран, импорт оплат и воронки, штат и отсутствия, нормы и ручные правки → экран, РГ — вход и расход предмета → экран, PIN групп не остаются в DOM, хранилище и консоли');
+console.log('OK: админка — вход и блокировка, «Итоги» с правкой и отменой, разбор загрузки воронки и оплат с правкой, оплаты → экран, импорт оплат и воронки, штат и отсутствия, нормы и ручные правки → экран, РГ — вход и расход предмета → экран, PIN групп не остаются в DOM, хранилище и консоли');

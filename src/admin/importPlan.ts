@@ -1,3 +1,4 @@
+import type { Snapshot } from '@/data/api';
 import { addDays, prevWorkingDay } from '@/engine/calendar';
 import type { Config } from '@/engine/config';
 import { uniqueInvoices } from '@/engine/ranking';
@@ -112,4 +113,63 @@ export function planFunnelImport(
   const rows = parsed.rows.filter((r) => r.date <= through);
   const zeroThrough = rows.filter((r) => r.date === through).every((r) => !r.quality && !r.long);
   return { through, rows, newStaff, outside: parsed.outside, dropped: parsed.rows.length - rows.length, zeroThrough };
+}
+
+/** «Фамилия И.» из полного ФИО, одно слово остаётся как есть (так же, как `defaultShortName_` сервера). */
+function shortNameOf(name: string): string {
+  const parts = name.split(' ');
+  return parts.length > 1 ? `${parts[0]} ${parts[1].charAt(0).toUpperCase()}.` : name;
+}
+
+/** Id сотрудника, которого файл добавит в штат: настоящий id выдаст сервер, до загрузки он `new:<n>`. */
+const newId = (n: number) => `new:${n}`;
+
+/**
+ * Снимок «как будто файл воронки уже загружен»: зеркало `setStaff` (новые сотрудники в конце штата, опытные, в группе из
+ * файла, без дат) и `importFunnel` сервера (строки файла заменяют загруженные по паре «сотрудник, день»; `funnelThrough`
+ * становится `through`, даже если он раньше прежнего). Исходный снимок не меняется: на него завязан кэш фактов.
+ * Совпадение с `Code.gs` проверяет apps-script/test/import-parity.test.mjs.
+ */
+export function withFunnelImport(s: Snapshot, plan: FunnelPlan): Snapshot {
+  const added: Employee[] = [];
+  const seen = new Set(s.staff.map((e) => normalizeName(e.name)));
+  for (const p of plan.newStaff) {
+    const name = p.name.trim().replace(/\s+/g, ' ');
+    if (seen.has(normalizeName(name))) continue;
+    seen.add(normalizeName(name));
+    added.push({
+      id: newId(added.length + 1), name, shortName: shortNameOf(name), group: p.group, hireDate: null, fireDate: null,
+      baseLevel: 'experienced', hiddenFromRating: false, transfers: [],
+    });
+  }
+  const staff = [...s.staff, ...added];
+  const idByName = new Map(staff.map((e) => [normalizeName(e.name), e.id]));
+  const merged = new Map(s.funnel.map((f) => [`${f.employeeId}|${f.date}`, f]));
+  for (const r of plan.rows) {
+    const employeeId = idByName.get(normalizeName(r.name));
+    if (employeeId === undefined || r.date > plan.through) continue; // сервер отклонил бы неизвестное ФИО и отбросил бы дни позже through
+    merged.set(`${employeeId}|${r.date}`, { employeeId, date: r.date, quality: r.quality, long: r.long });
+  }
+  return { ...s, staff, funnel: [...merged.values()], funnelThrough: plan.through };
+}
+
+/**
+ * Снимок «как будто файл оплат уже загружен»: зеркало `importPayments` сервера. Оплаты и предварительные числа периода
+ * заменяются, `paymentsImportedThrough` — максимум прежнего и конца периода. Исходный снимок не меняется.
+ */
+export function withPaymentsImport(s: Snapshot, plan: PaymentsPlan): Snapshot {
+  const inPeriod = (date: DateStr) => date >= plan.from && date <= plan.to;
+  const incoming = plan.rows
+    .filter((r) => inPeriod(r.date))
+    .map((r) => ({ date: r.date, group: r.group, author: r.author.trim(), invoice: r.invoice.trim() }));
+  const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+  const payments = [...s.payments.filter((r) => !inPeriod(r.date)), ...incoming]
+    .sort((a, b) => cmp(a.date, b.date) || cmp(a.invoice, b.invoice) || cmp(a.group, b.group) || cmp(a.author, b.author));
+  const previous = s.paymentsImportedThrough;
+  return {
+    ...s,
+    payments,
+    provisional: s.provisional.filter((r) => !inPeriod(r.date)),
+    paymentsImportedThrough: previous !== null && previous > plan.to ? previous : plan.to,
+  };
 }
