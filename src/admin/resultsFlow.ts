@@ -5,6 +5,11 @@ export const BUSY_TEXT = 'Идёт запись…';
 export const STALE_TEXT = 'Данные не обновились после записи — нажмите «Обновить»';
 export const INTERRUPTED_TEXT = 'Связь прерывалась: прошлая правка проверена, данные перечитаны. Проверьте значение и поправьте ещё раз, если нужно.';
 export const UNRESOLVED_TEXT = 'Связь прервалась во время загрузки — нажмите «Загрузить» ещё раз (повторная загрузка того же файла безопасна).';
+/** То же для записи выходных (блок `holidays`): список заменяется целиком, поэтому повтор безопасен. */
+export const HOLIDAYS_UNRESOLVED_TEXT = 'Связь прервалась во время записи выходных — сохраните их ещё раз (повтор безопасен: список заменяется целиком).';
+
+/** Что сказать про запись блока `key`, оставшуюся без ответа. */
+const unresolvedText = (key: string): string => (key === 'holidays' ? HOLIDAYS_UNRESOLVED_TEXT : UNRESOLVED_TEXT);
 
 /** Запись не начата по понятной человеку причине: `message` показывается как есть. */
 export class WriteRefused extends Error {}
@@ -161,7 +166,7 @@ export function createResultsFlow<S>(deps: {
     if (busy) throw new WriteRefused(BUSY_TEXT);
     // `resolving` — блок, чья загрузка без ответа: его повтор единственная запись, которой «устарело» не мешает
     if (write && stale && !(resolving !== undefined && resolving === unresolved)) {
-      throw new WriteRefused(unresolved === null ? STALE_TEXT : UNRESOLVED_TEXT);
+      throw new WriteRefused(unresolved === null ? STALE_TEXT : unresolvedText(unresolved));
     }
     busy = true;
     view?.setBusy(true);
@@ -202,7 +207,7 @@ export function createResultsFlow<S>(deps: {
     },
     /** Что сказать на месте «устарело»: «Обновить» не поможет, пока не повторена загрузка без ответа. */
     get staleText(): string {
-      return unresolved === null ? STALE_TEXT : UNRESOLVED_TEXT;
+      return unresolved === null ? STALE_TEXT : unresolvedText(unresolved);
     },
     /** Можно ли сейчас нажимать «Загрузить» этого блока: не занято, не «устарело» (кроме повтора загрузки без ответа). */
     canWrite(key: string): boolean {
@@ -244,7 +249,8 @@ export function createResultsFlow<S>(deps: {
      * заблокированы на всё время, отклоняется, пока поток «устарел» или правка без ответа не выяснена (тогда он «устаревает»:
      * «Обновить» повторит запрос). Определённый ответ (успех или отказ сервера) — снимок читается заново и раздаётся виду;
      * отказ пробрасывается как есть. Ответа не было — исход неизвестен: поток входит в «загрузка без ответа» этого блока,
-     * снимок не читается, бросается `WriteRefused` с `UNRESOLVED_TEXT`; повтор того же блока при «устарело» разрешён.
+     * снимок не читается, бросается `WriteRefused` с `UNRESOLVED_TEXT` (у выходных, ключ `holidays`, — свой текст); повтор
+     * того же блока при «устарело» разрешён.
      */
     write: <T>(key: string, run: () => Promise<T>): Promise<WriteResult<T>> =>
       exclusive(async () => {
@@ -271,7 +277,7 @@ export function createResultsFlow<S>(deps: {
           unresolved = key;
           stale = true;
           view?.setStale(true);
-          throw new WriteRefused(UNRESOLVED_TEXT);
+          throw new WriteRefused(unresolvedText(key));
         }
         return { value, refreshError: await answered() };
       }, true, key),

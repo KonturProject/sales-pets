@@ -146,6 +146,12 @@ try {
       const wide = await admin.evaluate(() => document.documentElement.scrollWidth);
       check(wide <= 390, `телефон: вкладка «${tab}» шириной ${wide} px — страница прокручивается вбок`);
     }
+    // сетка выходных: все 21 клетка целиком на экране, а не за краем
+    await admin.click('[role="tab"][data-tab="norms"]');
+    await admin.waitForSelector('[data-block="holidays"] [data-day]', { timeout: 8_000 });
+    const edge = await admin.$$eval('[data-block="holidays"] [data-day]', (days) => ({ n: days.length, right: Math.max(...days.map((d) => d.getBoundingClientRect().right)), left: Math.min(...days.map((d) => d.getBoundingClientRect().left)), clipped: days.filter((d) => d.scrollWidth > d.clientWidth).length }));
+    check(edge.n === 21 && edge.left >= 0 && edge.right <= 390, `телефон: сетка выходных выходит за экран (клеток ${edge.n}, от ${edge.left} до ${edge.right} px)`);
+    check(edge.clipped === 0, `телефон: у клеток выходных обрезан текст (${edge.clipped} шт.)`);
   });
 
   await scenario('оплаты: вкладка открыта со вчера', async ({ mock, newPage, check, urls }) => {
@@ -1244,6 +1250,172 @@ try {
     check(await admin.locator('[data-change]').count() === 0, 'убранная запись осталась в списке');
   });
 
+  // «Выходные дни» (нормы и пороги): сетка пн–вс, превью до записи, запись через общий поток страницы
+  const HOLIDAYS_BLOCK = '[data-block="holidays"]';
+  const BUILT_IN_OFF = ['2026-11-04', '2026-11-07', '2026-11-08', '2026-11-14', '2026-11-15', '2026-11-21', '2026-11-22'];
+  const HOLIDAYS_UNRESOLVED = 'Связь прервалась во время записи выходных — сохраните их ещё раз (повтор безопасен: список заменяется целиком).';
+  const holidaysTab = async (admin) => {
+    await admin.click('[role="tab"][data-tab="norms"]');
+    await admin.waitForSelector(`${HOLIDAYS_BLOCK} [data-day]`, { timeout: 8_000 });
+  };
+  const resultsStaleShown = (admin) => admin.waitForFunction(() => { const el = document.querySelector('[data-stale]'); return el && !el.hidden; }, null, { timeout: 8_000 }).then(() => true, () => false);
+  const dayPressed = (admin, date) => admin.getAttribute(`${HOLIDAYS_BLOCK} [data-day="${date}"]`, 'aria-pressed');
+  /** «Сохранить» → превью (текст) → «Применить»; возвращает текст превью. */
+  const saveHolidays = async (admin, applyToo = true) => {
+    await admin.click(`${HOLIDAYS_BLOCK} [data-save="holidays"]`);
+    const preview = await waitForText(admin, `${HOLIDAYS_BLOCK} [data-preview="holidays"]`, 'Что станет с питомцами сегодня');
+    if (applyToo) await admin.click(`${HOLIDAYS_BLOCK} [data-confirm="holidays"]`);
+    return preview;
+  };
+
+  await scenario('выходные: 05.11 → выходной, превью до записи, «Сегодня» и календарь, возврат, сегодняшний день', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    await loginAdmin(admin, urls.admin);
+    await holidaysTab(admin);
+    const nonWorking = async () => (await publicSnapshot(mock)).config.nonWorking;
+    const version = async () => (await publicSnapshot(mock)).version;
+    const dayLine = () => textOf(admin, '[data-today-line]');
+    const status = () => waitForText(admin, `${HOLIDAYS_BLOCK} [data-status="holidays"]`, 'Сохранено');
+
+    // сетка: 21 день, пн–вс, понедельник первой строки — 02.11; встроенные выходные отмечены
+    check(await admin.locator(`${HOLIDAYS_BLOCK} [data-day]`).count() === 21 && await admin.locator(`${HOLIDAYS_BLOCK} .wd`).count() === 7, 'сетка выходных: не 21 день или не 7 заголовков');
+    check(await admin.$eval(`${HOLIDAYS_BLOCK} [data-day]`, (e) => e.dataset.day) === '2026-11-02', 'первая клетка сетки — не 02.11');
+    for (const d of BUILT_IN_OFF) check(await dayPressed(admin, d) === 'true', `встроенный выходной ${d} не отмечен`);
+    check(await dayPressed(admin, '2026-11-05') === 'false', '05.11 отмечен выходным без правки');
+    const block = await textOf(admin, HOLIDAYS_BLOCK);
+    for (const phrase of ['не оценивается', 'следующий рабочий день', 'пропускают', 'План оплат на игру', 'Сегодняшний день тоже']) {
+      check(block.includes(phrase), `в блоке нет пояснения «${phrase}»`);
+    }
+    check(await nonWorking() === undefined, 'на свежем моке список выходных уже записан на сервер');
+    check((await dayLine()).includes('день 8 из 14'), `блок «Сегодня» до правки: «${await dayLine()}»`);
+
+    // 05.11 → выходной: день отмечен «изменено», на сервер ничего не ушло, превью называет день и последствия
+    const v0 = await version();
+    await admin.click(`${HOLIDAYS_BLOCK} [data-day="2026-11-05"]`);
+    check(await dayPressed(admin, '2026-11-05') === 'true' && await admin.locator(`${HOLIDAYS_BLOCK} [data-day="2026-11-05"].changed`).count() === 1, '05.11 после нажатия не выходной или не помечен «изменено»');
+    check(await admin.locator(`${HOLIDAYS_BLOCK} [data-preview]`).count() === 0, 'превью показано до «Сохранить»');
+    const preview = await saveHolidays(admin, false);
+    check(preview.includes('Станут выходными: 05.11') && !preview.includes('Станут рабочими'), `превью: названы не те дни: «${preview}»`);
+    check(preview.includes('Изменятся итоги дней') && /СР\d 05\.11: .+ → выходной/.test(preview), `в превью нет «было → выходной» за 05.11: «${preview}»`);
+    check(preview.includes('У питомцев сегодня (12.11.2026) изменится'), `в превью нет питомцев сегодня: «${preview}»`);
+    check(await version() === v0 && await nonWorking() === undefined, 'выходные записаны до «Применить»');
+    await admin.click(`${HOLIDAYS_BLOCK} [data-cancel="holidays"]`);
+    check(await admin.locator(`${HOLIDAYS_BLOCK} [data-preview]`).count() === 0 && await dayPressed(admin, '2026-11-05') === 'true', '«Отмена» не убрала превью или сбросила выбранный день');
+    check(await version() === v0, '«Отмена» записала выходные');
+
+    // «Применить»: запись, блок «Сегодня» (день 7 из 13), календарь без пометок «изменено»
+    await saveHolidays(admin);
+    check((await status()).includes('Сохранено'), `выходные не сохранены: «${await textOf(admin, `${HOLIDAYS_BLOCK} [data-alert="holidays"]`)}»`);
+    check(JSON.stringify(await nonWorking()) === JSON.stringify([...BUILT_IN_OFF, '2026-11-05'].sort()), `на сервере список выходных: ${JSON.stringify(await nonWorking())}`);
+    check((await waitForText(admin, '[data-today-line]', 'день 7 из 13')).includes('день 7 из 13'), `блок «Сегодня» не показал новый выходной: «${await dayLine()}»`);
+    check(await dayPressed(admin, '2026-11-05') === 'true' && await admin.locator(`${HOLIDAYS_BLOCK} .day.changed`).count() === 0, 'после записи календарь не показывает 05.11 выходным или остались пометки «изменено»');
+    check(await admin.locator(`${HOLIDAYS_BLOCK} [data-preview]`).count() === 0, 'после записи превью осталось');
+
+    // та же запись видна заново открытой вкладке
+    await admin.click('[role="tab"][data-tab="results"]');
+    await admin.waitForSelector('table.results', { timeout: 8_000 });
+    await holidaysTab(admin);
+    check(await dayPressed(admin, '2026-11-05') === 'true', 'после смены вкладки 05.11 не выходной');
+
+    // обратно: 05.11 снова рабочий, в превью — «станут рабочими» и итог дня вместо «выходной»
+    await admin.click(`${HOLIDAYS_BLOCK} [data-day="2026-11-05"]`);
+    const back = await saveHolidays(admin);
+    check(back.includes('Станут рабочими: 05.11') && /СР\d 05\.11: выходной → /.test(back), `превью возврата: «${back}»`);
+    check((await status()).includes('Сохранено'), 'возврат не сохранён');
+    check(JSON.stringify(await nonWorking()) === JSON.stringify(BUILT_IN_OFF), `после возврата на сервере: ${JSON.stringify(await nonWorking())}`);
+    check((await waitForText(admin, '[data-today-line]', 'день 8 из 14')).includes('день 8 из 14'), `блок «Сегодня» после возврата: «${await dayLine()}»`);
+
+    // сегодняшний день (12.11) тоже можно сделать выходным; воронка за него ещё не загружена — итоги дней не меняются
+    check(await admin.locator(`${HOLIDAYS_BLOCK} [data-day="2026-11-12"].today`).count() === 1, 'сегодняшний день в сетке не помечен');
+    await admin.click(`${HOLIDAYS_BLOCK} [data-day="2026-11-12"]`);
+    const today = await saveHolidays(admin);
+    check(today.includes('Станут выходными: 12.11') && today.includes('ничего: итоги оценённых дней те же'), `превью сегодняшнего выходного: «${today}»`);
+    check((await status()).includes('Сохранено'), 'сегодняшний выходной не сохранён');
+    check((await waitForText(admin, '[data-today-line]', 'выходной ·')).includes('выходной · день 7 из 13'), `блок «Сегодня» в выходной: «${await dayLine()}»`);
+  });
+
+  await scenario('выходные: пока пишется — всё закрыто; ответ потерян — закрывает только повтор; отказ сервера', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    let mode = 'normal';
+    let release = null;
+    const bodies = [];
+    await admin.route(`${mock.url}**`, async (route) => {
+      const request = route.request();
+      const body = request.method() === 'POST' ? JSON.parse(request.postData() ?? '{}') : {};
+      if (body.action !== 'setNonWorking') return route.continue();
+      bodies.push(body.nonWorking);
+      const now = mode;
+      mode = 'normal';
+      if (now === 'hold') {
+        await new Promise((resolve) => { release = resolve; });
+        return route.continue();
+      }
+      // ответ потерян, а запись до сервера не дошла (дописывается): чтение сейчас покажет прежний список
+      if (now === 'lost') return route.fulfill({ status: 200, contentType: 'text/plain', body: 'timeout' });
+      if (now === 'reject') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'bad_request' }) });
+      return route.continue();
+    });
+    await loginAdmin(admin, urls.admin);
+    await holidaysTab(admin);
+    const nonWorking = async () => (await publicSnapshot(mock)).config.nonWorking ?? BUILT_IN_OFF;
+    const alert = () => textOf(admin, `${HOLIDAYS_BLOCK} [data-alert="holidays"]`);
+    const stale = `${HOLIDAYS_BLOCK} [data-stale="holidays"]`;
+    const staleShown = () => admin.waitForFunction((sel) => { const el = document.querySelector(sel); return el && !el.hidden; }, stale, { timeout: 8_000 }).then(() => true, () => false);
+    const navDisabled = (want) => admin.$$eval('header button, [role="tablist"] button', (els, disabled) => els.length > 1 && els.every((b) => b.disabled === disabled), want);
+    const until = async (ok, ms = 5_000) => { for (const end = Date.now() + ms; Date.now() < end && !ok(); ) await admin.waitForTimeout(50); return ok(); };
+
+    // 1. пока запись идёт: блок закрыт (inert), «Сохранить» недоступна, вкладки и «Выйти» отключены; после — всё открыто
+    await admin.click(`${HOLIDAYS_BLOCK} [data-day="2026-11-05"]`);
+    mode = 'hold';
+    await saveHolidays(admin);
+    check(await until(() => release !== null), 'запрос записи выходных не дошёл до страницы-перехватчика');
+    check(await admin.$eval(HOLIDAYS_BLOCK, (e) => e.inert), 'пока выходные пишутся, блок не закрыт');
+    check(await admin.isDisabled(`${HOLIDAYS_BLOCK} [data-save="holidays"]`) && await admin.isDisabled(`${HOLIDAYS_BLOCK} [data-confirm="holidays"]`), 'пока выходные пишутся, «Сохранить» или «Применить» доступны');
+    check(await navDisabled(true), 'пока выходные пишутся, вкладки и «Выйти» не отключены');
+    check(!(await nonWorking()).includes('2026-11-05'), 'контроль: запрос ушёл на сервер, пока его держали');
+    release();
+    check((await waitForText(admin, `${HOLIDAYS_BLOCK} [data-status="holidays"]`, 'Сохранено')).includes('Сохранено'), `запись после ожидания не прошла: «${await alert()}»`);
+    check(await navDisabled(false) && !(await admin.$eval(HOLIDAYS_BLOCK, (e) => e.inert)), 'после записи вкладки или блок остались закрыты');
+    check(await admin.isEnabled(`${HOLIDAYS_BLOCK} [data-save="holidays"]`), 'после записи «Сохранить» недоступна');
+    check((await nonWorking()).includes('2026-11-05'), 'выходной 05.11 не записан');
+
+    // 2. ответ потерян: плашка про выходные (не про «Загрузить»), «Обновить» нет, повтор «Сохранить» доступен; «Итоги» и «Импорт» говорят то же
+    await admin.click(`${HOLIDAYS_BLOCK} [data-day="2026-11-06"]`);
+    mode = 'lost';
+    await saveHolidays(admin);
+    check(await staleShown(), 'после потерянного ответа плашка «устарело» не показана');
+    const lost = await textOf(admin, stale);
+    check(lost.includes(HOLIDAYS_UNRESOLVED) && !lost.includes('Загрузить'), `плашка потерянной записи: «${lost}»`);
+    check(await admin.isHidden(`${HOLIDAYS_BLOCK} [data-refresh="holidays"]`), '«Обновить» осталась при потерянной записи выходных');
+    check(!(await nonWorking()).includes('2026-11-06'), 'контроль: запись дошла до сервера, повтор ничего не докажет');
+    check(await admin.isEnabled(`${HOLIDAYS_BLOCK} [data-save="holidays"]`), 'повтор записи выходных недоступен');
+    await admin.click('[role="tab"][data-tab="results"]');
+    check(await resultsStaleShown(admin), 'в «Итогах» нет плашки «устарело»');
+    const inResults = await textOf(admin, '[data-stale]');
+    check(inResults.includes(HOLIDAYS_UNRESOLVED) && !inResults.includes('Загрузить'), `плашка «Итогов» после потерянных выходных: «${inResults}»`);
+    await admin.click('[role="tab"][data-tab="import"]');
+    const inImport = await waitForText(admin, '[data-alert="import-open"]', 'Связь прервалась');
+    check(inImport.includes(HOLIDAYS_UNRESOLVED), `во вкладке «Импорт» после потерянных выходных: «${inImport}»`);
+
+    // 3. вкладка «Нормы» открывается «устаревшей»; повторная запись закрывает ожидание и снимает плашку
+    await holidaysTab(admin);
+    check(await staleShown(), 'на возврате во вкладку «Нормы» плашка «устарело» не показана');
+    await admin.click(`${HOLIDAYS_BLOCK} [data-day="2026-11-06"]`);
+    await saveHolidays(admin);
+    check((await waitForText(admin, `${HOLIDAYS_BLOCK} [data-status="holidays"]`, 'Сохранено')).includes('Сохранено'), `повторная запись не прошла: «${await alert()}»`);
+    check((await nonWorking()).includes('2026-11-06'), 'после повтора выходной 06.11 не записан');
+    check(await admin.waitForFunction((sel) => document.querySelector(sel)?.hidden === true, stale, { timeout: 8_000 }).then(() => true, () => false), 'после повтора плашка «устарело» осталась');
+    check(bodies.length === 3, `на сервер ушло запросов записи выходных: ${bodies.length}, ожидалось 3 (запись, потерянная, повтор)`);
+
+    // 4. отказ сервера — определённый ответ: сказан человеческим текстом, поток не «устарел», список на сервере прежний
+    await admin.click(`${HOLIDAYS_BLOCK} [data-day="2026-11-09"]`);
+    mode = 'reject';
+    await saveHolidays(admin);
+    check((await waitForText(admin, `${HOLIDAYS_BLOCK} [data-alert="holidays"]`, 'Сервер отклонил запрос')).includes('Сервер отклонил запрос'), `отказ сервера: «${await alert()}»`);
+    check(await admin.isHidden(stale) && await admin.isEnabled(`${HOLIDAYS_BLOCK} [data-save="holidays"]`), 'после отказа сервера поток «устарел» или «Сохранить» недоступна');
+    check(!(await nonWorking()).includes('2026-11-09'), 'отказанный выходной записан');
+  });
+
   await scenario('ручные правки: выдать и сбросить кучки → экран', async ({ mock, newPage, check, urls }) => {
     const screen = await newPage();
     await screen.goto(urls.screen, { waitUntil: 'networkidle' });
@@ -2031,4 +2203,4 @@ if (failures.length) {
   console.error(`FAIL (${failures.length}):\n- ${failures.join('\n- ')}`);
   process.exit(1);
 }
-console.log('OK: админка — вход и блокировка, «Итоги» с правкой и отменой, разбор загрузки воронки и оплат с правкой, оплаты → экран, импорт оплат и воронки, штат и отсутствия, нормы и ручные правки → экран, РГ — вход и расход предмета → экран, PIN групп не остаются в DOM, хранилище и консоли');
+console.log('OK: админка — вход и блокировка, «Итоги» с правкой и отменой, разбор загрузки воронки и оплат с правкой, оплаты → экран, импорт оплат и воронки, штат и отсутствия, нормы, выходные дни и ручные правки → экран, РГ — вход и расход предмета → экран, PIN групп не остаются в DOM, хранилище и консоли');

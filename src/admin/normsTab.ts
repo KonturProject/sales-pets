@@ -6,6 +6,7 @@ import { configFormOf, configPatch, LEVELS, LEVEL_TITLE, NORM_FIELD_TITLE, NORM_
 import { configPreview, describeChange, describeEntry, removalPreview, type ConfigPreview } from './configPreview';
 import type { AdminCtx } from './ctx';
 import { errorText, h, ruDate } from './dom';
+import { holidaysBlock } from './holidaysBlock';
 
 /** Что действует на дату `from` (без даты — «вся игра», то есть база): с этих значений начинается форма. */
 function currentAt(s: Snapshot, from: DateStr | undefined): Config {
@@ -23,9 +24,13 @@ const changesOf = (s: Snapshot): ConfigChange[] => s.configChanges ?? [];
  * Вкладка «Нормы и пороги»: поля предзаполнены тем, что реально действует (на выбранную дату или на всю игру), на сервер
  * уходит только изменённое. Диапазоны проверяет сервер: его отказ показывается как есть. Без даты правка действует на
  * всю историю, с датой — только с неё; в обоих случаях «Сохранить» сначала показывает, что изменится у питомцев сегодня,
- * и пишет на сервер только после «Применить». Ниже список правок по датам с кнопкой «Убрать».
+ * и пишет на сервер только после «Применить». Ниже список правок по датам с кнопкой «Убрать», а под ним блок «Выходные
+ * дни». Выходные меняют оценку дней, поэтому пишутся через общий поток записи страницы (`ctx.resultsFlow`), и вкладка при
+ * открытии, как «Итоги» и «Импорт», сначала просит у потока проверить потерянную запись, а потом читает первый снимок.
  */
 export async function normsTab(ctx: AdminCtx): Promise<HTMLElement> {
+  const opening = ctx.resultsFlow.begin();
+  const checked = await opening.open();
   let snap = await ctx.snapshot();
   const alert = h('p', { role: 'alert', 'data-alert': 'config' });
   const status = h('p', { role: 'status', 'data-status': 'config' });
@@ -198,8 +203,10 @@ export async function normsTab(ctx: AdminCtx): Promise<HTMLElement> {
     );
   }
 
+  const holidays = holidaysBlock(ctx, snap, checked);
   paint();
   paintList();
+  if (!opening.attach(holidays.view)) return h('div'); // открытие успели сменить более новым: этот экземпляр на экран не попадёт
   return h(
     'div',
     {},
@@ -209,5 +216,6 @@ export async function normsTab(ctx: AdminCtx): Promise<HTMLElement> {
     alert,
     status,
     listBox,
+    holidays.node,
   );
 }

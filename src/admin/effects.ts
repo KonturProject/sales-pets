@@ -44,14 +44,20 @@ function describeDay(before: Outcome, after: Outcome): { before: string; after: 
 export const dayChangeText = (d: Effects['days'][number]): string => `${d.group} ${shortDate(d.date)}: ${d.before} → ${d.after}`;
 
 /**
- * Изменения оценок уже оценённых дней (рабочие дни по `funnelThrough` до перехода; день, который оценивается впервые,
- * не «переписан»), питомцев на сегодня и устаревшие правки после перехода. Снимки не меняются.
+ * Изменения оценок уже оценённых дней (дни по `funnelThrough` до перехода, рабочие в календаре до или после него: смена
+ * выходных тоже меняет оценку дня; день, который оценивается впервые, не «переписан»), питомцев на сегодня и
+ * устаревшие правки после перехода. Снимки не меняются.
  */
 export function effectsOf(before: Snapshot, after: Snapshot): Effects {
   const asOf = serverToday(before);
   const through = before.funnelThrough;
   const cfg = timelineOf(before).at(asOf);
-  const evaluated = through === null ? [] : workingDaysBetween(cfg.startDate, through < asOf ? through : asOf, cfg);
+  const cfgAfter = timelineOf(after).at(asOf);
+  const last = through === null ? null : through < asOf ? through : asOf;
+  // день, ставший рабочим или выходным при смене календаря, оценивался по одному календарю, а теперь по другому
+  const evaluated = last === null
+    ? []
+    : [...new Set([...workingDaysBetween(cfg.startDate, last, cfg), ...workingDaysBetween(cfg.startDate, last, cfgAfter)])].sort();
 
   const days: Effects['days'] = [];
   for (const date of evaluated) {

@@ -2,7 +2,7 @@ import { describe, expect, test, vi, type Mock } from 'vitest';
 import { ApiError } from '@/data/api';
 import type { PendingHolder } from './correctionSaver';
 import type { CorrectionItem } from './results';
-import { BUSY_TEXT, STALE_TEXT, UNRESOLVED_TEXT, WriteRefused, createResultsFlow } from './resultsFlow';
+import { BUSY_TEXT, HOLIDAYS_UNRESOLVED_TEXT, STALE_TEXT, UNRESOLVED_TEXT, WriteRefused, createResultsFlow } from './resultsFlow';
 
 const item = (delta: number): CorrectionItem => ({ date: '2026-11-03', employeeId: 'a1', kind: 'long', delta, base: 2 });
 const refs = () => {
@@ -787,5 +787,38 @@ describe('createResultsFlow: загрузка без ответа закрыва
     expect(flow.unresolved).toBe('payments');
     expect(flow.stale).toBe(true);
     expect(flow.canWrite('payments')).toBe(true);
+  });
+});
+
+describe('createResultsFlow: запись выходных без ответа — тексты про выходные, а не про файл', () => {
+  const lost = new ApiError('network', 'Нет связи');
+
+  test('ответа не было: текст потока и отказ другим записям называют выходные, «Загрузить» не упоминается', async () => {
+    const s = setup();
+    await expect(s.flow.write('holidays', async () => { throw lost; })).rejects.toThrow(HOLIDAYS_UNRESOLVED_TEXT);
+    expect(s.flow.unresolved).toBe('holidays');
+    expect(s.flow.staleText).toBe(HOLIDAYS_UNRESOLVED_TEXT);
+    expect(HOLIDAYS_UNRESOLVED_TEXT).not.toContain('Загрузить');
+    await expect(s.flow.correct([item(1)])).rejects.toThrow(HOLIDAYS_UNRESOLVED_TEXT);
+    await expect(s.flow.write('funnel', vi.fn())).rejects.toThrow(HOLIDAYS_UNRESOLVED_TEXT);
+    expect(s.send).not.toHaveBeenCalled();
+  });
+
+  test('повтор выходных (даже с другим списком) закрывает ожидание и читает снимок; повтор другого блока — нет', async () => {
+    const s = setup();
+    await expect(s.flow.write('holidays', async () => { throw lost; })).rejects.toThrow(HOLIDAYS_UNRESOLVED_TEXT);
+    expect(s.flow.canWrite('holidays')).toBe(true);
+    expect(s.flow.canWrite('payments')).toBe(false);
+    expect(await s.flow.write('holidays', async () => 'ok')).toEqual({ value: 'ok', refreshError: null });
+    expect(s.flow.unresolved).toBeNull();
+    expect(s.flow.stale).toBe(false);
+    expect(s.apply).toHaveBeenCalledWith(1);
+  });
+
+  test('загрузка файла без ответа по-прежнему говорит про «Загрузить»', async () => {
+    const s = setup();
+    await expect(s.flow.write('payments', async () => { throw lost; })).rejects.toThrow(UNRESOLVED_TEXT);
+    expect(s.flow.staleText).toBe(UNRESOLVED_TEXT);
+    await expect(s.flow.write('holidays', vi.fn())).rejects.toThrow(UNRESOLVED_TEXT);
   });
 });

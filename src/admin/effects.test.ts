@@ -115,6 +115,19 @@ describe('effectsOf: что изменится между двумя снимк�
     expect(days.map((d) => `${d.date} ${d.group} → ${d.after}`)).toEqual(['2026-11-02 СР3 → аптечка, игрушка', '2026-11-03 СР3 → аптечка, игрушка']);
   });
 
+  test('смена выходных: день, ставший рабочим, и день, ставший выходным, — в списке; день, оставшийся выходным, — нет', () => {
+    const base = world({ config: { norms: { experienced: { quality: 4, long: 1.5, payments: 1 } }, nonWorking: ['2026-11-02'] } });
+    // воронка за выходное 02.11 загружена, 03.11 — рабочий
+    const after: Snapshot = { ...base, config: { ...base.config, nonWorking: ['2026-11-03', '2026-11-08'] } };
+    const { days } = effectsOf(base, after);
+    expect(days.map((d) => `${d.group} ${d.date}: ${d.before} → ${d.after}`)).toEqual([
+      'СР1 2026-11-02: выходной → аптечка, игрушка',
+      'СР2 2026-11-02: выходной → аптечка, игрушка',
+      'СР1 2026-11-03: +1 кучка, игрушка → выходной',
+      'СР2 2026-11-03: аптечка, игрушка → выходной',
+    ]);
+  });
+
   test('ничего не изменилось — три пустых списка', () => {
     const before = world({ corrections: [corr(1, '2026-11-03', 'a1', 'long', 1, 1)] });
     expect(effectsOf(before, { ...before })).toEqual({ days: [], now: [], stale: [] });

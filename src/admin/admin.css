@@ -643,3 +643,91 @@ td.stale {
   margin: 0.2rem 0;
   padding-left: 1.2rem;
 }
+
+/* Нормы: блок «Выходные дни» — сетка недель пн–вс; minmax(0, 1fr), чтобы на узком экране клетки сжимались, а не раздвигали страницу */
+.holidays {
+  margin-top: 1.4rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.holidays[inert] {
+  opacity: 0.6;
+}
+
+.holidays ul {
+  margin: 0.4rem 0;
+  padding-left: 1.2rem;
+}
+
+.holidays h3 {
+  margin: 0.8rem 0 0.3rem;
+}
+
+.calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.3rem;
+  max-width: 34rem;
+  margin: 0.6rem 0;
+}
+
+.calendar .wd {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.calendar .day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  padding: 0.35rem 0;
+  overflow: hidden;
+  line-height: 1.25;
+}
+
+.calendar .day .n {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar .day .k {
+  font-size: 0.6rem;
+  color: var(--muted);
+}
+
+/* выходной отмечен фоном и словом, а не только цветом */
+.calendar .day.off {
+  background: #f1e3cf;
+  border-color: var(--accent);
+}
+
+.calendar .day.off .k {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* день, который отличается от записанного на сервере */
+.calendar .day.changed {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
+
+.calendar .day.today .n {
+  text-decoration: underline;
+  text-underline-offset: 0.15rem;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  /* 7 клеток в ширину телефона: слово «выходной» не должно обрезаться */
+  .calendar {
+    gap: 0.2rem;
+  }
+
+  .calendar .day .k {
+    font-size: 0.55rem;
+  }
+}

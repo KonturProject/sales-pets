@@ -245,7 +245,7 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
 
   root = h('div', {}, alert, funnel, payments);
   if (!opening.attach(previews.view)) return h('div'); // открытие успели сменить более новым: этот экземпляр на экран не попадёт
-  if (flow.unresolved !== null) alert.textContent = UNRESOLVED_TEXT; // загрузка без ответа пережила смену вкладки: файл выбрать заново и нажать «Загрузить»
+  if (flow.unresolved !== null) alert.textContent = flow.staleText; // запись без ответа пережила смену вкладки: загрузку — выбрать файл заново и нажать «Загрузить», выходные — сохранить ещё раз
   else if (checked?.error) alert.textContent = `Обновить не удалось: ${errorText(checked.error)}`;
   else if (checked?.checked) alert.textContent = INTERRUPTED_TEXT;
   return root;
