@@ -830,6 +830,7 @@ try {
     await admin.click('[data-confirm="payments"]');
     check((await waitForText(admin, '[data-report="payments"]', 'Загружено оплат')).includes(`Загружено оплат: ${have + 2}`), 'повторная загрузка оплат не прошла');
     check(invoicesOf(await publicSnapshot(mock), person.name, LAST_DAY) === have + 2, 'после повтора оплаты на сервере не те');
+    check(!(await textOf(admin, '[data-alert="import-open"]')).includes(UNRESOLVED), 'после повтора вкладка всё ещё просит нажать «Загрузить» ещё раз');
     const open = await admin.waitForFunction(() => document.querySelector('[data-stale="funnel"]')?.hidden === true, null, { timeout: 8_000 }).then(() => true, () => false);
     check(open, 'после повторной загрузки разбор воронки остался «устаревшим»');
     // разбор воронки построен по снимку ПОСЛЕ загрузки, а «Поправить» идёт от значений после неё

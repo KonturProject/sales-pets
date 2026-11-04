@@ -121,6 +121,7 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
   const flow = ctx.resultsFlow;
   const opening = flow.begin();
   const checked = await opening.open();
+  const alert = h('p', { role: 'alert', 'data-alert': 'import-open' });
   /**
    * Загрузка файла — такая же запись, как правка: пока поток занят или «устарел», подтверждения недоступны. Кроме повтора
    * загрузки без ответа: он доступен только у блока, чья загрузка не подтверждена (ответ другой её не подтверждает).
@@ -135,10 +136,15 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
    * Строки итога; если снимок после записи прочитать не удалось, к ним добавлено предупреждение.
    */
   const load = async (key: 'funnel' | 'payments', write: () => Promise<string[]>): Promise<string[]> => {
-    const done = await flow.write(key, write);
-    return done.refreshError
-      ? [...done.value, `Данные после загрузки перечитать не удалось (${errorText(done.refreshError)}): откройте вкладку заново.`]
-      : done.value;
+    try {
+      const done = await flow.write(key, write);
+      return done.refreshError
+        ? [...done.value, `Данные после загрузки перечитать не удалось (${errorText(done.refreshError)}): откройте вкладку заново.`]
+        : done.value;
+    } finally {
+      // определённый ответ закрыл загрузку без ответа: сообщение вкладки о ней («нажмите «Загрузить» ещё раз») устарело
+      if (flow.unresolved === null && alert.textContent === UNRESOLVED_TEXT) alert.textContent = '';
+    }
   };
   let root: HTMLElement | undefined;
 
@@ -237,7 +243,6 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
     }, preview);
   }, 'Каждое утро: отчёт по последний рабочий день. Первая загрузка (02.11) берёт из отчёта только штат; новые люди из отчёта добавляются в штат и в следующие дни.', () => flow.canWrite('funnel'));
 
-  const alert = h('p', { role: 'alert', 'data-alert': 'import-open' });
   root = h('div', {}, alert, funnel, payments);
   if (!opening.attach(previews.view)) return h('div'); // открытие успели сменить более новым: этот экземпляр на экран не попадёт
   if (flow.unresolved !== null) alert.textContent = UNRESOLVED_TEXT; // загрузка без ответа пережила смену вкладки: файл выбрать заново и нажать «Загрузить»
