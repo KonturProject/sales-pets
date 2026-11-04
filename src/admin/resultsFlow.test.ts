@@ -2,7 +2,7 @@ import { describe, expect, test, vi, type Mock } from 'vitest';
 import { ApiError } from '@/data/api';
 import type { PendingHolder } from './correctionSaver';
 import type { CorrectionItem } from './results';
-import { BUSY_TEXT, STALE_TEXT, WriteRefused, createResultsFlow } from './resultsFlow';
+import { BUSY_TEXT, STALE_TEXT, UNRESOLVED_TEXT, WriteRefused, createResultsFlow } from './resultsFlow';
 
 const item = (delta: number): CorrectionItem => ({ date: '2026-11-03', employeeId: 'a1', kind: 'long', delta, base: 2 });
 const refs = () => {
@@ -594,7 +594,7 @@ describe('createResultsFlow: запись, не правка (загрузка �
       send: vi.fn(), remove: vi.fn(), load: vi.fn(async () => { order.push('load'); return 7; }), lockNav,
     });
     flow.begin().attach({ apply, setBusy: vi.fn(), setStale: vi.fn() });
-    expect(await flow.write(async () => { order.push('run'); return 'готово'; })).toEqual({ value: 'готово', refreshError: null });
+    expect(await flow.write('payments', async () => { order.push('run'); return 'готово'; })).toEqual({ value: 'готово', refreshError: null });
     expect(order).toEqual(['lock', 'run', 'load', 'apply', 'unlock']);
     expect(apply).toHaveBeenCalledWith(7);
     expect(flow.busy).toBe(false);
@@ -603,12 +603,12 @@ describe('createResultsFlow: запись, не правка (загрузка �
   test('пока идёт загрузка, правка, отмена и вторая загрузка отклоняются и ничего не отправляют; и наоборот', async () => {
     const gate = hold<string>();
     const { flow, send, remove } = setup();
-    const importing = flow.write(() => gate.promise);
+    const importing = flow.write('payments', () => gate.promise);
     expect(flow.busy).toBe(true);
     await expect(flow.correct([item(1)])).rejects.toThrow(BUSY_TEXT);
     await expect(flow.remove(5)).rejects.toThrow(BUSY_TEXT);
     const second = vi.fn();
-    await expect(flow.write(second)).rejects.toBeInstanceOf(WriteRefused);
+    await expect(flow.write('funnel', second)).rejects.toBeInstanceOf(WriteRefused);
     expect(send).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
     expect(second).not.toHaveBeenCalled();
@@ -619,7 +619,7 @@ describe('createResultsFlow: запись, не правка (загрузка �
     const other = setup({ send: vi.fn().mockReturnValue(sendGate.promise) });
     const saving = other.flow.correct([item(1)]);
     const run = vi.fn();
-    await expect(other.flow.write(run)).rejects.toThrow(BUSY_TEXT);
+    await expect(other.flow.write('payments', run)).rejects.toThrow(BUSY_TEXT);
     expect(run).not.toHaveBeenCalled();
     sendGate.resolve({ ok: true });
     await saving;
@@ -630,11 +630,13 @@ describe('createResultsFlow: запись, не правка (загрузка �
     const { flow } = setup({ load });
     await flow.correct([item(1)]);
     expect(flow.stale).toBe(true);
+    expect(flow.canWrite('payments')).toBe(false);
     const run = vi.fn();
-    await expect(flow.write(run)).rejects.toThrow(STALE_TEXT);
+    await expect(flow.write('payments', run)).rejects.toThrow(STALE_TEXT);
     expect(run).not.toHaveBeenCalled();
     await flow.reload();
-    expect(await flow.write(async () => 1)).toMatchObject({ value: 1 });
+    expect(flow.canWrite('payments')).toBe(true);
+    expect(await flow.write('payments', async () => 1)).toMatchObject({ value: 1 });
   });
 
   test('правка без ответа (повтор ещё не прошёл): загрузка не выполняется, поток «устаревает», «Обновить» повторяет запрос', async () => {
@@ -643,27 +645,147 @@ describe('createResultsFlow: запись, не правка (загрузка �
     await expect(flow.correct([item(7)])).rejects.toMatchObject({ code: 'network' });
     expect(flow.stale).toBe(false); // состояние «ожидает» есть, а «устарело» ещё не объявлено
     const run = vi.fn();
-    await expect(flow.write(run)).rejects.toThrow(STALE_TEXT);
+    await expect(flow.write('payments', run)).rejects.toThrow(STALE_TEXT);
     expect(run).not.toHaveBeenCalled();
     expect(flow.stale).toBe(true);
     expect(setStale).toHaveBeenCalledWith(true);
     expect(await flow.reload()).toEqual({ checked: true, error: null });
     expect(send.mock.calls.map((c) => c[1])).toEqual(['ref-1', 'ref-1']);
-    expect(await flow.write(async () => 'ok')).toMatchObject({ value: 'ok' });
+    expect(await flow.write('payments', async () => 'ok')).toMatchObject({ value: 'ok' });
   });
 
   test('загрузка прошла, а снимок прочитать не удалось: ошибка чтения отдельно, поток «устарел»', async () => {
     const { flow, apply, setStale } = setup({ load: vi.fn().mockRejectedValue(boom) });
-    expect(await flow.write(async () => 'ok')).toEqual({ value: 'ok', refreshError: boom });
+    expect(await flow.write('payments', async () => 'ok')).toEqual({ value: 'ok', refreshError: boom });
     expect(apply).not.toHaveBeenCalled();
     expect(setStale.mock.calls).toEqual([[true]]);
+    expect(flow.unresolved).toBeNull();
   });
 
-  test('загрузка оборвалась: ошибка пробрасывается, а снимок всё равно перечитан (часть записей могла дойти)', async () => {
-    const { flow, apply, setBusy } = setup();
-    await expect(flow.write(async () => { throw boom; })).rejects.toBe(boom);
+  test('сервер отклонил загрузку (bad_request): ошибка пробрасывается, записи не было, снимок перечитан, поток не «устарел»', async () => {
+    const rejected = new ApiError('bad_request', 'bad_request');
+    const { flow, apply, setBusy, setStale } = setup();
+    await expect(flow.write('payments', async () => { throw rejected; })).rejects.toBe(rejected);
     expect(apply).toHaveBeenCalledWith(1);
     expect(setBusy.mock.calls).toEqual([[true], [false]]);
+    expect(setStale).not.toHaveBeenCalled();
+    expect(flow.unresolved).toBeNull();
+    expect(flow.stale).toBe(false);
     expect(flow.busy).toBe(false);
+  });
+});
+
+describe('createResultsFlow: загрузка без ответа закрывается только повторной загрузкой', () => {
+  const lost = new ApiError('network', 'Нет связи');
+
+  /** Загрузка оплат без ответа: сервер мог её не принять или ещё дописывать. */
+  async function lose(over: Over = {}, key = 'payments') {
+    const s = setup(over);
+    await expect(s.flow.write(key, async () => { throw lost; })).rejects.toThrow(UNRESOLVED_TEXT);
+    return s;
+  }
+
+  test('ответа не было: поток «устарел» с особым текстом, снимок не перечитывается (он мог бы показать данные до загрузки как свежие)', async () => {
+    const { flow, load, apply, setStale, setBusy } = await lose();
+    expect(flow.unresolved).toBe('payments');
+    expect(flow.stale).toBe(true);
+    expect(flow.staleText).toBe(UNRESOLVED_TEXT);
+    expect(setStale.mock.calls).toEqual([[true]]);
+    expect(load).not.toHaveBeenCalled();
+    expect(apply).not.toHaveBeenCalled();
+    expect(setBusy.mock.calls).toEqual([[true], [false]]);
+    expect(flow.busy).toBe(false);
+  });
+
+  test('ответ сервера «ошибка сервера» (server_error) — тоже неизвестный исход, а не отказ', async () => {
+    const s = setup();
+    await expect(s.flow.write('funnel', async () => { throw new ApiError('server_error', 'server_error'); })).rejects.toThrow(UNRESOLVED_TEXT);
+    expect(s.flow.unresolved).toBe('funnel');
+  });
+
+  test('снимок после «Обновить» ещё без загрузки: правки и отмены отклонены, «Обновить» поток не открывает', async () => {
+    const { flow, send, remove, load, apply, setStale } = await lose();
+    await expect(flow.correct([item(1)])).rejects.toThrow(UNRESOLVED_TEXT);
+    await expect(flow.remove(5)).rejects.toThrow(UNRESOLVED_TEXT);
+    expect(send).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+    expect(await flow.reload()).toEqual({ checked: false, error: null }); // чтение прошло, данные «до загрузки»
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(apply).toHaveBeenCalledWith(1);
+    expect(flow.stale).toBe(true);
+    expect(flow.unresolved).toBe('payments');
+    expect(setStale).not.toHaveBeenCalledWith(false);
+    await expect(flow.correct([item(1)])).rejects.toThrow(UNRESOLVED_TEXT);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  test('повторить можно только загрузку того же блока: другая отклоняется, кнопки по canWrite', async () => {
+    const { flow } = await lose();
+    expect(flow.canWrite('payments')).toBe(true);
+    expect(flow.canWrite('funnel')).toBe(false);
+    const other = vi.fn();
+    await expect(flow.write('funnel', other)).rejects.toThrow(UNRESOLVED_TEXT);
+    expect(other).not.toHaveBeenCalled();
+    expect(flow.unresolved).toBe('payments');
+  });
+
+  test('повтор прошёл: ожидание снято, снимок читается ПОСЛЕ загрузки и раздаётся, поток открыт', async () => {
+    const order: string[] = [];
+    const { flow, setStale, apply, load } = await lose({
+      load: vi.fn(async () => { order.push('load'); return 42; }),
+    });
+    expect(await flow.write('payments', async () => { order.push('run'); return 'готово'; })).toEqual({ value: 'готово', refreshError: null });
+    expect(order).toEqual(['run', 'load']);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(apply).toHaveBeenCalledWith(42);
+    expect(flow.unresolved).toBeNull();
+    expect(flow.stale).toBe(false);
+    expect(setStale.mock.calls).toEqual([[true], [false]]);
+    expect(flow.canWrite('funnel')).toBe(true);
+    expect(await flow.correct([item(1)])).toMatchObject({ result: 'saved' });
+  });
+
+  test('повтор получил отказ сервера: это определённый ответ — ожидание снято, снимок перечитан, ошибка пробрасывается', async () => {
+    const rejected = new ApiError('bad_request', 'bad_request');
+    const { flow, apply, setStale } = await lose();
+    await expect(flow.write('payments', async () => { throw rejected; })).rejects.toBe(rejected);
+    expect(flow.unresolved).toBeNull();
+    expect(flow.stale).toBe(false);
+    expect(apply).toHaveBeenCalledWith(1);
+    expect(setStale.mock.calls).toEqual([[true], [false]]);
+  });
+
+  test('повтор снова без ответа: ожидание остаётся, снимок не читается', async () => {
+    const { flow, load, apply } = await lose();
+    await expect(flow.write('payments', async () => { throw lost; })).rejects.toThrow(UNRESOLVED_TEXT);
+    expect(flow.unresolved).toBe('payments');
+    expect(flow.stale).toBe(true);
+    expect(load).not.toHaveBeenCalled();
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  test('повтор прошёл, а снимок прочитать не удалось: ожидание снято, поток «устарел» уже обычным текстом, «Обновить» его открывает', async () => {
+    const load = vi.fn().mockRejectedValueOnce(lost).mockResolvedValue(5);
+    const { flow, setStale } = await lose({ load });
+    expect(await flow.write('payments', async () => 'ok')).toEqual({ value: 'ok', refreshError: lost });
+    expect(flow.unresolved).toBeNull();
+    expect(flow.stale).toBe(true);
+    expect(flow.staleText).toBe(STALE_TEXT);
+    expect(setStale.mock.calls).toEqual([[true], [true]]); // второй раз — чтобы вид сменил текст
+    expect(flow.canWrite('payments')).toBe(false);
+    expect(await flow.reload()).toEqual({ checked: false, error: null });
+    expect(flow.stale).toBe(false);
+  });
+
+  test('состояние на всю страницу: новая вкладка получает «устарело», открытие вкладки его не снимает', async () => {
+    const { flow } = await lose();
+    const view = { apply: vi.fn(), setBusy: vi.fn(), setStale: vi.fn() };
+    const opening = flow.begin();
+    expect(await opening.open()).toEqual({ checked: false, error: null });
+    expect(opening.attach(view)).toBe(true);
+    expect(view.setStale).toHaveBeenCalledWith(true);
+    expect(flow.unresolved).toBe('payments');
+    expect(flow.stale).toBe(true);
+    expect(flow.canWrite('payments')).toBe(true);
   });
 });

@@ -779,6 +779,110 @@ try {
     check((await waitForText(admin, '[data-report="payments"]', 'Загружено оплат')).includes('Загружено оплат'), 'после записи правки загрузка оплат не прошла');
   });
 
+  // Загрузка без ответа (обрыв, таймаут): сервер мог её не принять или ещё дописывать, а чтение этого не покажет.
+  // Поток «устарел» с особым текстом, правки отклонены, снимается только повтором загрузки того же блока.
+  const UNRESOLVED = 'Связь прервалась во время загрузки — нажмите «Загрузить» ещё раз (повторная загрузка того же файла безопасна).';
+  const inertAt = (admin, selector) => admin.$eval(selector, (el) => el.closest('[inert]') !== null).catch(() => false);
+  const visibleStale = (admin, id) => admin.waitForFunction((sel) => { const el = document.querySelector(sel); return el && !el.hidden; }, id === true ? '[data-stale]' : `[data-stale="${id}"]`, { timeout: 8_000 }).then(() => true, () => false);
+
+  await scenario('импорт: ответ на загрузку оплат потерян — разбор и «Итоги» закрыты, «Загрузить» воронки недоступна, закрывает только повтор', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    let lose = false;
+    // ответ потерян, а запись на сервер ещё не дошла (дописывается): чтение сейчас покажет данные ДО загрузки
+    await admin.route(`${mock.url}**`, async (route) => {
+      const request = route.request();
+      const body = request.method() === 'POST' ? JSON.parse(request.postData() ?? '{}') : {};
+      if (lose && body.action === 'importPayments' && !body.dryRun) {
+        lose = false;
+        return route.fulfill({ status: 200, contentType: 'text/plain', body: 'timeout' });
+      }
+      return route.continue();
+    });
+    const before = await publicSnapshot(mock);
+    const person = before.staff.find((e) => e.group === 'СР2');
+    const have = invoicesOf(before, person.name, LAST_DAY);
+    await loginAdmin(admin, urls.admin);
+    const invoices = Array.from({ length: have + 2 }, (_, i) => ({ date: LAST_DAY, group: person.group, author: person.name, invoice: `FXL-${i + 1}` }));
+    await bothPreviews(admin, [{ name: person.name, quality: 3, long: 4 }], invoices, person.group);
+    lose = true;
+    await admin.click('[data-confirm="payments"]');
+    check((await waitForText(admin, '[data-alert="payments"]', 'Связь прервалась')).includes(UNRESOLVED), `сообщение о потерянной загрузке: «${await textOf(admin, '[data-alert="payments"]')}»`);
+    check(invoicesOf(await publicSnapshot(mock), person.name, LAST_DAY) === have, 'контроль: запись дошла до сервера, проверка ничего не докажет');
+    check(await visibleStale(admin, 'funnel') && await visibleStale(admin, 'payments'), 'после потерянной загрузки разборы не «устарели»');
+    check((await textOf(admin, '[data-stale="funnel"]')).includes(UNRESOLVED), `текст в разборе воронки: «${await textOf(admin, '[data-stale="funnel"]')}»`);
+    check(await admin.isHidden('[data-refresh="funnel"]') && await admin.isHidden('[data-refresh="payments"]'), '«Обновить» осталась при потерянной загрузке: она ничего не снимает');
+    check(await inertAt(admin, `${FBOX} [data-group-toggle="${person.group}"]`), 'разбор воронки не закрыт');
+    check(await admin.isDisabled('[data-confirm="funnel"]'), '«Загрузить» воронку доступна, пока не подтверждена загрузка оплат');
+    check(await admin.isEnabled('[data-confirm="payments"]'), '«Загрузить» оплаты (повтор) недоступна');
+
+    // состояние на всю страницу: «Итоги» тоже закрыты, смена вкладки его не снимает
+    await admin.click('[role="tab"][data-tab="results"]');
+    check(await visibleStale(admin, true), 'в «Итогах» нет сообщения «устарело»');
+    check((await textOf(admin, '[data-stale]')).includes(UNRESOLVED), `текст в «Итогах»: «${await textOf(admin, '[data-stale]')}»`);
+    check(await admin.isHidden('[data-refresh]'), 'в «Итогах» осталась «Обновить»');
+    check(await inertAt(admin, 'table.results'), 'таблица «Итогов» не закрыта');
+    await admin.click('[role="tab"][data-tab="import"]');
+    check((await waitForText(admin, '[data-alert="import-open"]', 'Связь прервалась')).includes(UNRESOLVED), 'на возврате во вкладку нет сообщения о потерянной загрузке');
+    await bothPreviews(admin, [{ name: person.name, quality: 3, long: 4 }], invoices, person.group);
+    check(await visibleStale(admin, 'payments') && await visibleStale(admin, 'funnel'), 'новые разборы открылись не «устаревшими»');
+    check(await admin.isEnabled('[data-confirm="payments"]') && await admin.isDisabled('[data-confirm="funnel"]'), 'после возврата во вкладку доступна не та «Загрузить»');
+
+    await admin.click('[data-confirm="payments"]');
+    check((await waitForText(admin, '[data-report="payments"]', 'Загружено оплат')).includes(`Загружено оплат: ${have + 2}`), 'повторная загрузка оплат не прошла');
+    check(invoicesOf(await publicSnapshot(mock), person.name, LAST_DAY) === have + 2, 'после повтора оплаты на сервере не те');
+    const open = await admin.waitForFunction(() => document.querySelector('[data-stale="funnel"]')?.hidden === true, null, { timeout: 8_000 }).then(() => true, () => false);
+    check(open, 'после повторной загрузки разбор воронки остался «устаревшим»');
+    // разбор воронки построен по снимку ПОСЛЕ загрузки, а «Поправить» идёт от значений после неё
+    await admin.click(`${FBOX} [data-group-toggle="${person.group}"]`);
+    await admin.click(`${FBOX} button[data-correct="${person.id}"]`);
+    const shown = await admin.inputValue(`${FBOX} [data-edit="payments"]`);
+    check(shown === String(have + 2), `после повтора в разборе воронки оплаты «${shown}», на сервере ${have + 2}`);
+    await admin.fill(`${FBOX} [data-edit="payments"]`, String(have + 3));
+    await admin.click(`${FBOX} [data-save="correction"]`);
+    await waitForText(admin, '[data-status="funnel-preview"]', 'Правка сохранена');
+    const written = (await publicSnapshot(mock)).corrections ?? [];
+    check(written.length === 1 && written[0].delta === 1 && written[0].base === have + 2, `правка после повтора: ${JSON.stringify(written)} (ждали +1 при base ${have + 2})`);
+    await admin.click('[role="tab"][data-tab="results"]');
+    check(await admin.waitForFunction(() => document.querySelector('[data-stale]')?.hidden === true, null, { timeout: 8_000 }).then(() => true, () => false), '«Итоги» после повтора остались «устаревшими»');
+  });
+
+  await scenario('импорт: ответ на загрузку воронки потерян после записи — «Загрузить» оплаты недоступна, повтор ничего не удваивает', async ({ mock, newPage, check, urls }) => {
+    const admin = await newPage();
+    let lose = false;
+    // запись дошла, а ответ нет: повтор того же файла обязан быть безопасным
+    await admin.route(`${mock.url}**`, async (route) => {
+      const request = route.request();
+      const body = request.method() === 'POST' ? JSON.parse(request.postData() ?? '{}') : {};
+      if (lose && body.action === 'importFunnel') {
+        lose = false;
+        await route.fetch();
+        return route.fulfill({ status: 200, contentType: 'text/plain', body: 'timeout' });
+      }
+      return route.continue();
+    });
+    const before = await publicSnapshot(mock);
+    const person = before.staff.find((e) => e.group === 'СР2');
+    await loginAdmin(admin, urls.admin);
+    await bothPreviews(admin, [{ name: person.name, quality: 3, long: 4 }], [{ date: LAST_DAY, group: person.group, author: person.name, invoice: 'FXM-1' }], person.group);
+    const rowsOf = (s) => s.funnel.filter((r) => r.employeeId === person.id && r.date === LAST_DAY);
+    lose = true;
+    await admin.click('[data-confirm="funnel"]');
+    check((await waitForText(admin, '[data-alert="funnel"]', 'Связь прервалась')).includes(UNRESOLVED), `сообщение о потерянной загрузке: «${await textOf(admin, '[data-alert="funnel"]')}»`);
+    check(rowsOf(await publicSnapshot(mock)).length === 1 && rowsOf(await publicSnapshot(mock))[0].long === 4, 'контроль: запись воронки не дошла до сервера');
+    check(await visibleStale(admin, 'payments'), 'разбор оплат после потерянной загрузки воронки не «устарел»');
+    check((await textOf(admin, '[data-stale="payments"]')).includes(UNRESOLVED), 'нет текста о потерянной загрузке в разборе оплат');
+    check(await admin.isDisabled('[data-confirm]:not([data-confirm="funnel"])') && await admin.isEnabled('[data-confirm="funnel"]'), 'доступна не та «Загрузить»: повторить можно только воронку');
+    await admin.click('[data-confirm="funnel"]');
+    check((await waitForText(admin, '[data-report="funnel"]', 'Загружено строк воронки')).includes('Загружено строк воронки'), 'повторная загрузка воронки не прошла');
+    const both = await admin.waitForFunction(() => document.querySelector('[data-stale="payments"]')?.hidden === true && !document.querySelector('[data-confirm="payments"]')?.disabled, null, { timeout: 8_000 }).then(() => true, () => false);
+    check(both, 'после повтора разбор оплат остался «устаревшим» или «Загрузить» оплаты недоступна');
+    check(rowsOf(await publicSnapshot(mock)).length === 1 && rowsOf(await publicSnapshot(mock))[0].long === 4, 'повтор удвоил или потерял строку воронки');
+    await admin.click(`${PBOX} [data-group-toggle="${person.group}"]`);
+    await admin.click(`${PBOX} button[data-correct="${person.id}"]`);
+    const shown = await admin.inputValue(`${PBOX} [data-edit="long"]`);
+    check(shown === '4', `после повтора в разборе оплат длинные «${shown}», на сервере 4`);
+  });
+
   await scenario('импорт: не тот файл', async ({ newPage, check, urls }) => {
     const admin = await newPage();
     await loginAdmin(admin, urls.admin);

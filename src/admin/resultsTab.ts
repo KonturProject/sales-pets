@@ -43,7 +43,8 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
   const tableBox = h('div', {});
   const listBox = h('section', { 'data-corrections': true });
   const refreshButton = h('button', { type: 'button', 'data-refresh': true, onclick: () => void reload() }, 'Обновить');
-  const staleBox = h('p', { role: 'alert', class: 'results-stale', 'data-stale': true, hidden: true }, `${STALE_TEXT} `, refreshButton);
+  const staleLabel = h('span', {}, STALE_TEXT);
+  const staleBox = h('p', { role: 'alert', class: 'results-stale', 'data-stale': true, hidden: true }, staleLabel, ' ', refreshButton);
   /** Что поток делает с этой вкладкой: свежие данные, «занято» (вся вкладка inert), «устарело» (таблица и список закрыты). */
   const view: FlowView<Snapshot> = {
     apply: (fresh) => {
@@ -55,6 +56,8 @@ export async function resultsTab(ctx: AdminCtx): Promise<HTMLElement> {
     },
     setStale: (stale) => {
       staleBox.hidden = !stale;
+      staleLabel.textContent = flow.staleText; // «загрузка без ответа»: «Обновить» не поможет, есть другой текст и нет кнопки
+      refreshButton.hidden = flow.unresolved !== null;
       tableBox.inert = stale;
       listBox.inert = stale;
     },

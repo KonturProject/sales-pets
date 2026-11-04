@@ -4,6 +4,7 @@ import type { CorrectionItem } from './results';
 export const BUSY_TEXT = 'Идёт запись…';
 export const STALE_TEXT = 'Данные не обновились после записи — нажмите «Обновить»';
 export const INTERRUPTED_TEXT = 'Связь прерывалась: прошлая правка проверена, данные перечитаны. Проверьте значение и поправьте ещё раз, если нужно.';
+export const UNRESOLVED_TEXT = 'Связь прервалась во время загрузки — нажмите «Загрузить» ещё раз (повторная загрузка того же файла безопасна).';
 
 /** Запись не начата по понятной человеку причине: `message` показывается как есть. */
 export class WriteRefused extends Error {}
@@ -28,7 +29,8 @@ export interface ReloadDone {
 
 /**
  * Запись, не являющаяся правкой (загрузка файла): `value` — что вернула сама запись; `refreshError` — сбой чтения свежего
- * снимка после неё (сама запись при этом не провалена, поток «устарел»).
+ * снимка после неё (сама запись при этом не провалена, поток «устарел»). Загрузка без ответа сюда не попадает: `write`
+ * бросает `WriteRefused` с `UNRESOLVED_TEXT`.
  */
 export interface WriteResult<T> {
   value: T;
@@ -83,6 +85,15 @@ export interface Opening<S> {
  * отправляя, потому что любое новое число считалось бы от таблицы, которая врёт. Так после записи, после отмены и
  * после «changed», если перечитать не удалось, и сразу, если от прошлого открытия остался неотвеченный запрос. Снимает
  * это только проверка (`reload`, `open`): повтор, если он нужен, затем чтение.
+ *
+ * Загрузка файла без ответа (обрыв, таймаут, ошибка сервера — не его отказ) устроена так же, как правка без ответа: сервер
+ * мог её не получить, а мог ещё дописывать, и чтение это не покажет (оно замка не берёт). Исход узнаётся только повтором:
+ * загрузки идемпотентны (строки воронки заменяются по паре «сотрудник, день», период оплат — целиком, штат — по ФИО) и идут
+ * под замком сервера. Поэтому поток входит в состояние «загрузка без ответа» (`unresolved` — блок, чья загрузка не
+ * подтверждена): он «устарел», правки и отмены отклоняются, «Обновить» и открытие вкладки данные читают, но «устарело» не
+ * снимают, и выйти можно только повтором загрузки того же блока, получившим определённый ответ (успех или отказ сервера).
+ * Загрузка другого блока не годится: её ответ не говорит, дописана ли первая. Состояние живёт в потоке, то есть переживает
+ * смену вкладки админки (обновление страницы его теряет, как и неотвеченную правку).
  */
 export function createResultsFlow<S>(deps: {
   send: (items: CorrectionItem[], ref: string) => Promise<unknown>;
@@ -98,6 +109,7 @@ export function createResultsFlow<S>(deps: {
   let generation = 0;
   let busy = false;
   let stale = saver.hasPending; // от прошлого открытия мог остаться запрос без ответа: писать нельзя, пока его не повторят
+  let unresolved: string | null = null; // блок, чья загрузка осталась без ответа: пока он не повторён, поток «устарел»
   let running: Promise<unknown> | null = null;
   let checking: Promise<ReloadDone> | null = null;
 
@@ -115,7 +127,7 @@ export function createResultsFlow<S>(deps: {
     } catch (e) {
       return e;
     }
-    setStale(false);
+    if (unresolved === null) setStale(false); // свежесть чтения не снимает «загрузка без ответа»: чтение могло опередить запись
     return null;
   }
 
@@ -145,9 +157,12 @@ export function createResultsFlow<S>(deps: {
   }
 
   /** `write`: запись, а не чтение. Её отклоняет и «устаревший» поток; отказ приходит до `setBusy`, вид не мигает. */
-  async function exclusive<T>(run: () => Promise<T>, write = true): Promise<T> {
+  async function exclusive<T>(run: () => Promise<T>, write = true, resolving?: string): Promise<T> {
     if (busy) throw new WriteRefused(BUSY_TEXT);
-    if (write && stale) throw new WriteRefused(STALE_TEXT);
+    // `resolving` — блок, чья загрузка без ответа: его повтор единственная запись, которой «устарело» не мешает
+    if (write && stale && !(resolving !== undefined && resolving === unresolved)) {
+      throw new WriteRefused(unresolved === null ? STALE_TEXT : UNRESOLVED_TEXT);
+    }
     busy = true;
     view?.setBusy(true);
     deps.lockNav?.(true);
@@ -181,6 +196,18 @@ export function createResultsFlow<S>(deps: {
     get stale(): boolean {
       return stale;
     },
+    /** Блок («funnel», «payments»), чья загрузка осталась без ответа; `null` — такой нет. */
+    get unresolved(): string | null {
+      return unresolved;
+    },
+    /** Что сказать на месте «устарело»: «Обновить» не поможет, пока не повторена загрузка без ответа. */
+    get staleText(): string {
+      return unresolved === null ? STALE_TEXT : UNRESOLVED_TEXT;
+    },
+    /** Можно ли сейчас нажимать «Загрузить» этого блока: не занято, не «устарело» (кроме повтора загрузки без ответа). */
+    canWrite(key: string): boolean {
+      return !busy && (!stale || unresolved === key);
+    },
     /** Новое открытие вкладки (см. `Opening`). */
     begin(): Opening<S> {
       const mine = ++generation;
@@ -213,26 +240,41 @@ export function createResultsFlow<S>(deps: {
         return { result, refreshError: await settle() };
       }),
     /**
-     * Любая другая запись страницы (загрузка файла) под тем же замком: одна запись за раз, вкладки админки заблокированы на
-     * всё время, отклоняется, пока поток «устарел» или правка без ответа не выяснена (тогда он «устаревает»: «Обновить»
-     * повторит запрос). Снимок читается заново и раздаётся виду после записи, и после её сбоя тоже: часть записей могла
-     * дойти. Ошибку записи пробрасывает.
+     * Любая другая запись страницы (загрузка файла блока `key`) под тем же замком: одна запись за раз, вкладки админки
+     * заблокированы на всё время, отклоняется, пока поток «устарел» или правка без ответа не выяснена (тогда он «устаревает»:
+     * «Обновить» повторит запрос). Определённый ответ (успех или отказ сервера) — снимок читается заново и раздаётся виду;
+     * отказ пробрасывается как есть. Ответа не было — исход неизвестен: поток входит в «загрузка без ответа» этого блока,
+     * снимок не читается, бросается `WriteRefused` с `UNRESOLVED_TEXT`; повтор того же блока при «устарело» разрешён.
      */
-    write: <T>(run: () => Promise<T>): Promise<WriteResult<T>> =>
+    write: <T>(key: string, run: () => Promise<T>): Promise<WriteResult<T>> =>
       exclusive(async () => {
         if (saver.hasPending) {
           setStale(true);
           throw new WriteRefused(STALE_TEXT);
         }
+        /** Определённый ответ закрывает и прежнюю загрузку без ответа (это её повтор): читаем снимок после записи. */
+        const answered = async (): Promise<unknown> => {
+          const repeat = unresolved === key;
+          if (repeat) unresolved = null;
+          const error = await settle();
+          if (error && repeat) view?.setStale(true); // всё ещё «устарело», но по обычной причине: вид меняет текст
+          return error;
+        };
         let value: T;
         try {
           value = await run();
         } catch (e) {
-          await settle();
-          throw e;
+          if (wasRejected(e)) {
+            await answered();
+            throw e;
+          }
+          unresolved = key;
+          stale = true;
+          view?.setStale(true);
+          throw new WriteRefused(UNRESOLVED_TEXT);
         }
-        return { value, refreshError: await settle() };
-      }),
+        return { value, refreshError: await answered() };
+      }, true, key),
     remove: (id: number): Promise<RemoveDone> =>
       exclusive(async () => {
         if (saver.hasPending) {

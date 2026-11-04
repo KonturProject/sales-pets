@@ -83,7 +83,8 @@ export function createPreviews(flow: ResultsFlow<Snapshot>, onLock: () => void) 
     const alert = h('p', { role: 'alert', 'data-alert': `${spec.id}-preview` });
     const status = h('p', { role: 'status', 'data-status': `${spec.id}-preview` });
     const refreshButton = h('button', { type: 'button', 'data-refresh': spec.id, onclick: () => void reload() }, 'Обновить');
-    const staleBox = h('p', { role: 'alert', class: 'results-stale', 'data-stale': spec.id, hidden: true }, `${STALE_TEXT} `, refreshButton);
+    const staleLabel = h('span', {}, STALE_TEXT);
+    const staleBox = h('p', { role: 'alert', class: 'results-stale', 'data-stale': spec.id, hidden: true }, staleLabel, ' ', refreshButton);
     const body = h('div', {});
     const node = h('div', { class: 'import-preview', 'data-preview': spec.id }, staleBox, alert, status, body);
     let busy = false;
@@ -177,7 +178,13 @@ export function createPreviews(flow: ResultsFlow<Snapshot>, onLock: () => void) 
         }
       },
       setBusy(next) { busy = next; lock(); },
-      setStale(next) { stale = next; staleBox.hidden = !next; lock(); },
+      setStale(next) {
+        stale = next;
+        staleBox.hidden = !next;
+        staleLabel.textContent = flow.staleText; // «загрузка без ответа»: другой текст и нет «Обновить», пока загрузку не повторят
+        refreshButton.hidden = flow.unresolved !== null;
+        lock();
+      },
     };
     impl.apply(latest !== null && applied > since ? latest : snapshot);
     impl.setBusy(flow.busy);

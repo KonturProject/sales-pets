@@ -5,7 +5,7 @@ import type { AdminCtx } from './ctx';
 import { errorText, h, ruDate } from './dom';
 import { paymentsSummary, planFunnelImport, planPaymentsImport, withFunnelImport, withPaymentsImport, type FunnelPlan } from './importPlan';
 import { createPreviews } from './importPreview';
-import { INTERRUPTED_TEXT, WriteRefused } from './resultsFlow';
+import { INTERRUPTED_TEXT, UNRESOLVED_TEXT, WriteRefused } from './resultsFlow';
 
 /** Ответ `importPayments`; для `dryRun` те же счётчики без записи. */
 interface PaymentsReply { added: number; ignored: number; removed: number; removedProvisional: number }
@@ -121,10 +121,12 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
   const flow = ctx.resultsFlow;
   const opening = flow.begin();
   const checked = await opening.open();
-  /** Загрузка файла — такая же запись, как правка: пока поток занят или «устарел», подтверждения недоступны. */
-  const canConfirm = () => !flow.busy && !flow.stale;
+  /**
+   * Загрузка файла — такая же запись, как правка: пока поток занят или «устарел», подтверждения недоступны. Кроме повтора
+   * загрузки без ответа: он доступен только у блока, чья загрузка не подтверждена (ответ другой её не подтверждает).
+   */
   const lockButtons = () => {
-    for (const b of root?.querySelectorAll<HTMLButtonElement>('[data-confirm]') ?? []) b.disabled = !canConfirm();
+    for (const b of root?.querySelectorAll<HTMLButtonElement>('[data-confirm]') ?? []) b.disabled = !flow.canWrite(b.dataset.confirm ?? '');
   };
   const previews = createPreviews(flow, lockButtons);
   /**
@@ -132,8 +134,8 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
    * раздаётся всем разборам после неё: без этого второй разбор считал бы от данных, которых на сервере уже нет).
    * Строки итога; если снимок после записи прочитать не удалось, к ним добавлено предупреждение.
    */
-  const load = async (write: () => Promise<string[]>): Promise<string[]> => {
-    const done = await flow.write(write);
+  const load = async (key: 'funnel' | 'payments', write: () => Promise<string[]>): Promise<string[]> => {
+    const done = await flow.write(key, write);
     return done.refreshError
       ? [...done.value, `Данные после загрузки перечитать не удалось (${errorText(done.refreshError)}): откройте вкладку заново.`]
       : done.value;
@@ -163,14 +165,14 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
       ],
       {
         label: 'Загрузить',
-        run: () => load(async () => {
+        run: () => load('payments', async () => {
           const done = await ctx.session.call<PaymentsReply>('importPayments', body);
           return [`Загружено оплат: ${done.added}. Период ${ruDate(plan.from)} — ${ruDate(plan.to)}.`];
         }),
       },
       table,
     );
-  }, 'После воронки, каждое утро: оплаты по вчерашний день. Повторная загрузка периода заменяет его, предварительные числа этих дней заменятся файлом.', canConfirm);
+  }, 'После воронки, каждое утро: оплаты по вчерашний день. Повторная загрузка периода заменяет его, предварительные числа этих дней заменятся файлом.', () => flow.canWrite('payments'));
 
   const funnel = fileBlock('funnel', '1. Воронка: «АП_НП_СР_Воронка_Дни…»', xlsx, async (buf, show) => {
     const since = previews.mark();
@@ -192,7 +194,7 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
         ],
         {
           label: `Добавить в штат (${fresh.length})`,
-          run: () => load(async () => {
+          run: () => load('funnel', async () => {
             await ctx.session.call('setStaff', { staff: fresh });
             return [
               `Добавлено в штат: ${fresh.length} — ${byGroup(fresh)}.`,
@@ -226,19 +228,20 @@ export async function importTab(ctx: AdminCtx): Promise<HTMLElement> {
     }
     show(lines, {
       label: fresh.length ? `Добавить новых (${fresh.length}) в штат и загрузить` : 'Загрузить',
-      run: () => load(async () => {
+      run: () => load('funnel', async () => {
         const { newStaff, through, rows } = plan;
         if (newStaff.length) await ctx.session.call('setStaff', { staff: newStaff });
         const done = await ctx.session.call<{ added: number }>('importFunnel', { through, rows });
         return [`Загружено строк воронки: ${done.added}${newStaff.length ? `; добавлено сотрудников: ${newStaff.length}` : ''}.`];
       }),
     }, preview);
-  }, 'Каждое утро: отчёт по последний рабочий день. Первая загрузка (02.11) берёт из отчёта только штат; новые люди из отчёта добавляются в штат и в следующие дни.', canConfirm);
+  }, 'Каждое утро: отчёт по последний рабочий день. Первая загрузка (02.11) берёт из отчёта только штат; новые люди из отчёта добавляются в штат и в следующие дни.', () => flow.canWrite('funnel'));
 
   const alert = h('p', { role: 'alert', 'data-alert': 'import-open' });
   root = h('div', {}, alert, funnel, payments);
   if (!opening.attach(previews.view)) return h('div'); // открытие успели сменить более новым: этот экземпляр на экран не попадёт
-  if (checked?.error) alert.textContent = `Обновить не удалось: ${errorText(checked.error)}`;
+  if (flow.unresolved !== null) alert.textContent = UNRESOLVED_TEXT; // загрузка без ответа пережила смену вкладки: файл выбрать заново и нажать «Загрузить»
+  else if (checked?.error) alert.textContent = `Обновить не удалось: ${errorText(checked.error)}`;
   else if (checked?.checked) alert.textContent = INTERRUPTED_TEXT;
   return root;
 }
