@@ -1243,7 +1243,7 @@ describe('Правки фактов', () => {
     expect(remove(b, 5).removed).toBe(1);
     expect(add(b, [item()], 'again')).toMatchObject({ ok: true, ids: [2001] });
     expect(add(b, [item()], 'again2')).toEqual({ ok: false, error: 'bad_request' });
-  });
+  }, 30000); // 2000 записей в песочнице: на раннере GitHub ≈ 7 с
 
   test('removeCorrection удаляет запись (версия +1, остальные на месте); id следующей записи — следующий неиспользованный', () => {
     const { b, item } = withIds();
