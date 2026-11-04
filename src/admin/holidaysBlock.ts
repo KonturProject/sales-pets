@@ -118,12 +118,18 @@ export function holidaysBlock(ctx: AdminCtx, first: Snapshot, checked: ReloadDon
     snap = fresh;
     paintGrid();
     const { added, removed } = calendarChanges(saved(), wanted);
+    const apply = h('button', { type: 'button', 'data-confirm': KEY, disabled: !flow.canWrite(KEY), onclick: () => void write(wanted) }, 'Применить');
     if (!added.length && !removed.length) {
+      // запись без ответа могла дойти: в снимке уже новый список, но поток снимается только повтором записи
+      if (flow.unresolved === KEY) {
+        previewBox.replaceChildren(h('div', { 'data-preview': KEY, role: 'group', 'aria-label': 'Повтор записи' },
+          h('p', {}, 'На сервере уже этот список выходных. Нажмите «Применить», чтобы подтвердить запись.'), apply));
+        return;
+      }
       alert.textContent = 'Ничего не изменено';
       return;
     }
     const effects = calendarPreview(snap, wanted);
-    const apply = h('button', { type: 'button', 'data-confirm': KEY, disabled: !flow.canWrite(KEY), onclick: () => void write(wanted) }, 'Применить');
     previewBox.replaceChildren(h(
       'div',
       { 'data-preview': KEY, role: 'group', 'aria-label': 'Что изменится' },
