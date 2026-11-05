@@ -26,7 +26,7 @@ export const DECOR: Record<RoomTheme['decor'], string> = {
     <rect x="20" y="236" width="130" height="10" rx="4" fill="#8c6a47"/><path d="M44 236q0-20 16-20t16 16h8q-4 8-12 6H44z" fill="#f1cf6a"/><circle cx="66" cy="220" r="2" fill="#2e2620"/>`,
 };
 
-export type Emote = 'ok' | 'joy' | 'sad' | 'bored' | 'sick' | 'star' | 'smile';
+export type Emote = 'ok' | 'joy' | 'sad' | 'bored' | 'sick' | 'star' | 'smile' | 'alert';
 
 /** Значки в пузыре над питомцем — SVG 40×40, а не эмодзи: на браузере телевизора шрифта эмодзи может не быть. */
 export const EMOTE: Record<Emote, string> = {
@@ -37,6 +37,7 @@ export const EMOTE: Record<Emote, string> = {
   sick: '<rect x="17" y="4" width="7" height="24" rx="3.5" fill="#f4ede2" stroke="#9b6a6a" stroke-width="2"/><rect x="19" y="13" width="3" height="14" fill="#c96a5f"/><circle cx="20.5" cy="30" r="6" fill="#c96a5f"/>',
   star: '<path d="M20 4l4.7 10 10.8 1.2-8 7.3 2.3 10.7L20 27.8l-9.8 5.4 2.3-10.7-8-7.3 10.8-1.2z" fill="#e8b84a"/>',
   smile: '<circle cx="20" cy="20" r="15" fill="#f2c94c"/><circle cx="15" cy="17" r="2" fill="#3f372e"/><circle cx="25" cy="17" r="2" fill="#3f372e"/><path d="M13 23q7 7 14 0" stroke="#3f372e" stroke-width="2.5" fill="none" stroke-linecap="round"/>',
+  alert: '<rect x="16.5" y="4" width="7" height="20" rx="3.5" fill="#e0603f"/><circle cx="20" cy="32" r="4.2" fill="#e0603f"/>',
 };
 
 /** Растения переднего плана (макет): выезжают по краям экрана на прогулке и празднике. viewBox 0 0 300 360. */

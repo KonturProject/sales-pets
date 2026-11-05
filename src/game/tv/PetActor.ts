@@ -52,14 +52,18 @@ export class PetActor {
   y: number;
   s = 1;
   facing: 1 | -1 = 1;
+  /** % плана оплат (из `PetState.planPercent`); по нему в зале выбирают, кто кого кусает. */
+  plan: number | null = null;
   private readonly sprite: HTMLImageElement;
   private readonly flip: HTMLElement;
   private readonly bubble: HTMLElement;
+  private readonly talk: HTMLElement;
   private kind: Kind | null = null;
   private state: Mood = 'ok';
   private running = false;
   private gen = 0;
   private emoteTimer: ReturnType<typeof setTimeout> | undefined;
+  private sayTimer: ReturnType<typeof setTimeout> | undefined;
   private healTimer: ReturnType<typeof setTimeout> | undefined;
   private healEl: HTMLElement | null = null;
 
@@ -75,7 +79,8 @@ export class PetActor {
     bob.append(this.sprite);
     this.flip.append(bob);
     this.bubble = div('emote');
-    this.el.append(this.flip, this.bubble);
+    this.talk = div('emote say');
+    this.el.append(this.flip, this.bubble, this.talk);
     this.shadow = div('shadow');
     this.shadow.append(document.createElement('i'));
     this.place();
@@ -92,6 +97,7 @@ export class PetActor {
     this.el.dataset.kind = kind;
     this.el.dataset.mood = s.mood;
     this.state = s.mood;
+    this.plan = s.planPercent;
     if (kind === this.kind) return;
     const hatched = this.kind === 'egg' && kind === 'pet';
     this.kind = kind;
@@ -144,6 +150,24 @@ export class PetActor {
     this.bubble.classList.add('on');
     clearTimeout(this.emoteTimer);
     this.emoteTimer = setTimeout(() => this.bubble.classList.remove('on'), ms);
+  }
+
+  /** Облачко с репликой над питомцем (отдельное от значка: реплика и значок не гасят друг друга). */
+  say(text: string, ms = 1600): void {
+    this.talk.textContent = text;
+    this.talk.classList.add('on');
+    clearTimeout(this.sayTimer);
+    this.sayTimer = setTimeout(() => this.talk.classList.remove('on'), ms);
+  }
+
+  /** Крадущийся шаг до точки (пригнувшись, втрое медленнее зала); `false`, если питомца перехватили. */
+  async sneak(x: number, y: number, token: number): Promise<boolean> {
+    this.el.classList.add('sneak');
+    try {
+      return await this.walk(x, y, token, SPEED.hall / 3);
+    } finally {
+      this.el.classList.remove('sneak');
+    }
   }
 
   /**

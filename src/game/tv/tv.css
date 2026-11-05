@@ -133,6 +133,8 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 .pet .bob { width: 100%; height: 100%; transform-origin: 50% 100%; animation: tv-idle calc(2.6s * var(--speed)) ease-in-out infinite; }
 .pet .bob img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: 50% 100%; }
 .pet.walking .bob { animation: tv-hop .42s ease-in-out infinite; }
+.pet.sneak .bob { transform: scale(1.06, .82); }
+.pet.sneak.walking .bob { animation: tv-sneak .9s ease-in-out infinite; }
 /* без сдвига оттенка: на рисованных героях он красит кожу в зелёный; болезнь видна по бледности и градуснику */
 .pet[data-mood='sick'] img { filter: saturate(.5) brightness(.93); }
 .pet[data-mood='bored'] img { filter: saturate(.7); }
@@ -154,6 +156,13 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 .emote svg { width: 40px; height: 40px; }
 .emote::after { content: ''; position: absolute; left: 22px; bottom: -9px; border: 8px solid transparent; border-top-color: #fff; border-bottom: 0; }
 .emote.on { opacity: 1; transform: scale(1); }
+/* реплика: то же облачко, но широкое и с текстом; центр над питомцем */
+.emote.say {
+  left: 0; width: max-content; padding: 0 22px; border-radius: 30px; transform: translateX(-50%) scale(.3);
+  font: 800 30px/1 'Trebuchet MS', Arial, sans-serif; color: #4a3826; white-space: nowrap;
+}
+.emote.say::after { left: calc(50% - 8px); }
+.emote.say.on { transform: translateX(-50%) scale(1); }
 
 /* верхняя строка поверх камеры */
 .hud {
@@ -212,11 +221,12 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 [data-power='idle'] .tv .flies { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
   .tv-world, .fg, .dock { transition: none; }
-  .tv .bob { animation: none; }
+  .tv .bob, .tv .pet.sneak.walking .bob { animation: none; }
 }
 
 @keyframes tv-idle { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.03, .97); } }
 @keyframes tv-hop { 0%, 100% { transform: translateY(0) scale(1.04, .96); } 50% { transform: translateY(-12px) scale(.97, 1.03); } }
+@keyframes tv-sneak { 0%, 100% { transform: translateY(0) scale(1.06, .82); } 50% { transform: translateY(-3px) scale(1.04, .85); } }
 @keyframes tv-wobble { 0%, 70%, 100% { transform: rotate(0); } 78% { transform: rotate(-7deg); } 86% { transform: rotate(6deg); } 93% { transform: rotate(-3deg); } }
 @keyframes tv-tick { from { transform: translateY(30px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes tv-heal-big { 0% { transform: scale(0); opacity: 0; } 25% { transform: scale(1.25); opacity: 1; } 40% { transform: scale(.95); } 55% { transform: scale(1.12); } 70% { transform: scale(1); opacity: 1; } 85%, 100% { transform: scale(.5); opacity: 0; } }

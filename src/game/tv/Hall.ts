@@ -1,5 +1,6 @@
 import { THEME } from '@/art/manifest';
 import { GROUPS } from '@/engine/types';
+import { pickBite } from './bite';
 import { SPEED, type PetActor } from './PetActor';
 
 /** В зале питомец крупнее: камера на общем плане отдалена. */
@@ -110,6 +111,8 @@ export class Hall {
     const pairs = [[pool[0], pool[1]], [pool[2], pool[3]]].filter((pair): pair is [PetActor, PetActor] => !!pair[0] && !!pair[1]);
     await Promise.all(pairs.map(([a, b]) => this.meet(a, b, tokens)));
     if (my !== this.gen) return;
+    if (!star) await this.bite(live, tokens);
+    if (my !== this.gen) return;
     if (sick) {
       sick.emote('sick', 2400);
       await Promise.all(others.slice(0, 2).map(async (p, k) => {
@@ -141,6 +144,32 @@ export class Hall {
     await sleep(500);
     b.emote('joy');
     await sleep(1300);
+  }
+
+  /**
+   * «Кусь»: лидер по плану крадётся за спину отстающему и кусает («кусь»), либо отстающий лидера («догоню!»).
+   * Жертва отвернулась от кусающего; укушенная подпрыгивает, пугается и отбегает. Кого перехватили — сцена обрывается.
+   */
+  private async bite(live: PetActor[], tokens: Map<PetActor, number>): Promise<void> {
+    const bite = pickBite(live.map((p) => ({ id: p.group, plan: p.plan, sick: p.mood === 'sick' })), Math.random);
+    const biter = live.find((p) => p.group === bite?.biter);
+    const victim = live.find((p) => p.group === bite?.victim);
+    if (!bite || !biter || !victim) return;
+    const tb = tokens.get(biter)!;
+    const tv = tokens.get(victim)!;
+    const away = victim.x >= biter.x ? 1 : -1; // жертва смотрит от кусающего, тот заходит сзади
+    victim.face(away);
+    const behind = (gap: number) => victim.x - away * gap;
+    if (!(await biter.walk(behind(280), victim.y, tb, SPEED.hall))) return;
+    if (!(await biter.sneak(behind(140), victim.y, tb))) return;
+    if (!(await biter.moveTo({ x: behind(80) }, 250, tb))) return;
+    biter.say(bite.line, 1400);
+    victim.emote('alert', 1400);
+    const run = async () => {
+      if (!(await victim.moveTo({}, 450, tv, this.arc(80)))) return;
+      await victim.walk(victim.x + away * 150, victim.y, tv, SPEED.hall);
+    };
+    await Promise.all([run(), sleep(1400)]);
   }
 
   /** Мяч по кругу: от каждого к следующему. */
