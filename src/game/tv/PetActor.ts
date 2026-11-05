@@ -4,7 +4,8 @@ import type { GroupCode } from '@/engine/types';
 import { petScale, stageSprite } from '@/game/PetView';
 import { EMOTE, type Emote } from './art';
 import { kickBall } from './ball';
-import type { RoomView } from './RoomView';
+import { HUG_MS, SPIN_MS, type RoomView } from './RoomView';
+import type { ToyPlay } from './toys';
 
 type Kind = 'egg' | 'pet' | 'grave';
 
@@ -23,6 +24,26 @@ const MOOD_EMOTE: Record<Mood, Emote | null> = { ok: 'ok', sad: 'sad', bored: 'b
 const PLUS = '<path d="M15 3h10v12h12v10H25v12H15V25H3V15h12z" fill="#e53935" stroke="#fff" stroke-width="3" paint-order="stroke"/>';
 const HEAL_MS = 2000;
 const HEAL_STILL_MS = 1000;
+
+/** На каком расстоянии от мяча или игрушки (центр к центру) питомец встаёт играть: игрушки крупнее мяча. */
+const REACH: Record<ToyPlay | 'ball', number> = { ball: 58, roll: 64, bounce: 64, spin: 70, hug: 56 };
+/** Прыжок от радости (только картинка): присел, взлетел, приземлился со сплющиванием; мс. */
+const JUMP_MS = 650;
+const RISE = 'cubic-bezier(.5, 1, .89, 1)';
+const FALL = 'cubic-bezier(.11, 0, .5, 0)';
+/** Объятия: питомец тянется к мишке и дважды сжимает его (в такт `RoomView.hugToy`). */
+const HUG: Keyframe[] = [
+  { rotate: '0deg', translate: '0 0', scale: '1 1', easing: 'ease-out' },
+  { rotate: '13deg', translate: '16px 0', scale: '1.03 .97', offset: 0.18, easing: 'ease-in-out' },
+  { rotate: '10deg', translate: '18px 0', scale: '1.09 .91', offset: 0.3, easing: 'ease-in-out' },
+  { rotate: '14deg', translate: '16px 0', scale: '1 1', offset: 0.45, easing: 'ease-in-out' },
+  { rotate: '10deg', translate: '18px 0', scale: '1.09 .91', offset: 0.65, easing: 'ease-in-out' },
+  { rotate: '12deg', translate: '16px 0', scale: '1 1', offset: 0.8, easing: 'ease-in' },
+  { rotate: '0deg', translate: '0 0', scale: '1 1' },
+];
+/** Сердечки над мишкой (сбоку от питомца, не на морде): сдвиг наружу к концу полёта, px. */
+const HEARTS = [10, 24, 40];
+const HEARTS_AT = 76;
 
 const ease = (k: number) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
 
@@ -66,6 +87,12 @@ export class PetActor {
   private sayTimer: ReturnType<typeof setTimeout> | undefined;
   private healTimer: ReturnType<typeof setTimeout> | undefined;
   private healEl: HTMLElement | null = null;
+  private readonly bob: HTMLElement;
+  /** прыжок или объятия картинки (WAAPI на `.bob`): останавливаются вместе с циклом */
+  private acts: Animation[] = [];
+  /** новая игрушка: следующий заход в комнате — сразу к ней */
+  private eager = false;
+  private readonly reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   constructor(readonly group: GroupCode, readonly room: RoomView) {
     this.x = room.rect.cx;
@@ -73,6 +100,7 @@ export class PetActor {
     this.el = div('pet');
     this.flip = div('flip');
     const bob = div('bob');
+    this.bob = bob;
     this.sprite = new Image();
     this.sprite.alt = '';
     this.sprite.decoding = 'async';
@@ -203,6 +231,16 @@ export class PetActor {
     }, ms);
   }
 
+  /**
+   * Новая игрушка упала в комнату: прыжок от радости, потом сердечко (когда питомец уже на полу); следующий заход
+   * в комнате — сразу к игрушке. Координаты и цикл не трогает: в зале питомец просто подпрыгнет на месте.
+   */
+  cheer(): void {
+    this.eager = true;
+    this.jump(46);
+    setTimeout(() => this.emote('joy', 1300), JUMP_MS);
+  }
+
   /** Шаг до точки с обычной скоростью (в комнате или в зале). */
   walk(x: number, y: number, token: number, speed = SPEED.room): Promise<boolean> {
     const d = Math.hypot(x - this.x, y - this.y);
@@ -259,6 +297,8 @@ export class PetActor {
   private halt(): void {
     this.gen++;
     this.el.classList.remove('walking');
+    this.acts.forEach((a) => a.cancel());
+    this.acts = [];
   }
 
   /** Вне комнаты (в зале, в прыжке) — сразу на пол своей комнаты; `center` — ещё и в её середину. */
@@ -270,25 +310,36 @@ export class PetActor {
     this.place();
   }
 
-  /** Бродит по комнате: иногда подходит к мячу и пинает его, иногда просто идёт в случайную точку. */
+  /**
+   * Бродит по комнате: иногда подходит к мячу (или игрушке дня) и играет, иногда просто идёт в случайную точку.
+   * Мяч и катящиеся игрушки пинает (уточка от пинка скачет), юлу закручивает, мишку обнимает.
+   */
   private async wander(my: number): Promise<void> {
     const r = this.room.rect;
     const ball = this.room.ball;
     while (my === this.gen) {
-      if (Math.random() < 0.4) {
+      const play = this.room.play; // null — игрушка ещё падает
+      if (play && (this.eager || Math.random() < 0.4)) {
+        this.eager = false;
         const dir = r.x + ball.x > this.x ? 1 : -1;
-        if (!(await this.walkTo(r.x + ball.x - dir * 58, my))) return;
-        this.face(dir);
-        const kick = kickBall(ball.x, this.x - r.x, r.w, Math.random);
-        ball.rot += kick.rot;
-        ball.x = kick.x;
-        this.room.placeBall(kick.toss);
-        if (kick.toss) {
-          // облачко только после полёта мяча (700 мс): иначе оно закрывает мяч в верхней точке дуги
-          if (!(await this.moveTo({}, 420, my, 40))) return;
-          if (!(await this.pause(300, my))) return;
-          this.emote('joy', 1300);
-        } else if (this.state === 'ok' && Math.random() < 0.5) this.emote('joy', 1300);
+        if (!(await this.walkTo(r.x + ball.x - dir * REACH[play], my))) return;
+        // пока шёл, РГ мог бросить новую игрушку: в руке и в падении её не трогают
+        const still = this.room.play === play;
+        if (still) this.face(dir);
+        if (still && (play === 'hug' || play === 'spin')) {
+          if (!(await (play === 'hug' ? this.hug(my) : this.spin(my)))) return;
+        } else if (still) {
+          const kick = kickBall(ball.x, this.x - r.x, r.w, Math.random);
+          ball.rot += kick.rot;
+          ball.x = kick.x;
+          this.room.placeBall(kick.toss);
+          if (kick.toss) {
+            // облачко только после полёта мяча (700 мс): иначе оно закрывает мяч в верхней точке дуги
+            if (!(await this.moveTo({}, 420, my, 40))) return;
+            if (!(await this.pause(300, my))) return;
+            this.emote('joy', 1300);
+          } else if (this.state === 'ok' && Math.random() < 0.5) this.emote('joy', 1300);
+        }
       } else if (!(await this.walkTo(r.x + EDGE + Math.random() * (r.w - 2 * EDGE), my))) {
         return;
       }
@@ -296,6 +347,68 @@ export class PetActor {
       const mood = MOOD_EMOTE[this.state];
       if (mood && this.state !== 'ok' && Math.random() < 0.5) this.emote(mood);
     }
+  }
+
+  /** Обнимает мишку: тянется к нему и дважды сжимает, над объятиями — сердечки; потом сердечко в облачке. */
+  private async hug(my: number): Promise<boolean> {
+    this.room.hugToy();
+    this.act(HUG, HUG_MS);
+    if (!this.reduced) {
+      const hearts = div('hearts');
+      hearts.style.left = `${this.facing * HEARTS_AT}px`;
+      hearts.innerHTML = HEARTS.map((dx, k) => `<svg style="--dx:${dx * this.facing}px;animation-delay:${k * 230}ms" viewBox="0 0 40 40" aria-hidden="true">${EMOTE.joy}</svg>`).join('');
+      this.el.append(hearts);
+      setTimeout(() => hearts.remove(), HUG_MS + 200);
+    }
+    if (!(await this.pause(HUG_MS, my))) return false;
+    this.emote('joy', 1300);
+    return true;
+  }
+
+  /** Закручивает юлу: толкает её наклоном, на середине подпрыгивает от восторга, к концу иногда радуется. */
+  private async spin(my: number): Promise<boolean> {
+    this.act([{ rotate: '0deg' }, { rotate: '12deg', offset: 0.4, easing: 'ease-in' }, { rotate: '0deg' }], 320, { easing: 'ease-out' });
+    if (!(await this.pause(140, my))) return false;
+    this.room.spinToy();
+    if (!(await this.pause(SPIN_MS / 2, my))) return false;
+    this.jump(28);
+    if (!(await this.pause(SPIN_MS / 2 - 140, my))) return false;
+    if (this.state === 'ok' && Math.random() < 0.5) this.emote('joy', 1300);
+    return true;
+  }
+
+  /** Прыжок на месте высотой `h` px (только картинка `.bob` и тень, координаты не меняются). */
+  private jump(h: number): void {
+    this.act(
+      [
+        { translate: '0 0', easing: 'ease-out' },
+        { translate: '0 0', offset: 0.2, easing: RISE },
+        { translate: `0 -${h}px`, offset: 0.5, easing: FALL },
+        { translate: '0 0', offset: 0.8 },
+        { translate: '0 0' },
+      ],
+      JUMP_MS,
+    );
+    this.act(
+      [
+        { scale: '1 1' },
+        { scale: '1.14 .84', offset: 0.2 },
+        { scale: '.9 1.12', offset: 0.3 },
+        { scale: '1 1', offset: 0.5 },
+        { scale: '.94 1.06', offset: 0.74 },
+        { scale: '1.14 .86', offset: 0.8 },
+        { scale: '1 1' },
+      ],
+      JUMP_MS,
+    );
+    this.act([{ scale: '1' }, { scale: '1', offset: 0.2 }, { scale: '.7', offset: 0.5 }, { scale: '1', offset: 0.8 }, { scale: '1' }], JUMP_MS, {}, this.shadow.firstElementChild as HTMLElement);
+  }
+
+  /** Анимация картинки (по умолчанию `.bob`) поверх её покачивания; при reduced motion — ничего. */
+  private act(frames: Keyframe[], ms: number, opts: KeyframeAnimationOptions = {}, node: HTMLElement = this.bob): void {
+    if (this.reduced || !node.animate) return;
+    this.acts = this.acts.filter((a) => a.playState !== 'finished');
+    this.acts.push(node.animate(frames, { duration: ms, ...opts }));
   }
 
   private pause(ms: number, my: number): Promise<boolean> {

@@ -12,8 +12,9 @@ import { BOARDS, CAMERA, roomCamera, roomRect, STAGE } from './layout';
 import { dayLine, groupFunnel, partyBanner, paymentGains, type FunnelTotal } from './metrics';
 import { careRooms, growthMoments, MAX_MOMENTS, type RoomMoment } from './moments';
 import { PetActor } from './PetActor';
-import { HAND_MS, RoomView } from './RoomView';
+import { HAND_MS, RoomView, TOY_LAND_MS } from './RoomView';
 import { careTurn, shotAt, walkFor, type Shot } from './schedule';
+import { toyForRoom, type ToyKind } from './toys';
 
 export interface TvOptions {
   states: () => Record<GroupCode, PetState>;
@@ -24,6 +25,8 @@ export interface TvOptions {
   rank?: () => RankData;
   /** строка свежести данных справа вверху */
   fresh?: () => string;
+  /** игрушка дня групп (последний расход игрушки РГ за сегодня); без неё (демо) в комнатах мячи */
+  toys?: () => Record<GroupCode, { id: number; kind: ToyKind } | null>;
 }
 
 export interface Tv {
@@ -333,9 +336,11 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     const next = o.states();
     const asOf = o.asOf();
     const totals = o.rank ? funnelOf(o.rank(), asOf) : undefined;
+    const toys = o.toys?.();
     rooms.forEach((r, i) => {
       r.update(next[r.group], totals?.[r.group]);
       pets[i].update(next[r.group]);
+      r.setToy(toyForRoom(toys?.[r.group] ?? null, next[r.group]), false); // после перезагрузки игрушка уже лежит
     });
     moments = [...moments, ...growthMoments(states, next)].slice(-MAX_MOMENTS);
     states = next;
@@ -356,6 +361,13 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     rooms[i].playHand(item, Math.max(0, Math.min(r.w - 70, pets[i].x - r.x - 35))); // питомец может быть в зале
     pets[i].emote('joy');
     if (item === 'medkit') setTimeout(() => pets[i].heal(), HAND_MS); // лечит, когда рука донесла аптечку
+    // игрушка дня падает в комнату после руки (комната ждёт руку сама), питомец прыгает, когда она коснулась пола.
+    // Зовётся до `update` того же снимка: иначе `update` положил бы игрушку сразу, без руки и падения.
+    const toy = item === 'toy' && states ? toyForRoom(o.toys?.()[group] ?? null, states[group]) : null;
+    if (toy) {
+      rooms[i].setToy(toy, true);
+      setTimeout(() => pets[i].cheer(), HAND_MS + TOY_LAND_MS);
+    }
   };
 
   update();

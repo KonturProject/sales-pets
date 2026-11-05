@@ -122,6 +122,25 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
   background: radial-gradient(circle at 35% 35%, #fff8, transparent 40%), var(--accent);
   transition: transform 1s cubic-bezier(.2, .7, .3, 1);
 }
+/* игрушка дня вместо мяча (RoomView.setToy): рамка TOY×TOY на полу, где мяч; тело — прыжки и сплющивание от низа,
+   картинка — качение вокруг центра; юла крутится классом spin */
+.toy { position: absolute; left: 0; top: 354px; width: 56px; height: 56px; z-index: 3; transition: transform 1s cubic-bezier(.2, .7, .3, 1); }
+.tv-room:not([data-toy]) .toy { display: none; }
+.tv-room[data-toy] .ball { visibility: hidden; }
+.toy-shadow { position: absolute; left: 7px; right: 7px; bottom: -5px; height: 11px; border-radius: 50%; background: rgba(60, 40, 20, .22); }
+.toy-body { position: absolute; inset: 0; transform-origin: 50% 100%; }
+.toy-body img {
+  display: block; width: 100%; height: 100%; object-fit: contain; object-position: 50% 100%;
+  transition: rotate 1s cubic-bezier(.2, .7, .3, 1), scale .2s ease-out;
+}
+.toy.spin .toy-body { animation: tv-toy-spin 1.5s linear; }
+/* дуги «( )» по бокам юлы, пока она крутится быстро */
+.toy.spin .toy-body::before, .toy.spin .toy-body::after {
+  content: ''; position: absolute; top: 16px; width: 14px; height: 30px; border-radius: 50%;
+  border: 3px solid transparent; opacity: 0; animation: tv-toy-whirl 1.5s linear both;
+}
+.toy.spin .toy-body::before { left: -12px; border-left-color: rgba(255, 255, 255, .9); }
+.toy.spin .toy-body::after { right: -12px; border-right-color: rgba(255, 255, 255, .9); }
 .tv-room .hand { top: 190px; right: auto; width: 70px; height: 70px; z-index: 5; }
 
 /* питомцы в слое мира: ноги в точке transform, размер --size */
@@ -147,6 +166,10 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 .heal .bit { left: -14px; top: -14px; width: 28px; height: 28px; opacity: 0; animation: tv-heal-bit var(--heal-ms) ease-out both; }
 .heal.still .big { animation: none; }
 .heal.still .bit { display: none; }
+/* сердечки над мишкой в объятиях: всплывают от его макушки по очереди и тают */
+.hearts { position: absolute; top: -70px; width: 0; height: 0; z-index: 5; pointer-events: none; }
+.hearts svg { position: absolute; left: -17px; top: -17px; width: 34px; height: 34px; opacity: 0; animation: tv-heart 1s ease-out both; }
+.hearts path { fill: #e8607a; stroke: #fff; stroke-width: 3.5; stroke-linejoin: round; paint-order: stroke; }
 .shadow i { position: absolute; left: -44px; top: -10px; width: 88px; height: 20px; border-radius: 50%; background: rgba(60, 40, 20, .22); }
 .emote {
   position: absolute; left: -30px; top: calc(var(--size) * -1 - 72px); width: 60px; height: 60px; border-radius: 50%;
@@ -218,10 +241,16 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 }
 
 [data-power='idle'] .tv .bob,
-[data-power='idle'] .tv .flies { animation-play-state: paused; }
+[data-power='idle'] .tv .flies,
+[data-power='idle'] .tv .toy-body,
+[data-power='idle'] .tv .toy-body::before,
+[data-power='idle'] .tv .toy-body::after,
+[data-power='idle'] .tv .hearts svg { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
   .tv-world, .fg, .dock { transition: none; }
-  .tv .bob, .tv .pet.sneak.walking .bob { animation: none; }
+  .tv .bob, .tv .pet.sneak.walking .bob, .tv .toy.spin .toy-body { animation: none; }
+  .tv .toy.spin .toy-body::before, .tv .toy.spin .toy-body::after { display: none; }
+  .tv .hearts { display: none; }
 }
 
 @keyframes tv-idle { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.03, .97); } }
@@ -230,4 +259,24 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 @keyframes tv-wobble { 0%, 70%, 100% { transform: rotate(0); } 78% { transform: rotate(-7deg); } 86% { transform: rotate(6deg); } 93% { transform: rotate(-3deg); } }
 @keyframes tv-tick { from { transform: translateY(30px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes tv-heal-big { 0% { transform: scale(0); opacity: 0; } 25% { transform: scale(1.25); opacity: 1; } 40% { transform: scale(.95); } 55% { transform: scale(1.12); } 70% { transform: scale(1); opacity: 1; } 85%, 100% { transform: scale(.5); opacity: 0; } }
+@keyframes tv-heart {
+  0% { transform: translate(0, 0) scale(.2); opacity: 0; }
+  22% { transform: translate(calc(var(--dx) * .3), -18px) scale(1.15); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translate(var(--dx), -70px) scale(.85); opacity: 0; }
+}
+@keyframes tv-toy-whirl { 0%, 14% { opacity: 0; } 20%, 58% { opacity: .9; } 66%, 100% { opacity: 0; } }
+/* юла: подброс от толчка, быстрое дрожание оси (крутится), к концу замедляется — качается всё шире и встаёт */
+@keyframes tv-toy-spin {
+  0% { transform: none; }
+  7% { transform: translateY(-18px) scale(.94, 1.07); }
+  13% { transform: scale(1.12, .9); }
+  17%, 25%, 33%, 41%, 49%, 57% { transform: rotate(-4deg) scaleX(.93); }
+  21%, 29%, 37%, 45%, 53%, 61% { transform: rotate(4deg) scaleX(1); }
+  68% { transform: rotate(-7deg) translateX(-2px); }
+  76% { transform: rotate(9deg) translateX(3px); }
+  85% { transform: rotate(-9deg) translateX(-2px); }
+  93% { transform: rotate(5deg); }
+  100% { transform: none; }
+}
 @keyframes tv-heal-bit { 0%, 60% { transform: translate(0, 0) scale(.4); opacity: 0; } 70% { opacity: 1; } 100% { transform: translate(var(--dx), var(--dy)) scale(1); opacity: 0; } }

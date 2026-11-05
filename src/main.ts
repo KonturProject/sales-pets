@@ -12,6 +12,7 @@ import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
 import { PowerSaver } from '@/game/PowerSaver';
 import { freshLine } from '@/game/tv/metrics';
 import { mountTv, type Tv } from '@/game/tv/TvScreen';
+import { toyOfDay } from '@/game/tv/toys';
 import { newUses } from '@/game/uses';
 
 /** Дата витрины по умолчанию: середина игры, видны все состояния. */
@@ -70,14 +71,20 @@ function startLive(): void {
     const { uses, max } = newUses(maxSeen, snapshot.overrides);
     maxSeen = max;
     if (tv) {
-      tv.update();
+      // рука раньше обновления: игрушку дня, которую несёт рука, комната показывает падением после руки, а не сразу
       for (const u of uses) tv.playHand(u.group, u.kind === 'useMedkit' ? 'medkit' : 'toy');
+      tv.update();
     } else {
       tv = mountTv(tvRoot, {
         states: () => facts().states,
         rank: () => facts().rank,
         asOf,
         cfg: () => facts().rank.cfg,
+        toys: () => {
+          const { overrides } = store.current()!;
+          const today = asOf();
+          return Object.fromEntries(GROUPS.map((g) => [g, toyOfDay(overrides, g, today)])) as Record<GroupCode, ReturnType<typeof toyOfDay>>;
+        },
         fresh: () => {
           const s = store.current()!;
           return freshLine({ at: answeredAt, funnelThrough: s.funnelThrough, paymentsThrough: s.paymentsImportedThrough });

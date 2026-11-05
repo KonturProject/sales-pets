@@ -313,6 +313,27 @@ try {
   check(await page.waitForSelector(sr1('.hand'), { state: 'detached', timeout: 6_000 }).then(() => true, () => false), 'рука: .hand не убралась за 6 с');
   check(await page.$$eval('.hand', (h) => h.length) === 0, 'рука: после ухода остались .hand');
 
+  // --- игрушка дня: после руки игрушка падает в комнату СР1 вместо мяча; у других групп мяч на месте
+  const toyRooms = () => page.$$eval('[data-group]', (els) => els.map((e) => {
+    const img = e.querySelector('.toy img');
+    return {
+      group: e.dataset.group, toy: e.dataset.toy ?? null,
+      src: img?.getAttribute('src') ?? '', loaded: !!img && img.complete && img.naturalWidth > 0,
+      ball: getComputedStyle(e.querySelector('.ball')).visibility,
+    };
+  }));
+  const toyLanded = await page.waitForFunction(() => {
+    const room = document.querySelector('[data-group="СР1"]');
+    const ball = room?.querySelector('.ball');
+    return !!room?.dataset.toy && !!ball && getComputedStyle(ball).visibility === 'hidden';
+  }, null, { timeout: 4_000 }).then(() => true, () => false);
+  check(toyLanded, 'игрушка: у СР1 нет data-toy или мяч не скрыт за 4 с после руки');
+  const toyNow = await toyRooms();
+  const sr1Toy = toyNow.find((r) => r.group === 'СР1');
+  check(!!sr1Toy?.toy && sr1Toy.src === `assets/toys/${sr1Toy.toy}.png` && sr1Toy.loaded, `игрушка СР1: ${JSON.stringify(sr1Toy)}`);
+  const others = toyNow.filter((r) => r.group !== 'СР1');
+  check(others.length === 5 && others.every((r) => r.toy === null && r.ball === 'visible'), `игрушка: у других групп ${JSON.stringify(others)}`);
+
   // --- аптечка (R20): после руки у питомца СР1 вырастает красный плюс `.heal`, ~2 с, и убирается сам.
   // Питомцы в слое мира идут в порядке групп, СР1 первый.
   const sr1Heal = () => page.$$eval('.tv-world > .pet', (els) => els[0]?.querySelectorAll('.heal').length ?? 0);
@@ -340,6 +361,8 @@ try {
   await page.waitForSelector('[data-group]', { timeout: 8_000 }).catch(() => {});
   await page.waitForTimeout(2_500);
   check(await page.$$eval('.hand', (h) => h.length) === 0, 'рука: при перезагрузке показан прошлый расход');
+  // а игрушка дня уже лежит в комнате (без падения)
+  check(!!sr1Toy?.toy && await valueOf('[data-group="СР1"]', (e) => e.dataset.toy ?? null) === sr1Toy.toy,`игрушка: после перезагрузки у СР1 data-toy не ${sr1Toy?.toy}`);
 
   // --- праздник (фаза Б): +1 предварительная оплата у СР3 — плашка, конфетти; через 20 с зал пуст
   check(await page.$eval('.tv', (e) => e.dataset.party ?? '') === '', 'праздник: показан при загрузке страницы');
