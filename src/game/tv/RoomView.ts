@@ -11,8 +11,8 @@ const HAND_MS = 1800;
 /** Рука убирается сама, даже если `animationend` не придёт (вкладка на паузе, анимации отключены). */
 const HAND_SAFETY_MS = 3000;
 export const BALL = 38;
-/** Дуга перекинутого мяча: подъём, px и длительность, мс. */
-const TOSS_LIFT = 140;
+/** Дуга перекинутого мяча: подъём (выше самого крупного питомца, 170 px), px и длительность, мс. */
+const TOSS_LIFT = 230;
 const TOSS_MS = 700;
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] => {
@@ -41,6 +41,8 @@ export class RoomView {
   /** мяч в координатах комнаты: центр по `x`, угол поворота */
   readonly ball = { x: 330, rot: 0 };
   private readonly ballEl: HTMLElement;
+  private shown = '';
+  private tossAnims: Animation[] = [];
   private readonly reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   private readonly species: HTMLElement;
   private readonly mood: HTMLElement;
@@ -144,15 +146,36 @@ export class RoomView {
     this.showTicker(true);
   }
 
-  /** Поставить мяч в `ball`; `toss` — мяч перекинут через питомца: летит дугой (при reduced motion без дуги). */
+  /**
+   * Поставить мяч в `ball`; `toss` — мяч перекинут через питомца: он взлетает над его головой и садится по другую
+   * сторону (при reduced motion без дуги, обычным переходом). В броске сдвиг и подъём идут по одной шкале 700 мс:
+   * подъём быстрый (ease-out), сдвиг медленный сначала (ease-in), так что над питомцем мяч уже в верхней точке.
+   */
   placeBall(toss = false): void {
-    this.ballEl.style.transform = `translate(${this.ball.x - BALL / 2}px, 0) rotate(${this.ball.rot}deg)`;
+    const to = `translate(${this.ball.x - BALL / 2}px, 0) rotate(${this.ball.rot}deg)`;
+    const from = this.shown;
+    this.shown = to;
+    this.tossAnims.forEach((a) => a.cancel());
+    this.tossAnims = [];
     if (toss && !this.reduced && this.ballEl.animate) {
-      this.ballEl.animate(
-        [{ translate: '0 0' }, { translate: `0 -${TOSS_LIFT}px`, offset: 0.5 }, { translate: '0 0' }],
-        { duration: TOSS_MS, easing: 'ease-in-out' },
-      );
+      const opts = { duration: TOSS_MS } as const;
+      this.ballEl.style.transition = 'none';
+      this.tossAnims = [
+        this.ballEl.animate([{ transform: from }, { transform: to }], { ...opts, easing: 'ease-in' }),
+        this.ballEl.animate(
+          [
+            { translate: '0 0', easing: 'cubic-bezier(.1, .7, .3, 1)' },
+            { translate: `0 -${TOSS_LIFT}px`, offset: 0.5, easing: 'cubic-bezier(.7, 0, .9, .3)' },
+            { translate: '0 0' },
+          ],
+          opts,
+        ),
+      ];
+      this.tossAnims[0]!.onfinish = () => (this.ballEl.style.transition = '');
+    } else {
+      this.ballEl.style.transition = '';
     }
+    this.ballEl.style.transform = to;
   }
 
   /** Рука с предметом над питомцем (R20): на состояние не влияет и убирается сама. `x` — в координатах комнаты. */
