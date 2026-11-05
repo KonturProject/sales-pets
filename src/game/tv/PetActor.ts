@@ -220,8 +220,10 @@ export class PetActor {
         ball.x = kick.x;
         this.room.placeBall(kick.toss);
         if (kick.toss) {
-          this.emote('joy', 1300);
+          // облачко только после полёта мяча (700 мс): иначе оно закрывает мяч в верхней точке дуги
           if (!(await this.moveTo({}, 420, my, 40))) return;
+          if (!(await this.pause(300, my))) return;
+          this.emote('joy', 1300);
         } else if (this.state === 'ok' && Math.random() < 0.5) this.emote('joy', 1300);
       } else if (!(await this.walkTo(r.x + EDGE + Math.random() * (r.w - 2 * EDGE), my))) {
         return;
