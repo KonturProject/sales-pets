@@ -11,6 +11,9 @@ const HAND_MS = 1800;
 /** Рука убирается сама, даже если `animationend` не придёт (вкладка на паузе, анимации отключены). */
 const HAND_SAFETY_MS = 3000;
 export const BALL = 38;
+/** Дуга перекинутого мяча: подъём, px и длительность, мс. */
+const TOSS_LIFT = 140;
+const TOSS_MS = 700;
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] => {
   const node = document.createElement(tag);
@@ -38,6 +41,7 @@ export class RoomView {
   /** мяч в координатах комнаты: центр по `x`, угол поворота */
   readonly ball = { x: 330, rot: 0 };
   private readonly ballEl: HTMLElement;
+  private readonly reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   private readonly species: HTMLElement;
   private readonly mood: HTMLElement;
   private readonly sub: HTMLElement;
@@ -140,8 +144,15 @@ export class RoomView {
     this.showTicker(true);
   }
 
-  placeBall(): void {
+  /** Поставить мяч в `ball`; `toss` — мяч перекинут через питомца: летит дугой (при reduced motion без дуги). */
+  placeBall(toss = false): void {
     this.ballEl.style.transform = `translate(${this.ball.x - BALL / 2}px, 0) rotate(${this.ball.rot}deg)`;
+    if (toss && !this.reduced && this.ballEl.animate) {
+      this.ballEl.animate(
+        [{ translate: '0 0' }, { translate: `0 -${TOSS_LIFT}px`, offset: 0.5 }, { translate: '0 0' }],
+        { duration: TOSS_MS, easing: 'ease-in-out' },
+      );
+    }
   }
 
   /** Рука с предметом над питомцем (R20): на состояние не влияет и убирается сама. `x` — в координатах комнаты. */

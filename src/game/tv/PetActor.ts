@@ -3,6 +3,7 @@ import type { Mood, PetState } from '@/engine/pet';
 import type { GroupCode } from '@/engine/types';
 import { petScale, stageSprite } from '@/game/PetView';
 import { EMOTE, type Emote } from './art';
+import { kickBall } from './ball';
 import type { RoomView } from './RoomView';
 
 type Kind = 'egg' | 'pet' | 'grave';
@@ -19,7 +20,6 @@ const EDGE = 70;
 const MOOD_EMOTE: Record<Mood, Emote | null> = { ok: 'ok', sad: 'sad', bored: 'bored', sick: 'sick', dead: null };
 
 const ease = (k: number) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
-const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 
 const div = (cls: string) => {
   const node = document.createElement('div');
@@ -215,11 +215,14 @@ export class PetActor {
         const dir = r.x + ball.x > this.x ? 1 : -1;
         if (!(await this.walkTo(r.x + ball.x - dir * 58, my))) return;
         this.face(dir);
-        const nx = clamp(ball.x + dir * (90 + Math.random() * 90), 50, r.w - 50);
-        ball.rot += (nx - ball.x) * 2.2;
-        ball.x = nx;
-        this.room.placeBall();
-        if (this.state === 'ok' && Math.random() < 0.5) this.emote('joy', 1300);
+        const kick = kickBall(ball.x, this.x - r.x, r.w, Math.random);
+        ball.rot += kick.rot;
+        ball.x = kick.x;
+        this.room.placeBall(kick.toss);
+        if (kick.toss) {
+          this.emote('joy', 1300);
+          if (!(await this.moveTo({}, 420, my, 40))) return;
+        } else if (this.state === 'ok' && Math.random() < 0.5) this.emote('joy', 1300);
       } else if (!(await this.walkTo(r.x + EDGE + Math.random() * (r.w - 2 * EDGE), my))) {
         return;
       }
