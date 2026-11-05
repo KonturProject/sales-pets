@@ -313,6 +313,28 @@ try {
   check(await page.waitForSelector(sr1('.hand'), { state: 'detached', timeout: 6_000 }).then(() => true, () => false), 'рука: .hand не убралась за 6 с');
   check(await page.$$eval('.hand', (h) => h.length) === 0, 'рука: после ухода остались .hand');
 
+  // --- аптечка (R20): после руки у питомца СР1 вырастает красный плюс `.heal`, ~2 с, и убирается сам.
+  // Питомцы в слое мира идут в порядке групп, СР1 первый.
+  const sr1Heal = () => page.$$eval('.tv-world > .pet', (els) => els[0]?.querySelectorAll('.heal').length ?? 0);
+  const medkitsOfSr1 = async () => Number((await valueOf(sr1('[data-count="medkits"]'), (e) => e.textContent))?.match(/\d+/)?.[0]);
+  let medkitsBefore = await medkitsOfSr1();
+  if (!(medkitsBefore > 0)) {
+    const given = await post({ action: 'setOverride', pin: MOCK_ADMIN_PIN, date: '2026-11-12', group: 'СР1', kind: 'medkits', delta: 1 });
+    check(given.ok === true, `аптечка: выдать аптечку СР1: ${given.error}`);
+    await page.waitForFunction((s) => /[1-9]/.test(document.querySelector(s)?.textContent ?? ''), sr1('[data-count="medkits"]'), { timeout: 5_000 }).catch(() => {});
+    medkitsBefore = await medkitsOfSr1();
+  }
+  check(Number.isFinite(medkitsBefore) && medkitsBefore > 0, `аптечка: запас аптечек СР1 не прочитан или нулевой (${medkitsBefore})`);
+  check(await sr1Heal() === 0, 'аптечка: до расхода у питомца СР1 уже есть .heal');
+  const usedKit = await post({ action: 'useItem', group: 'СР1', groupPin: mock.groupPins['СР1'], item: 'medkit', ref: `check-render-${Date.now()}` });
+  check(usedKit.ok === true, `аптечка: useItem: ${usedKit.error}`);
+  const healed = await page.waitForFunction(() => document.querySelector('.tv-world > .pet .heal') !== null, null, { timeout: 4_000 }).then(() => true, () => false);
+  check(healed, 'аптечка: .heal у питомца СР1 не появился после расхода');
+  check(await sr1Heal() === 1, `аптечка: .heal у питомца СР1: ${await sr1Heal()}, ожидался 1`);
+  check(await page.$eval('.tv-world > .pet', (e) => e.dataset.healing !== undefined), 'аптечка: у питомца СР1 нет data-healing');
+  check(await page.waitForFunction(() => document.querySelector('.tv-world > .pet .heal') === null, null, { timeout: 5_000 }).then(() => true, () => false), 'аптечка: .heal не убрался за 5 с');
+  check(await page.$eval('.tv-world > .pet', (e) => e.dataset.healing === undefined), 'аптечка: data-healing остался после ухода плюса');
+
   // после перезагрузки уже совершённый расход не проигрывается (первый снимок молчит)
   await page.goto(live1s, { waitUntil: 'networkidle' });
   await page.waitForSelector('[data-group]', { timeout: 8_000 }).catch(() => {});

@@ -12,7 +12,7 @@ import { BOARDS, CAMERA, roomCamera, roomRect, STAGE } from './layout';
 import { dayLine, groupFunnel, partyBanner, paymentGains, type FunnelTotal } from './metrics';
 import { careRooms, growthMoments, MAX_MOMENTS, type RoomMoment } from './moments';
 import { PetActor } from './PetActor';
-import { RoomView } from './RoomView';
+import { HAND_MS, RoomView } from './RoomView';
 import { careTurn, shotAt, walkFor, type Shot } from './schedule';
 
 export interface TvOptions {
@@ -355,6 +355,7 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     const r = rooms[i].rect;
     rooms[i].playHand(item, Math.max(0, Math.min(r.w - 70, pets[i].x - r.x - 35))); // питомец может быть в зале
     pets[i].emote('joy');
+    if (item === 'medkit') setTimeout(() => pets[i].heal(), HAND_MS); // лечит, когда рука донесла аптечку
   };
 
   update();

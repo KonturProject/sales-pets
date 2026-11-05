@@ -7,7 +7,7 @@ import { HOUSE, type RoomRect } from './layout';
 import { tickerItems, type FunnelTotal, type TickerItem } from './metrics';
 
 /** Длина анимации руки в `tv.css`; следующая рука в той же комнате ждёт, пока предыдущая уйдёт. */
-const HAND_MS = 1800;
+export const HAND_MS = 1800;
 /** Рука убирается сама, даже если `animationend` не придёт (вкладка на паузе, анимации отключены). */
 const HAND_SAFETY_MS = 3000;
 export const BALL = 38;

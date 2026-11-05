@@ -19,6 +19,11 @@ const SICK = 0.55;
 const EDGE = 70;
 const MOOD_EMOTE: Record<Mood, Emote | null> = { ok: 'ok', sad: 'sad', bored: 'bored', sick: 'sick', dead: null };
 
+/** Красный плюс аптечки (viewBox 40x40) и сколько он живёт, мс. */
+const PLUS = '<path d="M15 3h10v12h12v10H25v12H15V25H3V15h12z" fill="#e53935" stroke="#fff" stroke-width="3" paint-order="stroke"/>';
+const HEAL_MS = 2000;
+const HEAL_STILL_MS = 1000;
+
 const ease = (k: number) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
 
 const div = (cls: string) => {
@@ -55,6 +60,8 @@ export class PetActor {
   private running = false;
   private gen = 0;
   private emoteTimer: ReturnType<typeof setTimeout> | undefined;
+  private healTimer: ReturnType<typeof setTimeout> | undefined;
+  private healEl: HTMLElement | null = null;
 
   constructor(readonly group: GroupCode, readonly room: RoomView) {
     this.x = room.rect.cx;
@@ -137,6 +144,33 @@ export class PetActor {
     this.bubble.classList.add('on');
     clearTimeout(this.emoteTimer);
     this.emoteTimer = setTimeout(() => this.bubble.classList.remove('on'), ms);
+  }
+
+  /**
+   * Лечение аптечкой РГ: красный плюс над питомцем растёт, пульсирует и рассыпается шестью маленькими; питомец светится
+   * (`data-healing`). Убирается сам по таймеру; при reduced motion — плюс на 1 с без движения.
+   */
+  heal(): void {
+    this.healEl?.remove();
+    clearTimeout(this.healTimer);
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const ms = still ? HEAL_STILL_MS : HEAL_MS;
+    const plus = (cls: string, style = '') => `<svg class="${cls}" style="${style}" viewBox="0 0 40 40" aria-hidden="true">${PLUS}</svg>`;
+    const el = div('heal');
+    if (still) el.classList.add('still');
+    el.style.setProperty('--heal-ms', `${ms}ms`);
+    el.innerHTML = plus('big') + Array.from({ length: 6 }, (_, k) => {
+      const a = (k / 6) * Math.PI * 2 - Math.PI / 2;
+      return plus('bit', `--dx:${Math.round(Math.cos(a) * 70)}px;--dy:${Math.round(Math.sin(a) * 70)}px`);
+    }).join('');
+    this.el.append(el);
+    this.el.dataset.healing = '';
+    this.healEl = el;
+    this.healTimer = setTimeout(() => {
+      el.remove();
+      delete this.el.dataset.healing;
+      this.healEl = null;
+    }, ms);
   }
 
   /** Шаг до точки с обычной скоростью (в комнате или в зале). */

@@ -138,6 +138,13 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 .pet[data-mood='bored'] img { filter: saturate(.7); }
 .pet[data-kind='egg'] .bob { transform-origin: 50% 95%; animation: tv-wobble calc(2.2s * var(--speed)) ease-in-out infinite; }
 .pet[data-kind='grave'] .bob { animation: none; }
+.pet[data-healing] img { filter: drop-shadow(0 0 16px #ff5a5a) brightness(1.08); }
+.heal { position: absolute; left: 0; top: calc(var(--size) * -1 - 6px); width: 0; height: 0; z-index: 6; pointer-events: none; }
+.heal svg { position: absolute; display: block; filter: drop-shadow(0 3px 0 rgba(0, 0, 0, .15)); }
+.heal .big { left: -45px; top: -45px; width: 90px; height: 90px; animation: tv-heal-big var(--heal-ms) ease-out both; }
+.heal .bit { left: -14px; top: -14px; width: 28px; height: 28px; opacity: 0; animation: tv-heal-bit var(--heal-ms) ease-out both; }
+.heal.still .big { animation: none; }
+.heal.still .bit { display: none; }
 .shadow i { position: absolute; left: -44px; top: -10px; width: 88px; height: 20px; border-radius: 50%; background: rgba(60, 40, 20, .22); }
 .emote {
   position: absolute; left: -30px; top: calc(var(--size) * -1 - 72px); width: 60px; height: 60px; border-radius: 50%;
@@ -212,3 +219,5 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 @keyframes tv-hop { 0%, 100% { transform: translateY(0) scale(1.04, .96); } 50% { transform: translateY(-12px) scale(.97, 1.03); } }
 @keyframes tv-wobble { 0%, 70%, 100% { transform: rotate(0); } 78% { transform: rotate(-7deg); } 86% { transform: rotate(6deg); } 93% { transform: rotate(-3deg); } }
 @keyframes tv-tick { from { transform: translateY(30px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes tv-heal-big { 0% { transform: scale(0); opacity: 0; } 25% { transform: scale(1.25); opacity: 1; } 40% { transform: scale(.95); } 55% { transform: scale(1.12); } 70% { transform: scale(1); opacity: 1; } 85%, 100% { transform: scale(.5); opacity: 0; } }
+@keyframes tv-heal-bit { 0%, 60% { transform: translate(0, 0) scale(.4); opacity: 0; } 70% { opacity: 1; } 100% { transform: translate(var(--dx), var(--dy)) scale(1); opacity: 0; } }
