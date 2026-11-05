@@ -151,6 +151,7 @@ export class PetActor {
    * (`data-healing`). Убирается сам по таймеру; при reduced motion — плюс на 1 с без движения.
    */
   heal(): void {
+    if (this.kind === 'grave') return; // движок не лечит погибшего: плюса над могилой нет
     this.healEl?.remove();
     clearTimeout(this.healTimer);
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -170,6 +171,7 @@ export class PetActor {
       el.remove();
       delete this.el.dataset.healing;
       this.healEl = null;
+      this.emote('joy', 1300); // радуется, когда плюс рассыпался (облачко не перекрывает плюс)
     }, ms);
   }
 
