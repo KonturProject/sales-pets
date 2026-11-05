@@ -156,8 +156,12 @@ export class PetActor {
   say(text: string, ms = 1600): void {
     this.talk.textContent = text;
     this.talk.classList.add('on');
+    this.place(); // говорящий выше соседа на той же линии: иначе облачко уходит под более крупного питомца
     clearTimeout(this.sayTimer);
-    this.sayTimer = setTimeout(() => this.talk.classList.remove('on'), ms);
+    this.sayTimer = setTimeout(() => {
+      this.talk.classList.remove('on');
+      this.place();
+    }, ms);
   }
 
   /** Крадущийся шаг до точки (пригнувшись, втрое медленнее зала); `false`, если питомца перехватили. */
@@ -307,7 +311,7 @@ export class PetActor {
   private place(lift = 0): void {
     this.el.style.transform = `translate(${this.x}px, ${this.y - lift}px) scale(${this.s})`;
     this.shadow.style.transform = `translate(${this.x}px, ${this.y}px) scale(${this.s * (1 - Math.min(lift, 300) / 500)})`;
-    this.el.style.zIndex = String(10 + Math.round(this.y));
+    this.el.style.zIndex = String(10 + Math.round(this.y) + (this.talk.classList.contains('on') ? 1 : 0));
     this.shadow.style.zIndex = String(9 + Math.round(this.y));
   }
 }
