@@ -1,6 +1,6 @@
 import '@fontsource-variable/nunito'; // свой файл шрифта: на ТВ может не быть доступа к Google Fonts
 import './game/room.css';
-import { api, backendUrl, resolvePollMs, serverToday, type Snapshot } from '@/data/api';
+import { api, backendUrl, resolvePollMs, serverToday } from '@/data/api';
 import { reloadForBuild, watchBuild } from '@/data/build';
 import { buildFacts } from '@/data/facts';
 import { createStore } from '@/data/store';
@@ -10,7 +10,7 @@ import { defaultConfig } from '@/engine/config';
 import { simulate, type PetState } from '@/engine/pet';
 import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
 import { PowerSaver } from '@/game/PowerSaver';
-import { dayEventPlan } from '@/game/tv/dayEvent';
+import { dayPlanner, type DayEventPlan } from '@/game/tv/dayEvent';
 import { freshLine } from '@/game/tv/metrics';
 import { mountTv, type Tv } from '@/game/tv/TvScreen';
 import { toyOfDay } from '@/game/tv/toys';
@@ -68,7 +68,15 @@ function startLive(): void {
   const facts = () => buildFacts(store.current()!, asOf());
   let tv: Tv | undefined;
   let maxSeen: number | null = null; // наибольший id расхода РГ, уже показанный рукой (R20)
-  let prev: Snapshot | null = null; // прошлый снимок: сдвиг funnelThrough — загружена воронка, событие «итоги дня»
+  const planDay = dayPlanner(); // по прошлому снимку: сдвиг funnelThrough — загружена воронка, событие «итоги дня»
+  /** Показ итогов не роняет обновление экрана: ошибка — в консоль без данных, ТВ обновляется как обычно. */
+  const playDay = (day: DayEventPlan) => {
+    try {
+      tv!.playDay(day);
+    } catch (e) {
+      console.error('Итоги дня не показаны:', e instanceof Error ? e.message : e);
+    }
+  };
   store.subscribe((snapshot) => {
     const { unmatchedAuthors } = buildFacts(snapshot, asOf());
     if (unmatchedAuthors.length) console.warn(`Авторы оплат не найдены в штате (${unmatchedAuthors.length}):`, unmatchedAuthors);
@@ -81,8 +89,7 @@ function startLive(): void {
     } catch {
       shown = snapshot.funnelThrough;
     }
-    const day = dayEventPlan(prev, snapshot, asOf(), shown);
-    prev = snapshot;
+    const day = planDay(snapshot, asOf(), shown);
     if (day) {
       try {
         localStorage.setItem(DAY_SHOWN_KEY, day.through);
@@ -92,7 +99,7 @@ function startLive(): void {
       // рука раньше обновления: игрушку дня, которую несёт рука, комната показывает падением после руки, а не сразу;
       // итоги тоже раньше: комнаты события не мелькают новыми числами до своей очереди
       for (const u of uses) tv.playHand(u.group, u.kind === 'useMedkit' ? 'medkit' : 'toy');
-      if (day) tv.playDay(day);
+      if (day) playDay(day);
       tv.update();
     } else {
       tv = mountTv(tvRoot, {
@@ -110,7 +117,7 @@ function startLive(): void {
           return freshLine({ at: answeredAt, funnelThrough: s.funnelThrough, paymentsThrough: s.paymentsImportedThrough });
         },
       });
-      if (day) tv.playDay(day); // в той же задаче, что и первый показ: «стало» не успевает нарисоваться
+      if (day) playDay(day); // в той же задаче, что и первый показ: «стало» не успевает нарисоваться
     }
   });
 

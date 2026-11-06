@@ -26,6 +26,8 @@ const HEAL_STILL_MS = 1000;
 
 /** На каком расстоянии от мяча или игрушки (центр к центру) питомец встаёт играть: игрушки крупнее мяча. */
 const REACH: Record<ToyPlay | 'ball', number> = { ball: 58, roll: 64, bounce: 64, spin: 70, hug: 56 };
+/** Питомец крупнее стольких px (сторона картинки) встаёт к игрушке дальше в той же пропорции: иначе ноги на игрушке. */
+const REACH_SIZE = 120;
 /** Прыжок от радости (только картинка): присел, взлетел, приземлился со сплющиванием; мс. */
 const JUMP_MS = 650;
 const RISE = 'cubic-bezier(.5, 1, .89, 1)';
@@ -86,6 +88,7 @@ export class PetActor {
   private state: Mood = 'ok';
   private running = false;
   private gen = 0;
+  private side = PET_SIZE;
   private emoteTimer: ReturnType<typeof setTimeout> | undefined;
   private sayTimer: ReturnType<typeof setTimeout> | undefined;
   private healTimer: ReturnType<typeof setTimeout> | undefined;
@@ -125,6 +128,7 @@ export class PetActor {
     if (this.sprite.getAttribute('src') !== src) this.sprite.src = src;
     const size = kind === 'pet' ? Math.round(PET_SIZE * petScale(s.stage)) : kind === 'egg' ? EGG_SIZE : GRAVE_SIZE;
     this.el.style.setProperty('--size', `${size}px`);
+    this.side = size;
     this.el.dataset.kind = kind;
     this.el.dataset.mood = s.mood;
     this.state = s.mood;
@@ -142,6 +146,11 @@ export class PetActor {
   /** Гуляет ли (живой вылупившийся при видимой вкладке): только такие выходят в зал. */
   get walker(): boolean {
     return this.running && this.kind === 'pet';
+  }
+
+  /** Сторона картинки, px (`--size`): крупные держатся дальше от игрушки и от места кучки. */
+  get size(): number {
+    return this.side;
   }
 
   get mood(): Mood {
@@ -352,7 +361,7 @@ export class PetActor {
       if (play && (this.eager || Math.random() < 0.4)) {
         this.eager = false;
         const dir = r.x + ball.x > this.x ? 1 : -1;
-        if (!(await this.walkTo(r.x + ball.x - dir * REACH[play], my))) return;
+        if (!(await this.walkTo(r.x + ball.x - dir * REACH[play] * this.far(), my))) return;
         // пока шёл, РГ мог бросить новую игрушку: в руке и в падении её не трогают
         const still = this.room.play === play;
         if (still) this.face(dir);
@@ -385,7 +394,7 @@ export class PetActor {
     this.act(HUG, HUG_MS);
     if (!this.reduced) {
       const hearts = div('hearts');
-      hearts.style.left = `${this.facing * HEARTS_AT}px`;
+      hearts.style.left = `${this.facing * HEARTS_AT * this.far()}px`;
       hearts.innerHTML = HEARTS.map((dx, k) => `<svg style="--dx:${dx * this.facing}px;animation-delay:${k * 230}ms" viewBox="0 0 40 40" aria-hidden="true">${EMOTE.joy}</svg>`).join('');
       this.el.append(hearts);
       setTimeout(() => hearts.remove(), HUG_MS + 200);
@@ -448,6 +457,11 @@ export class PetActor {
   /** Шаг по полу своей комнаты до `tx`. */
   private walkTo(tx: number, my: number): Promise<boolean> {
     return this.walk(tx, this.y, my);
+  }
+
+  /** Во сколько раз дальше от игрушки встаёт крупный питомец (`REACH_SIZE`): мелкие — как в `REACH`. */
+  private far(): number {
+    return Math.max(1, this.side / REACH_SIZE);
   }
 
   /** `lift` — высота над полом в прыжке: тень остаётся на полу и уменьшается. */

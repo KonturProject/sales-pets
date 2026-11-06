@@ -1,11 +1,11 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { dayResults, type GroupLine } from '@/admin/results';
 import type { Snapshot, SnapshotConfig } from '@/data/api';
 import { buildFacts } from '@/data/facts';
 import type { PetState } from '@/engine/pet';
 import type { Employee } from '@/engine/staff';
 import type { DateStr, GroupCode } from '@/engine/types';
-import { dayEventPlan, dayRoomMs, daySteps, enqueueDay, roomText, staleDay, type DayEventPlan, type RoomEvent } from './dayEvent';
+import { dayEventPlan, dayPlanner, dayRoomMs, daySteps, enqueueDay, roomText, staleDay, type DayEventPlan, type RoomEvent } from './dayEvent';
 
 const emp = (id: string, group: GroupCode, baseLevel: Employee['baseLevel'] = 'experienced'): Employee => ({
   id, name: `Тест ${id}`, shortName: id, group, hireDate: null, fireDate: null, baseLevel, hiddenFromRating: false, transfers: [],
@@ -268,5 +268,20 @@ describe('dayRoomMs и staleDay', () => {
     expect(staleDay(0, 1 * min, 16 * min)).toBe(false);
     expect(staleDay(10 * min, 1 * min, 20 * min)).toBe(false);
     expect(staleDay(10 * min, 1 * min, 26 * min)).toBe(true);
+  });
+});
+
+describe('dayPlanner: ошибка плана не роняет опрос', () => {
+  test('план бросил — события нет, ошибка в консоли; следующий снимок сравнивается уже с этим', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const plan = dayPlanner();
+    const s = world();
+    expect(plan(through(s, D3), D6, null)).toBeNull(); // при запуске: сегодня не следующий рабочий день после 03.11
+    const broken = { ...s, staff: null } as unknown as Snapshot; // воронка сдвинулась, но снимок битый: план бросает
+    expect(plan(broken, D6, null)).toBeNull();
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(plan(s, D6, null)).toBeNull(); // воронка та же, что у битого снимка: он запомнен, опрос идёт дальше
+    expect(plan(through(s, '2026-11-06'), '2026-11-09', null)).not.toBeNull();
+    error.mockRestore();
   });
 });

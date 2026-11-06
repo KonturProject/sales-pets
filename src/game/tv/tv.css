@@ -113,7 +113,8 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 }
 .crate img { width: 30px; height: 30px; object-fit: contain; }
 
-.tv-piles { position: absolute; left: 14px; bottom: 10px; display: flex; gap: 4px; z-index: 2; }
+/* кучки (с облачком, «пум!» и мухами) над мячом и игрушкой: они ближе к зрителю, мяч не закрывает убираемую кучку */
+.tv-piles { position: absolute; left: 14px; bottom: 10px; display: flex; gap: 4px; z-index: 4; }
 .tv-piles .pile { width: 36px; height: 32px; object-fit: contain; object-position: 50% 100%; }
 .tv-room .flies { left: 6px; bottom: 30px; width: 72px; }
 

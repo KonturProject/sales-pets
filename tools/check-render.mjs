@@ -312,6 +312,22 @@ try {
     const rp = await still.newPage();
     const dayErrors = [];
     for (const p of [dp, rp]) p.on('pageerror', (e) => dayErrors.push(e.message));
+    // плашка комнаты меняется, когда камера доехала (переезд 1,6 с), а не когда тронулась: в начале переезда на экране ещё прошлая
+    await dp.addInitScript(() => {
+      const log = (window.__plates = []);
+      let focus = null; let focusAt = 0; let plate = '';
+      const step = () => {
+        const tv = document.querySelector('.tv');
+        if (tv) {
+          const f = tv.dataset.focus ?? '';
+          if (f !== focus) { focus = f; focusAt = performance.now(); }
+          const t = document.querySelector('.banner.on')?.textContent ?? '';
+          if (t !== plate && (plate = t).includes('итоги')) log.push({ plate: t.slice(0, 3), focus: f, after: Math.round(performance.now() - focusAt) });
+        }
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
     const t0 = Date.now();
     await Promise.all([dp.goto(live, { waitUntil: 'networkidle' }), rp.goto(live, { waitUntil: 'networkidle' })]);
     check(await plateIn(dp, 8_000 - (Date.now() - t0)), `итоги дня: за 8 с после загрузки нет плашки «итоги 11.11» (плашка «${await plateOf(dp)}»)`);
@@ -324,6 +340,9 @@ try {
       const end = await rooms(p);
       check(settled(end), `${label}: в конце видимое не равно состоянию ${JSON.stringify(end.filter((r) => !settled([r, r, r, r, r, r])))}`);
     }
+    const plates = await dp.evaluate(() => window.__plates);
+    check(plates.length >= 3 && plates.every((x) => x.plate === x.focus && x.after >= 1_400),
+      `итоги дня: плашка комнаты сменилась раньше, чем камера доехала (≥ 1,4 с после смены комнаты): ${JSON.stringify(plates)}`);
     await dp.reload({ waitUntil: 'networkidle' });
     let replay = '';
     for (let k = 0; k < 20 && !replay; k++) {
@@ -335,6 +354,65 @@ try {
     check(dayErrors.length === 0, `итоги дня: ошибки страницы ${dayErrors.join('; ')}`);
     await ctx.close();
     await still.close();
+  }
+
+  // --- праздник посреди анимации комнаты в итогах дня (свой мок: оплата не задевает другие проверки). Воронка по 11.11 без
+  // длинных — кучки у всех, первая СР1; оплата через 1,6 с после начала события, когда СР1 уже тужится. Ни кучка, ни ящик не
+  // появляются на празднике или в чужом кадре; после праздника плашка СР1 возвращается, в конце видимое равно data-*.
+  {
+    const own = await startMockBackend({ port: 0 });
+    const send = async (body) => (await fetch(own.url, {
+      method: 'POST', headers: { 'content-type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body),
+    })).json();
+    const pctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const pp = await pctx.newPage();
+    const partyErrors = [];
+    pp.on('pageerror', (e) => partyErrors.push(e.message));
+    await pp.addInitScript(dayShown);
+    await pp.addInitScript(() => {
+      const log = (window.__pops = []);
+      new MutationObserver((list) => {
+        const tv = document.querySelector('.tv');
+        for (const m of list) for (const n of m.addedNodes) {
+          if (n.nodeType === 1 && n.matches('.pile.pop, .drop, .burst.pum')) {
+            log.push({ what: n.className, group: n.closest('[data-group]')?.dataset.group, party: tv?.dataset.party ?? '', focus: tv?.dataset.focus ?? '' });
+          }
+        }
+      }).observe(document, { childList: true, subtree: true });
+    });
+    try {
+      await pp.goto(`${base}?backend=${encodeURIComponent(own.url)}&asOf=2026-11-12&pollMs=1000`, { waitUntil: 'networkidle' });
+      await pp.waitForSelector('[data-group]', { timeout: 8_000 });
+      const snap = await (await fetch(own.url)).json();
+      await send({ action: 'importFunnel', pin: MOCK_ADMIN_PIN, through: '2026-11-10', rows: [] });
+      await pp.waitForTimeout(2_500);
+      const zero = snap.staff.map((e) => ({ name: e.name, date: '2026-11-11', quality: 0, long: 0 }));
+      await send({ action: 'importFunnel', pin: MOCK_ADMIN_PIN, through: '2026-11-11', rows: zero });
+      const began = await pp.waitForSelector('.tv[data-day]', { timeout: 8_000 }).then(() => true, () => false);
+      check(began, 'праздник в итогах дня: событие не началось после загрузки воронки');
+      await pp.waitForTimeout(1_600);
+      const sr3 = snap.provisional.find((x) => x.date === '2026-11-12' && x.group === 'СР3')?.count ?? 0;
+      await send({ action: 'setProvisional', pin: MOCK_ADMIN_PIN, date: '2026-11-12', group: 'СР3', count: sr3 + 1 });
+      check(await pp.waitForSelector('.tv[data-party]', { timeout: 6_000 }).then(() => true, () => false), 'праздник в итогах дня: праздник не начался');
+      await pp.waitForSelector('.tv:not([data-party])', { timeout: 30_000 }).catch(() => {});
+      const back = await pp.waitForFunction(() => document.querySelector('.banner.on')?.textContent?.startsWith('СР1 · итоги'), null, { timeout: 8_000 })
+        .then(() => true, () => false);
+      check(back, 'праздник в итогах дня: после праздника плашка СР1 не вернулась');
+      check(await pp.waitForFunction(() => !('day' in document.querySelector('.tv').dataset), null, { timeout: 90_000 }).then(() => true, () => false),
+        'праздник в итогах дня: событие не закончилось');
+      const pops = await pp.evaluate(() => window.__pops);
+      const wrong = pops.filter((x) => x.party || x.focus !== x.group);
+      check(pops.some((x) => x.group === 'СР1' && x.what.includes('pile')) && wrong.length === 0,
+        `праздник в итогах дня: кучка или ящик появились на празднике или в чужом кадре: ${JSON.stringify(wrong.length ? wrong : pops)}`);
+      const end = await pp.$$eval('[data-group]', (els) => els.filter((e) => e.querySelectorAll('.pile').length !== Number(e.dataset.piles)
+        || Number(e.querySelector('[data-count="medkits"]')?.textContent) !== Number(e.dataset.medkits)
+        || Number(e.querySelector('[data-count="toys"]')?.textContent) !== Number(e.dataset.toys)).map((e) => e.dataset.group));
+      check(end.length === 0, `праздник в итогах дня: в конце видимое не равно состоянию у ${end.join(', ')}`);
+      check(partyErrors.length === 0, `праздник в итогах дня: ошибки страницы ${partyErrors.join('; ')}`);
+    } finally {
+      await pctx.close();
+      await own.close();
+    }
   }
 
   // --- рука РГ (R20, R24): расход предмета подхватывает опрос; первый снимок после загрузки молчит.

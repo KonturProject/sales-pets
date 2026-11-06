@@ -80,6 +80,24 @@ export function dayEventPlan(prev: Snapshot | null, s: Snapshot, asOf: DateStr, 
   return rooms.length ? { through, days, rooms } : null;
 }
 
+/**
+ * План итогов дня по каждому снимку опроса: помнит прошлый снимок и запоминает новый раньше плана. Ошибка плана опрос
+ * не роняет (иначе экран замер бы, а при запуске не появился бы вовсе): в консоль без данных, события нет.
+ */
+export function dayPlanner(): (s: Snapshot, asOf: DateStr, shown: string | null) => DayEventPlan | null {
+  let prev: Snapshot | null = null;
+  return (s, asOf, shown) => {
+    const was = prev;
+    prev = s;
+    try {
+      return dayEventPlan(was, s, asOf, shown);
+    } catch (e) {
+      console.error('Итоги дня не построены:', e instanceof Error ? e.message : e);
+      return null;
+    }
+  };
+}
+
 /** Камера держит комнату события столько, но всё событие — не дольше `DAY_EVENT_MS`. */
 const DAY_ROOM_MS = 7_000;
 const DAY_EVENT_MS = 45_000;

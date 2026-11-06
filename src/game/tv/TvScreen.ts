@@ -52,10 +52,16 @@ const HOLD_MS = 15_000;
 const MOMENT_MS = 8_000;
 /** Событие «итоги дня»: анимации комнаты начинаются, когда камера долетела (переход мира в событии — 1,6 с, `tv.css`). */
 const DAY_ACT_MS = 1_500;
+/** Переезд камеры в событии (`transition-duration` у `.tv[data-day] .tv-world`): плашка новой комнаты — по приезде. */
+const DAY_PAN_MS = 1_600;
 /** Ящики одной комнаты падают через столько, мс. */
 const DAY_CRATE_GAP_MS = 850;
-/** Питомец тужится правее места новой кучки на столько px (кучка — позади него) и бежит туда не дольше `HURRY_MS`. */
+/**
+ * Питомец тужится правее места новой кучки на столько px (кучка — позади него) и бежит туда не дольше `HURRY_MS`.
+ * Питомец крупнее `STRAIN_SIZE` px встаёт дальше в той же пропорции: иначе его нога закрывает «пум!».
+ */
 const STRAIN_AT = 58;
+const STRAIN_SIZE = 120;
 const HURRY_MS = 900;
 /** Пока падают ящики, питомец стоит левее этого места комнаты, px: не заслоняет ящики запасов справа. */
 const CLEAR_X = 300;
@@ -220,8 +226,12 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
   };
   setShot('overview', false);
 
+  /** плашка комнаты события, отложенная до приезда камеры (`focusRoom`); любая другая плашка её отменяет */
+  let plate: ReturnType<typeof setTimeout> | undefined;
   /** `day` — плашка итогов дня: код группы и дата цветом группы, при смене комнаты плашка вздрагивает. */
   const showBanner = (text: string | null, day?: GroupCode) => {
+    clearTimeout(plate);
+    plate = undefined;
     if (text !== null && banner.textContent !== text) {
       const was = banner.classList.contains('on');
       banner.classList.toggle('day', !!day);
@@ -264,7 +274,7 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
    * пройдёт её очередь; `data-*` всегда настоящие. Время на комнату — `dayRoomMs` (вся очередь ≤ 45 с).
    */
   let dayQueue: DayRoom[] = [];
-  let turn: { room: DayRoom; i: number; until: number; acting: boolean } | null = null;
+  let turn: { room: DayRoom; i: number; until: number } | null = null;
   let dayMs = dayRoomMs(1);
   let dayTimer: ReturnType<typeof setTimeout> | undefined;
   let actTimer: ReturnType<typeof setTimeout> | undefined;
@@ -280,7 +290,10 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     pets[i].update(shown ?? states[g]);
   };
 
-  /** Крупный план комнаты с плашкой; `null` — убрать плашку крупного плана. Из зала питомец сразу дома. */
+  /**
+   * Крупный план комнаты с плашкой; `null` — убрать плашку крупного плана. Из зала питомец сразу дома. Плашка итогов дня
+   * (`day`) меняется, когда камера доехала: пока она едет, на экране ещё прошлая комната.
+   */
   const focusRoom = (m: RoomMoment | null, day = false) => {
     if (!m) {
       if (roomBanner) showBanner(null);
@@ -289,9 +302,18 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     }
     endWalk();
     const i = GROUPS.indexOf(m.group);
-    if (setShot('room', true, i)) pets[i].release();
+    if (setShot('room', true, i)) {
+      pets[i].release();
+      if (day && !reduced) {
+        clearTimeout(plate);
+        plate = setTimeout(() => {
+          plate = undefined;
+          if (turn?.room === m) showBanner(m.text, m.group);
+        }, DAY_PAN_MS);
+      }
+    }
     roomBanner = true;
-    showBanner(m.text, day ? m.group : undefined);
+    if (plate === undefined) showBanner(m.text, day ? m.group : undefined);
   };
 
   /** Очередь комнаты закончилась: видимое — настоящее (или «было» её следующей записи в очереди). */
@@ -307,14 +329,16 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
   };
 
   /**
-   * Праздник, выбор на панели или режим экономии перебили событие: комната, где анимация ещё не началась, снова ждёт
-   * первой в очереди; начатая доигрывает сама, а её время идёт.
+   * Праздник, выбор на панели или режим экономии перебили событие: показываемая комната снова ждёт первой в очереди, с
+   * того, что уже видно на экране. Начатая анимация бросается (`actDay`) и, когда очередь вернётся, играет оставшееся.
    */
   const pauseDay = () => {
     clearTimeout(dayTimer);
-    if (!turn || turn.acting) return;
+    clearTimeout(plate);
+    plate = undefined;
+    if (!turn) return;
     clearTimeout(actTimer);
-    dayQueue.unshift(turn.room);
+    dayQueue.unshift({ ...turn.room, from: held.get(turn.room.group) ?? turn.room.from });
     turn = null;
   };
 
@@ -327,13 +351,11 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
         moments.unshift({ group: moment.group, text: moment.text }); // рост — после итогов
         moment = null;
       }
-      const me = { room, i: GROUPS.indexOf(room.group), until: now + dayMs, acting: false };
+      const me = { room, i: GROUPS.indexOf(room.group), until: now + dayMs };
       turn = me;
       screen.dataset.day = '';
       actTimer = setTimeout(() => {
-        if (turn !== me) return;
-        me.acting = true;
-        void actDay(me);
+        if (turn === me) void actDay(me);
       }, reduced ? 0 : DAY_ACT_MS);
     }
     if (!turn) return false;
@@ -347,6 +369,7 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
    * Анимации комнаты по разнице «было → стало» (`daySteps`): кучка — питомец бежит к её месту, отворачивается, тужится,
    * «пум», отскакивает и оглядывается; убранная кучка — облачко; аптечки и игрушки — ящики сверху в ящики запасов, питомец
    * отходит, смотрит и радуется. Видимое меняется, только пока это её очередь; при reduced motion — сразу конечное.
+   * Очередь перебили (`pauseDay`) — после любого ожидания анимация бросается, питомец (если ещё её) идёт бродить.
    */
   async function actDay(me: NonNullable<typeof turn>): Promise<void> {
     const { room, i } = me;
@@ -363,21 +386,31 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     const token = p.hold();
     const walker = p.walker;
     const mine = () => p.owns(token);
+    const gone = () => {
+      if (turn === me) return false;
+      if (mine()) p.release();
+      return true;
+    };
     const hurry = (x: number) => p.moveTo({ x }, Math.min(HURRY_MS, Math.max(250, Math.abs(x - p.x) / 0.3)), token);
     let crates = 0;
     for (const step of daySteps(shown, room.to)) {
-      if (turn !== me) break;
+      if (gone()) return;
       if (step === 'pile') {
         if (walker && mine()) {
-          await hurry(r.nextPileX() + STRAIN_AT);
+          await hurry(r.nextPileX() + STRAIN_AT * Math.max(1, p.size / STRAIN_SIZE));
+          if (gone()) return;
           p.face(1); // спиной к месту кучки
           await wait(260);
+          if (gone()) return;
         }
         if (mine()) await p.strain();
+        if (gone()) return;
         show({ ...shown, piles: room.to.piles });
         if (walker && mine()) {
           await p.moveTo({ x: p.x + 34 }, 380, token, 26); // отдача: отскок вперёд, кучка видна
+          if (gone()) return;
           await wait(280);
+          if (gone()) return;
           if (mine()) p.face(-1); // оглянулся на кучку
           await wait(650);
         }
@@ -386,7 +419,10 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
         show({ ...shown, piles: shown.piles - 1 });
         await wait(800);
       } else {
-        if (!crates && walker && mine() && p.x > r.rect.x + CLEAR_X) await hurry(r.rect.x + CLEAR_X - 60);
+        if (!crates && walker && mine() && p.x > r.rect.x + CLEAR_X) {
+          await hurry(r.rect.x + CLEAR_X - 60);
+          if (gone()) return;
+        }
         if (walker && mine()) p.face(1); // смотрит на ящики запасов
         crates++;
         const kind = step === 'medkit' ? 'medkits' : 'toys';
@@ -396,6 +432,7 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
       }
     }
     if (crates) await wait(Math.max(0, CRATE_LAND_MS + 100 - DAY_CRATE_GAP_MS));
+    if (gone()) return;
     show(room.to);
     if (!mine()) return;
     p.release();
