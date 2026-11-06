@@ -285,7 +285,9 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
   const paint = (i: number, pop = false) => {
     if (!states) return;
     const g = GROUPS[i];
-    const shown = held.get(g);
+    const was = held.get(g);
+    // событие придерживает только то, что оно показывает (кучки, аптечки, игрушки); оплаты, стадия, настроение — живые
+    const shown = was && { ...states[g], piles: was.piles, medkits: was.medkits, toys: was.toys };
     rooms[i].update(states[g], totals?.[g], shown, pop);
     pets[i].update(shown ?? states[g]);
   };
