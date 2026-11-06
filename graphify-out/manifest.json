@@ -109,9 +109,9 @@
     "semantic_hash": ""
   },
   "src/art/manifest.ts": {
-    "mtime": 1793683815.8888,
-    "seen": 1793720402.1772556,
-    "ast_hash": "190733aacc263be8a647def64d87c878",
+    "mtime": 1793903118.8302124,
+    "seen": 1793905238.0810661,
+    "ast_hash": "4b0ab4a4df962f6512e65aad60ffbbba",
     "semantic_hash": ""
   },
   "src/demo/demoFacts.test.ts": {
@@ -217,9 +217,9 @@
     "semantic_hash": ""
   },
   "src/main.ts": {
-    "mtime": 1793722118.9776275,
-    "seen": 1793722515.0488966,
-    "ast_hash": "12d5b27dad57850025d2d0cd6e839020",
+    "mtime": 1793938726.872533,
+    "seen": 1793939665.204512,
+    "ast_hash": "269a66cb979de23effd35b93b775cc39",
     "semantic_hash": ""
   },
   "src/vite-env.d.ts": {
@@ -229,9 +229,9 @@
     "semantic_hash": ""
   },
   "tools/check-render.mjs": {
-    "mtime": 1793642668.0343933,
-    "seen": 1793720402.1773324,
-    "ast_hash": "4c6f8ee6fef3052df15bb429b1fad2aa",
+    "mtime": 1793938799.9125247,
+    "seen": 1793939665.2045345,
+    "ast_hash": "1dff66c9daefbd6dfa7a61a0ed12e2bc",
     "semantic_hash": ""
   },
   "tools/make-art.mjs": {
@@ -289,9 +289,9 @@
     "semantic_hash": ""
   },
   ".claude/skills/game-architecture/SKILL.md": {
-    "mtime": 1793817368.0383449,
-    "seen": 1793817656.9382336,
-    "ast_hash": "eee31233441de153a6d092d4e9465635",
+    "mtime": 1793936706.7644186,
+    "seen": 1793939665.2045586,
+    "ast_hash": "3cdb7fc8000e95ab0a8756b3f8efbac1",
     "semantic_hash": ""
   },
   ".claude/skills/game-assets/SKILL.md": {
@@ -427,15 +427,15 @@
     "semantic_hash": ""
   },
   "CREDITS.md": {
-    "mtime": 1793635487.4754324,
-    "seen": 1793641837.14005,
-    "ast_hash": "dbda2e1d1fe19cd85bc66f8e7d97920f",
+    "mtime": 1793901593.8290963,
+    "seen": 1793905238.0812218,
+    "ast_hash": "82f9c2e444940fe6e0eaa90af65fb498",
     "semantic_hash": ""
   },
   "PLAN.md": {
-    "mtime": 1793683815.9228525,
-    "seen": 1793720402.1773794,
-    "ast_hash": "acc0b159269ab44342bf747cca23a10b",
+    "mtime": 1793820221.7477787,
+    "seen": 1793900499.374141,
+    "ast_hash": "24639ed52091131fe3a77373c22b7ead",
     "semantic_hash": ""
   },
   "README.assets.md": {
@@ -685,9 +685,9 @@
     "semantic_hash": ""
   },
   "apps-script/test/backend.test.mjs": {
-    "mtime": 1793720818.2626722,
-    "seen": 1793722515.0487916,
-    "ast_hash": "0999026b8bbb9fb0918239d46d395bfa",
+    "mtime": 1793817787.4986074,
+    "seen": 1793900499.3739266,
+    "ast_hash": "7f6633d2c0204e6d7a50e6371246bc25",
     "semantic_hash": ""
   },
   "apps-script/test/gas-harness.mjs": {
@@ -1093,27 +1093,27 @@
     "semantic_hash": ""
   },
   "src/game/tv/PetActor.ts": {
-    "mtime": 1793564122.6185663,
-    "seen": 1793592872.5021653,
-    "ast_hash": "70b53e62055ce55f79d8d751f4658c68",
+    "mtime": 1793939112.1690712,
+    "seen": 1793939665.2044744,
+    "ast_hash": "b62c34cc99ecc6f1e4544d851c57b52d",
     "semantic_hash": ""
   },
   "src/game/tv/RoomView.ts": {
-    "mtime": 1793607515.7452567,
-    "seen": 1793634277.650645,
-    "ast_hash": "963e4718f56469d45c815c7b16942593",
+    "mtime": 1793936374.5520158,
+    "seen": 1793936648.563128,
+    "ast_hash": "904477c9e468da7320d2b64090cf26d8",
     "semantic_hash": ""
   },
   "src/game/tv/TvScreen.ts": {
-    "mtime": 1793642816.462007,
-    "seen": 1793720402.177291,
-    "ast_hash": "c95acf4757b5e0c74b7153634b924837",
+    "mtime": 1793940126.4329412,
+    "seen": 1793940676.0583973,
+    "ast_hash": "6504551a22ceadf6f0c39e627214c771",
     "semantic_hash": ""
   },
   "src/game/tv/art.ts": {
-    "mtime": 1793635450.9300928,
-    "seen": 1793641837.1399658,
-    "ast_hash": "b0f7be3119ff4c294efa3c1fe08d5589",
+    "mtime": 1793906787.8511078,
+    "seen": 1793936268.116287,
+    "ast_hash": "40b2a4a33cfef8fda161ed616a38fcae",
     "semantic_hash": ""
   },
   "src/game/tv/layout.ts": {
@@ -1219,9 +1219,9 @@
     "semantic_hash": ""
   },
   "src/game/tv/Hall.ts": {
-    "mtime": 1793558120.772388,
-    "seen": 1793561101.632071,
-    "ast_hash": "3efc43a4d8025a2dcfb775a5a83fa167",
+    "mtime": 1793901306.2077432,
+    "seen": 1793901547.4382277,
+    "ast_hash": "cb205d9f8bd53a01dee983ace439b3df",
     "semantic_hash": ""
   },
   "src/admin/pinForm.test.ts": {
@@ -1555,9 +1555,9 @@
     "semantic_hash": ""
   },
   "src/admin/holidaysBlock.ts": {
-    "mtime": 1793816762.718508,
-    "seen": 1793817656.938089,
-    "ast_hash": "7606953feccbd21d2444fae4eb81045b",
+    "mtime": 1793818008.628858,
+    "seen": 1793900499.3739574,
+    "ast_hash": "55f85f698a1029149b468da0f8a78d9b",
     "semantic_hash": ""
   },
   "src/admin/importPreview.ts": {
@@ -1624,6 +1624,126 @@
     "mtime": 1793739662.81528,
     "seen": 1793817656.938117,
     "ast_hash": "5556361a5e43797d1ddab8f4c073d62c",
+    "semantic_hash": ""
+  },
+  "src/game/tv/ball.test.ts": {
+    "mtime": 1793898767.3810163,
+    "seen": 1793900499.3740442,
+    "ast_hash": "19fa0acf7ecf53e0d53d4e6d010e7ee7",
+    "semantic_hash": ""
+  },
+  "src/game/tv/ball.ts": {
+    "mtime": 1793898776.1580138,
+    "seen": 1793900499.3740454,
+    "ast_hash": "bb560626e0fe31030f2298944453db3f",
+    "semantic_hash": ""
+  },
+  "tools/agent-bridge/bridge.py": {
+    "mtime": 1793812686.5400155,
+    "seen": 1793900499.3740764,
+    "ast_hash": "424e4aeb7f94330f6f2f8e0314a93bf3",
+    "semantic_hash": ""
+  },
+  "tools/agent-bridge/request.example.json": {
+    "mtime": 1793812398.9644845,
+    "seen": 1793900499.3740778,
+    "ast_hash": "8cf56f59ccc5fa272ac08af42d2b8644",
+    "semantic_hash": ""
+  },
+  ".agents/skills/asset-exchange/SKILL.md": {
+    "mtime": 1793812398.8367078,
+    "seen": 1793900499.3741026,
+    "ast_hash": "79c8b053b5b3b928130fbc7e915e9c7f",
+    "semantic_hash": ""
+  },
+  ".claude/skills/codex-assets/SKILL.md": {
+    "mtime": 1793812398.4581933,
+    "seen": 1793900499.3741102,
+    "ast_hash": "657cbe8d9029505a99cd16d1ace3a56e",
+    "semantic_hash": ""
+  },
+  "docs/agent-exchange.md": {
+    "mtime": 1793812646.4325018,
+    "seen": 1793900499.3741467,
+    "ast_hash": "f6ea0ed138fd572d4dd2f6d19a38a40f",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-11-05-tv-pet-life.md": {
+    "mtime": 1793898516.8502476,
+    "seen": 1793900499.3741577,
+    "ast_hash": "3764afc78bfb92ca93859f78ce6d8bfb",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-11-05-tv-pet-life-design.md": {
+    "mtime": 1793898239.3964646,
+    "seen": 1793900499.3741632,
+    "ast_hash": "43d0b2eb8e82f3dc95f3731e95ab93d1",
+    "semantic_hash": ""
+  },
+  "public/assets/toys/bear.png": {
+    "mtime": 1793899592.085807,
+    "seen": 1793900499.3742514,
+    "ast_hash": "36823628c65d56953bcb1332102dae91",
+    "semantic_hash": ""
+  },
+  "public/assets/toys/cube.png": {
+    "mtime": 1793899592.3144124,
+    "seen": 1793900499.3742523,
+    "ast_hash": "fe8a7bd88af750deebbc8e3fa717eb4c",
+    "semantic_hash": ""
+  },
+  "public/assets/toys/duck.png": {
+    "mtime": 1793899592.1626382,
+    "seen": 1793900499.3742533,
+    "ast_hash": "d4f5dc431f5604cf700126ff344f72b1",
+    "semantic_hash": ""
+  },
+  "public/assets/toys/hedgehog.png": {
+    "mtime": 1793899592.384187,
+    "seen": 1793900499.3742547,
+    "ast_hash": "37da57bb9eb5859786e989614c330668",
+    "semantic_hash": ""
+  },
+  "public/assets/toys/top.png": {
+    "mtime": 1793899592.2294106,
+    "seen": 1793900499.3742557,
+    "ast_hash": "98f1ecb4aac51ae87e532e2d3ea90d70",
+    "semantic_hash": ""
+  },
+  "src/game/tv/bite.test.ts": {
+    "mtime": 1793901276.0045545,
+    "seen": 1793901547.438237,
+    "ast_hash": "c8b80015adc26336162a003a2f7764de",
+    "semantic_hash": ""
+  },
+  "src/game/tv/bite.ts": {
+    "mtime": 1793901276.0344586,
+    "seen": 1793901547.4382381,
+    "ast_hash": "ce1581157213485d51ee14df6f908247",
+    "semantic_hash": ""
+  },
+  "src/game/tv/toys.test.ts": {
+    "mtime": 1793902941.9980392,
+    "seen": 1793905238.081131,
+    "ast_hash": "5384ba13417da53c74e9b286097ab591",
+    "semantic_hash": ""
+  },
+  "src/game/tv/toys.ts": {
+    "mtime": 1793902931.3573632,
+    "seen": 1793905238.0811322,
+    "ast_hash": "1e4356cbf138c03bf7f6cd0184da7e6f",
+    "semantic_hash": ""
+  },
+  "src/game/tv/dayEvent.test.ts": {
+    "mtime": 1793938693.0219183,
+    "seen": 1793939665.2044847,
+    "ast_hash": "f10aef2447420c1608790701c66c75bf",
+    "semantic_hash": ""
+  },
+  "src/game/tv/dayEvent.ts": {
+    "mtime": 1793938704.8181148,
+    "seen": 1793939665.204486,
+    "ast_hash": "fcfb711dd65c47d8acfc5b0d674df0ba",
     "semantic_hash": ""
   }
 }
