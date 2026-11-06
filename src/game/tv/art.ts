@@ -45,3 +45,13 @@ export const PLANTS = {
   left: '<g fill="#7f9a6c"><ellipse cx="120" cy="150" rx="40" ry="120" transform="rotate(-25 120 150)"/><ellipse cx="170" cy="140" rx="34" ry="110" transform="rotate(18 170 140)"/><ellipse cx="80" cy="200" rx="30" ry="90" transform="rotate(-50 80 200)"/></g><g fill="#6b875a"><ellipse cx="200" cy="200" rx="28" ry="90" transform="rotate(45 200 200)"/></g><path d="M70 270h160l-22 90H92z" fill="#c48a5c"/><rect x="62" y="258" width="176" height="24" rx="8" fill="#d39b6b"/>',
   right: '<g fill="#8aa676"><ellipse cx="130" cy="160" rx="38" ry="115" transform="rotate(-20 130 160)"/><ellipse cx="180" cy="170" rx="30" ry="100" transform="rotate(25 180 170)"/></g><path d="M80 270h150l-20 90H100z" fill="#b98b66"/><rect x="72" y="258" width="166" height="24" rx="8" fill="#c99a72"/>',
 };
+
+/** Красный плюс аптечки (viewBox 40×40): над вылеченным питомцем и искрами у ящика аптечек. */
+export const PLUS = '<path d="M15 3h10v12h12v10H25v12H15V25H3V15h12z" fill="#e53935" stroke="#fff" stroke-width="3" paint-order="stroke"/>';
+/** Подарок (viewBox 40×40): падает в ящик игрушек в событии «итоги дня». */
+export const GIFT = '<path d="M20 12c-2-7-11-9-11-3.5s7 4.5 11 3.5zM20 12c2-7 11-9 11-3.5s-7 4.5-11 3.5z" fill="#f6cf57" stroke="#c99a2e" stroke-width="1.6"/>'
+  + '<rect x="6" y="17" width="28" height="20" rx="3" fill="#e0655a" stroke="#b9473e" stroke-width="1.6"/>'
+  + '<rect x="4" y="11" width="32" height="8" rx="2.5" fill="#ef8073" stroke="#b9473e" stroke-width="1.6"/>'
+  + '<rect x="17.5" y="11" width="5" height="26" fill="#f6cf57"/><circle cx="20" cy="12" r="2.8" fill="#e9b93c"/>';
+/** Искра (viewBox 20×20): у подарка в падении и россыпью, когда он упал в ящик. */
+export const SPARK = '<path d="M10 0q1.5 8.5 10 10q-8.5 1.5-10 10q-1.5-8.5-10-10q8.5-1.5 10-10z" fill="#ffd54a"/>';

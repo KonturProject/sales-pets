@@ -2,7 +2,7 @@ import { ART } from '@/art/manifest';
 import type { Mood, PetState } from '@/engine/pet';
 import type { GroupCode } from '@/engine/types';
 import { petScale, stageSprite } from '@/game/PetView';
-import { EMOTE, type Emote } from './art';
+import { EMOTE, PLUS, type Emote } from './art';
 import { kickBall } from './ball';
 import { HUG_MS, SPIN_MS, type RoomView } from './RoomView';
 import type { ToyPlay } from './toys';
@@ -20,8 +20,7 @@ const SICK = 0.55;
 const EDGE = 70;
 const MOOD_EMOTE: Record<Mood, Emote | null> = { ok: 'ok', sad: 'sad', bored: 'bored', sick: 'sick', dead: null };
 
-/** Красный плюс аптечки (viewBox 40x40) и сколько он живёт, мс. */
-const PLUS = '<path d="M15 3h10v12h12v10H25v12H15V25H3V15h12z" fill="#e53935" stroke="#fff" stroke-width="3" paint-order="stroke"/>';
+/** Сколько живёт красный плюс аптечки, мс. */
 const HEAL_MS = 2000;
 const HEAL_STILL_MS = 1000;
 
@@ -44,6 +43,10 @@ const HUG: Keyframe[] = [
 /** Сердечки над мишкой (сбоку от питомца, не на морде): сдвиг наружу к концу полёта, px. */
 const HEARTS = [10, 24, 40];
 const HEARTS_AT = 76;
+/** Потуга перед кучкой: до «пум», мс; распрямление с отдачей после; сколько толчков дрожи. */
+const STRAIN_MS = 1200;
+const RELEASE_MS = 480;
+const SHAKES = 22;
 
 const ease = (k: number) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
 
@@ -239,6 +242,33 @@ export class PetActor {
     this.eager = true;
     this.jump(46);
     setTimeout(() => this.emote('joy', 1300), JUMP_MS);
+  }
+
+  /**
+   * Тужится (событие «итоги дня», перед кучкой): присел и сплющился, дрожит всё сильнее, толчками дожимает, с макушки
+   * летят капли пота. Промис — к «пум» (`STRAIN_MS`); дальше питомец сам распрямляется с отдачей (вытянулся, пружинит).
+   * При reduced motion — сразу.
+   */
+  strain(): Promise<void> {
+    if (this.reduced || !this.bob.animate) return Promise.resolve();
+    const k = (scale: string, offset: number) => ({ scale, offset, easing: 'ease-in-out' });
+    this.act([k('1 1', 0), k('1.2 .76', 0.1), k('1.12 .85', 0.2), k('1.18 .78', 0.34), k('1.12 .85', 0.46), k('1.2 .77', 0.6),
+      k('1.13 .84', 0.72), k('1.24 .73', 0.88), k('1.26 .71', 1)], STRAIN_MS);
+    const shake: Keyframe[] = [{ translate: '0 0', offset: 0 }, { translate: '0 0', offset: 0.14 }];
+    for (let j = 1; j <= SHAKES; j++) {
+      const amp = (1.2 + (2.8 * j) / SHAKES) * (j % 2 ? 1 : -1);
+      shake.push({ translate: `${amp.toFixed(1)}px 0`, offset: 0.14 + (0.84 * j) / SHAKES });
+    }
+    shake.push({ translate: '0 0', offset: 1 });
+    this.act(shake, STRAIN_MS);
+    const r = (scale: string, offset: number) => ({ scale, offset, easing: 'ease-out' });
+    this.act([r('1.26 .71', 0), r('.82 1.22', 0.2), r('1.1 .92', 0.45), r('.96 1.04', 0.7), r('1 1', 1)], RELEASE_MS, { delay: STRAIN_MS });
+    this.act([{ scale: '1' }, { scale: '1.18 1', offset: 0.1 }, { scale: '1.22 1', offset: 0.9 }, { scale: '1' }], STRAIN_MS, {}, this.shadow.firstElementChild as HTMLElement);
+    const sweat = div('sweat');
+    sweat.innerHTML = [-1, 1, -1, 1].map((side, j) => `<i style="--dx:${side * (34 + j * 6)}px;animation-delay:${180 + j * 240}ms"></i>`).join('');
+    this.el.append(sweat);
+    setTimeout(() => sweat.remove(), STRAIN_MS + 200);
+    return new Promise((resolve) => setTimeout(resolve, STRAIN_MS));
   }
 
   /** Шаг до точки с обычной скоростью (в комнате или в зале). */

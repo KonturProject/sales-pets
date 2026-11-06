@@ -2,7 +2,7 @@ import { ART, GROUP_KEY, THEME } from '@/art/manifest';
 import type { PetState } from '@/engine/pet';
 import type { GroupCode } from '@/engine/types';
 import { MOOD_LABEL } from '@/game/PetView';
-import { DECOR } from './art';
+import { DECOR, GIFT, PLUS, SPARK } from './art';
 import { HOUSE, type RoomRect } from './layout';
 import { tickerItems, type FunnelTotal, type TickerItem } from './metrics';
 import { TOYS, type ToyKind, type ToyPlay } from './toys';
@@ -43,6 +43,21 @@ const squash = (h: number) => {
   const q = Math.min(0.3, 0.045 * Math.sqrt(h));
   return `${1 + q} ${1 - q}`;
 };
+/** Ряд кучек (как `.tv-piles` в `tv.css`): отступ слева, ширина кучки и промежуток, px комнаты. */
+const PILES_LEFT = 14;
+const PILE_W = 36;
+const PILE_GAP = 4;
+/** Новые кучки «пум» выскакивают по очереди через столько, мс. */
+const PILE_STAGGER_MS = 170;
+/** Середина надписи «пум!» в ряду кучек не левее этого, px: иначе левая стена комнаты её обрезает. */
+const PUM_MIN_X = 46;
+/** Кучка исчезает облачком: сама сжимается, облачко живёт `POOF_MS`; мухи без кучек улетают. */
+const POOF_MS = 760;
+/** Ящик-аптечка или подарок падает в ящик запасов: сторона картинки px, падение до удара и вся анимация, мс. */
+const DROP = 54;
+export const CRATE_LAND_MS = 640;
+const CRATE_MS = 980;
+const SPARKS = 7;
 /** Крутятся только катящиеся: кубик ложится на грань (кратно 90°), ёжик катится как мяч; остальные стоят ровно. */
 const toyTurn = (kind: ToyKind, rot: number) => (kind === 'cube' ? Math.round(rot / 90) * 90 : kind === 'hedgehog' ? rot : 0);
 
@@ -65,7 +80,8 @@ const img = (cls: string, src: string): HTMLImageElement => {
 /**
  * Комната группы в домике: стена с декором, табличка (код, вид, настроение, `.sub`, сытость), табло цифр,
  * кучки с мухами, ящики аптечек и игрушек, мяч, рука РГ. Сам питомец живёт в слое мира (`PetActor`).
- * `el` — `[data-group]` с `data-phase/mood/stage/piles`: на них опираются проверки экрана.
+ * `el` — `[data-group]` с `data-phase/mood/stage/piles/medkits/toys` — всегда настоящее состояние: на них опираются
+ * проверки экрана. Видимое (табличка, кучки, счётчики) в событии «итоги дня» может придерживаться прежним (`update`).
  */
 export class RoomView {
   readonly el: HTMLElement;
@@ -92,8 +108,11 @@ export class RoomView {
   private readonly sat: HTMLElement;
   private readonly slot: HTMLElement;
   private readonly piles: HTMLElement;
-  private readonly medkits: HTMLElement;
-  private readonly toys: HTMLElement;
+  private readonly inv: HTMLElement;
+  private readonly crates: Record<'medkits' | 'toys', { box: HTMLElement; count: HTMLElement }>;
+  /** видимые запасы (вместе с ящиками, которые ещё падают) и сколько ящиков каждого вида ещё в воздухе */
+  private readonly stock = { medkits: 0, toys: 0 };
+  private readonly falling = { medkits: 0, toys: 0 };
   private items: TickerItem[] = [];
   private tickN = 0;
   private shownItem = '';
@@ -140,17 +159,18 @@ export class RoomView {
     const crate = (kind: 'medkits' | 'toys', icon: string, tip: string) => {
       const count = el('b', '', '0');
       count.dataset.count = kind;
-      const wrap = el('div', 'crate');
-      wrap.title = tip;
-      wrap.append(img('', icon), count);
-      return { wrap, count };
+      const box = el('div', 'crate');
+      box.title = tip;
+      box.append(img('', icon), count);
+      return { box, count };
     };
-    const medkits = crate('medkits', ART.medkit, 'Аптечки: лечат болезнь');
-    const toys = crate('toys', ART.toy, 'Игрушки: лечат скуку и грусть');
-    this.medkits = medkits.count;
-    this.toys = toys.count;
+    this.crates = {
+      medkits: crate('medkits', ART.medkit, 'Аптечки: лечат болезнь'),
+      toys: crate('toys', ART.toy, 'Игрушки: лечат скуку и грусть'),
+    };
     const inv = el('div', 'inv');
-    inv.append(medkits.wrap, toys.wrap);
+    this.inv = inv;
+    inv.append(this.crates.medkits.box, this.crates.toys.box);
 
     this.ballEl = el('div', 'ball');
     this.ball.x = 150 + (index % 3) * 110;
@@ -234,23 +254,33 @@ export class RoomView {
     )];
   }
 
-  update(s: PetState, funnel?: FunnelTotal): void {
+  /**
+   * `data-*` — по настоящему `s`, видимое (табличка, кучки, счётчики) — по `shown`: в событии «итоги дня» комната до конца
+   * своей очереди показывает прежнее. `pop` — новые кучки выскакивают «пум» (только в очереди комнаты, после потуги);
+   * без него число кучек меняется молча (в том числе когда событие придерживает «было» при запуске).
+   */
+  update(s: PetState, funnel?: FunnelTotal, shown?: PetState, pop = false): void {
     const d = this.el.dataset;
     d.phase = s.phase;
     d.mood = s.mood;
     d.stage = String(s.stage);
     d.piles = String(s.piles);
+    d.medkits = String(s.medkits);
+    d.toys = String(s.toys);
     d.alive = String(s.alive);
 
-    this.species.textContent = s.phase === 'pet' ? THEME[this.group].species : '???';
-    this.mood.textContent = MOOD_LABEL[s.mood];
-    this.sub.textContent = !s.alive ? 'питомец погиб'
-      : s.phase === 'pet' ? `стадия ${s.stage} · оплат ${s.totalPayments}`
-      : `яйцо · оплат ${s.totalPayments}`;
-    this.sat.style.width = `${s.alive ? Math.round(s.satiety * 100) : 0}%`;
-    this.medkits.textContent = String(s.medkits);
-    this.toys.textContent = String(s.toys);
-    this.renderPiles(s.piles);
+    const v = shown ?? s;
+    this.species.textContent = v.phase === 'pet' ? THEME[this.group].species : '???';
+    this.mood.textContent = MOOD_LABEL[v.mood];
+    this.sub.textContent = !v.alive ? 'питомец погиб'
+      : v.phase === 'pet' ? `стадия ${v.stage} · оплат ${v.totalPayments}`
+      : `яйцо · оплат ${v.totalPayments}`;
+    this.sat.style.width = `${v.alive ? Math.round(v.satiety * 100) : 0}%`;
+    this.stock.medkits = v.medkits;
+    this.stock.toys = v.toys;
+    this.showCount('medkits');
+    this.showCount('toys');
+    this.renderPiles(v.piles, pop);
 
     this.items = tickerItems(s, funnel);
     this.showTicker(false);
@@ -440,11 +470,135 @@ export class RoomView {
     this.slot.replaceChildren(slide);
   }
 
-  /** Кучки перестраиваются только при изменении числа; мухи существуют лишь пока есть кучки. */
-  private renderPiles(n: number): void {
+  /** Середина места, где выскочит следующая кучка, в координатах мира: туда питомец встаёт тужиться. */
+  nextPileX(): number {
+    return this.rect.x + PILES_LEFT + Math.max(0, this.pilesShown) * (PILE_W + PILE_GAP) + PILE_W / 2;
+  }
+
+  /**
+   * Последняя кучка исчезает облачком: приседает, подпрыгивает и тает, на её месте клубы и искры; без кучек мухи улетают.
+   * Видимых кучек сразу на одну меньше (у тающей картинки нет класса `pile`); при reduced motion — просто исчезает.
+   */
+  poofPile(): void {
+    const all = this.piles.querySelectorAll<HTMLElement>('.pile');
+    const pile = all[all.length - 1];
+    if (!pile) return;
+    this.pilesShown = all.length - 1;
+    pile.className = 'gone';
+    const flies = this.pilesShown === 0 ? this.piles.querySelector<HTMLElement>('.flies') : null;
+    if (this.reduced || !pile.animate) {
+      pile.remove();
+      flies?.remove();
+      return;
+    }
+    const k = (scale: string, translate: string, offset: number, opacity = 1) => ({ scale, translate, offset, opacity });
+    pile.animate(
+      [k('1 1', '0 0', 0), k('1.28 .7', '0 0', 0.3), k('.72 1.3', '0 -14px', 0.55), k('0 0', '0 -10px', 1, 0)],
+      { duration: 380, easing: 'ease-in-out', fill: 'forwards' },
+    );
+    const x = pile.offsetLeft + PILE_W / 2;
+    const puffs = [[-34, -6, 26], [-20, -30, 30], [6, -40, 34], [30, -24, 28], [36, 2, 22], [-8, -14, 30], [14, 6, 20]];
+    this.burst('poof', x, puffs.map(([dx, dy, s], j) => `<i style="--dx:${dx}px;--dy:${dy}px;--s:${s}px;animation-delay:${140 + j * 22}ms"></i>`).join('')
+      + [[-30, -54], [34, -46], [2, -66]].map(([dx, dy], j) => `<svg style="--dx:${dx}px;--dy:${dy}px;animation-delay:${300 + j * 90}ms" viewBox="0 0 20 20" aria-hidden="true">${SPARK}</svg>`).join(''), POOF_MS);
+    setTimeout(() => pile.remove(), POOF_MS);
+    if (flies) {
+      flies.animate([{ translate: '0 0', opacity: 1 }, { translate: '20px 14px', offset: 0.25 }, { translate: '90px -140px', opacity: 0 }], { duration: 900, delay: 250, easing: 'ease-in', fill: 'forwards' });
+      setTimeout(() => flies.remove(), 1200);
+    }
+  }
+
+  /**
+   * Ящик-аптечка (`medkits`) или подарок с искрами (`toys`) падает сверху в свой ящик запасов: тянется в падении, при ударе
+   * сплющивается, отскакивает и ныряет внутрь; ящик пружинит, счётчик прибавляет 1 и подпрыгивает (`CRATE_LAND_MS` после
+   * вызова). Видимый запас (`update`) уже включает падающий ящик: счётчик показывает его только после удара.
+   */
+  dropCrate(kind: 'medkits' | 'toys'): void {
+    if (this.reduced || !this.el.animate) return;
+    const { box, count } = this.crates[kind];
+    this.falling[kind]++;
+    this.showCount(kind);
+    const cx = this.inv.offsetLeft + box.offsetLeft + box.offsetWidth / 2;
+    const top = this.inv.offsetTop + box.offsetTop;
+    const drop = el('div', `drop ${kind}`);
+    drop.style.left = `${cx - DROP / 2}px`;
+    drop.style.top = `${top - DROP + 18}px`;
+    drop.innerHTML = kind === 'medkits'
+      ? `<img src="${ART.medkit}" alt="">`
+      : `<svg viewBox="0 0 40 40" aria-hidden="true">${GIFT}</svg>${[0, 1].map((j) => `<svg class="twinkle" style="animation-delay:${j * 160}ms" viewBox="0 0 20 20" aria-hidden="true">${SPARK}</svg>`).join('')}`;
+    this.el.append(drop);
+    const hit = CRATE_LAND_MS / CRATE_MS;
+    const at = (ms: number) => hit + ms / CRATE_MS;
+    drop.animate([
+      { translate: `0 ${-(top + DROP + 10)}px`, rotate: kind === 'toys' ? '-18deg' : '12deg', scale: '.84 1.16', easing: 'cubic-bezier(.5, 0, .9, .5)' },
+      { translate: '0 0', rotate: '0deg', scale: '.9 1.12', offset: hit },
+      { translate: '0 6px', scale: '1.36 .66', offset: at(70), easing: 'ease-out' },
+      { translate: '0 -16px', scale: '.9 1.1', offset: at(170), easing: 'ease-in' },
+      { translate: '0 2px', scale: '1.1 .9', offset: at(230), opacity: 1 },
+      { translate: '0 26px', scale: '.3', opacity: 0, offset: 1 },
+    ], { duration: CRATE_MS, fill: 'forwards' });
+    setTimeout(() => drop.remove(), CRATE_MS + 50);
+    setTimeout(() => {
+      this.falling[kind] = Math.max(0, this.falling[kind] - 1);
+      this.showCount(kind);
+      box.animate([{ scale: '1 1' }, { scale: '1.2 .8', offset: 0.22 }, { scale: '.93 1.1', offset: 0.5 }, { scale: '1.04 .97', offset: 0.75 }, { scale: '1 1' }], { duration: 480, easing: 'ease-out' });
+      count.animate([
+        { scale: '1', translate: '0 0' },
+        { scale: '1.9', translate: '0 -10px', color: 'var(--accent)', offset: 0.3 },
+        { scale: '.88', translate: '0 0', offset: 0.6 },
+        { scale: '1.1', offset: 0.8 },
+        { scale: '1' },
+      ], { duration: 620, easing: 'ease-out' });
+      const art = kind === 'toys' ? [SPARK, 20] : [PLUS, 40];
+      this.burst('spark', cx, Array.from({ length: SPARKS }, (_, j) => {
+        const a = Math.PI * (1.08 + (0.84 * j) / (SPARKS - 1));
+        return `<svg style="--dx:${Math.round(Math.cos(a) * 62)}px;--dy:${Math.round(Math.sin(a) * 58)}px" viewBox="0 0 ${art[1]} ${art[1]}" aria-hidden="true">${art[0]}</svg>`;
+      }).join(''), 700, top);
+    }, CRATE_LAND_MS);
+  }
+
+  private showCount(kind: 'medkits' | 'toys'): void {
+    this.crates[kind].count.textContent = String(Math.max(0, this.stock[kind] - this.falling[kind]));
+  }
+
+  /** Короткая вспышка (облачко, искры, «пум!») в комнате на `ms`: в ряду кучек над `x` или в точке (`x`, `top`) комнаты. */
+  private burst(cls: string, x: number, html: string, ms: number, top?: number): void {
+    const node = el('div', `burst ${cls}`);
+    node.style.left = `${x}px`;
+    if (top !== undefined) node.style.top = `${top}px`;
+    node.innerHTML = html;
+    (top === undefined ? this.piles : this.el).append(node);
+    setTimeout(() => node.remove(), ms);
+  }
+
+  /**
+   * Кучки перестраиваются только при изменении числа; мухи существуют лишь пока есть кучки. `pop` — новые кучки
+   * выскакивают «пум» по одной (с надписью и пылью), к первой кучке прилетают мухи; иначе (и убыль) — молча.
+   */
+  private renderPiles(n: number, pop = false): void {
     if (n === this.pilesShown) return;
+    const was = this.pilesShown;
     this.pilesShown = n;
-    this.piles.replaceChildren(...Array.from({ length: n }, () => img('pile', ART.pile)));
-    if (n > 0) this.piles.append(img('flies', ART.flies));
+    if (!pop || was < 0 || n < was || this.reduced) {
+      this.piles.replaceChildren(...Array.from({ length: n }, () => img('pile', ART.pile)));
+      if (n > 0) this.piles.append(img('flies', ART.flies));
+      return;
+    }
+    const flies = this.piles.querySelector('.flies');
+    for (let k = was; k < n; k++) {
+      const pile = img('pile pop', ART.pile);
+      pile.style.animationDelay = `${(k - was) * PILE_STAGGER_MS}ms`;
+      if (flies) flies.before(pile);
+      else this.piles.append(pile);
+      if (k === was) {
+        // надпись над кучкой, но у левой стены сдвинута вправо: комната обрезает всё, что за её краем
+        const x = k * (PILE_W + PILE_GAP) + PILE_W / 2;
+        this.burst('pum', x, `<b style="--shift:${Math.max(0, PUM_MIN_X - x)}px">пум!</b><i></i><i></i>`, 1200);
+      }
+    }
+    if (!flies) {
+      const arrive = img('flies arrive', ART.flies);
+      this.piles.append(arrive);
+      arrive.addEventListener('animationend', (e) => { if (e.animationName === 'tv-flies-in') arrive.classList.remove('arrive'); });
+    }
   }
 }

@@ -1,5 +1,6 @@
 // Проверка экрана с питомцами: поднимает vite и мок-бэкенд, открывает системный Chrome/Edge и сверяет DOM.
 // Демо (?demo=1) и живой экран на мок-бэкенде (?backend=): 6 групп, фаза/настроение, кучки, счётчики,
+// итоги дня при загрузке воронки (плашка, прежние числа до очереди, верные в конце, без повтора),
 // панель рейтингов (места, ФИО, отпускник вне рейтинга), «Нет связи с сервером» при недоступном бэкенде,
 // консоль и картинки. Запуск: npm run check:render
 import { existsSync } from 'node:fs';
@@ -58,8 +59,11 @@ const base = `http://localhost:${port}/`;
 const mock = await startMockBackend({ port: 0 });
 let mockClosed = false;
 const browser = await chromium.launch({ executablePath: browserPath });
+/** Итоги 11.11 этим ТВ уже показаны: проверки, читающие видимые числа и панель сразу после загрузки, идут без события. */
+const dayShown = () => { try { localStorage.setItem('tv-day-shown', '2026-11-11'); } catch { /* без хранилища события при запуске нет */ } };
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  await page.addInitScript(dayShown);
   const problems = [];
   page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
@@ -264,6 +268,7 @@ try {
   // снова день по умолчанию
   {
     const hp = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+    await hp.addInitScript(dayShown);
     await hp.clock.install();
     await hp.goto(live, { waitUntil: 'networkidle' });
     await hp.clock.runFor(1_000);
@@ -283,6 +288,53 @@ try {
     const atEnd = await home();
     check(atEnd.length >= 2 && atEnd.every(Boolean), `поздняя прогулка: к концу кадра не все дома ${JSON.stringify(atEnd)}`);
     await hp.close();
+  }
+
+  // --- итоги дня: воронка по 11.11, сегодня 12.11 — при запуске камера по очереди показывает комнаты с плашкой «итоги 11.11».
+  // До своей очереди комната показывает прежние числа (data-* — настоящие), к концу события (≤ 50 с) видимое равно data-*.
+  // Перезагрузка того же ТВ событие не повторяет; при reduced motion плашки те же, числа в конце те же. Идёт до правок мока ниже.
+  {
+    const rooms = (p) => p.$$eval('[data-group]', (els) => els.map((e) => ({
+      group: e.dataset.group,
+      piles: Number(e.dataset.piles), pileImgs: e.querySelectorAll('.pile').length,
+      medkits: Number(e.dataset.medkits), medkitsShown: Number(e.querySelector('[data-count="medkits"]')?.textContent),
+      toys: Number(e.dataset.toys), toysShown: Number(e.querySelector('[data-count="toys"]')?.textContent),
+    })));
+    const plateOf = (p) => p.$eval('.banner', (e) => (e.classList.contains('on') ? e.textContent : ''));
+    const settled = (list) => list.length === 6 && list.every((r) => r.pileImgs === r.piles && r.medkitsShown === r.medkits && r.toysShown === r.toys);
+    const plateIn = (p, ms) => p.waitForFunction(() => document.querySelector('.banner.on')?.textContent?.includes('итоги 11.11'), null, { timeout: Math.max(1, ms) })
+      .then(() => true, () => false);
+    const endIn = (p, ms) => p.waitForFunction(() => document.querySelector('.tv') && !('day' in document.querySelector('.tv').dataset), null, { timeout: Math.max(1, ms) })
+      .then(() => true, () => false);
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const still = await browser.newContext({ viewport: { width: 1280, height: 720 }, reducedMotion: 'reduce' });
+    const dp = await ctx.newPage();
+    const rp = await still.newPage();
+    const dayErrors = [];
+    for (const p of [dp, rp]) p.on('pageerror', (e) => dayErrors.push(e.message));
+    const t0 = Date.now();
+    await Promise.all([dp.goto(live, { waitUntil: 'networkidle' }), rp.goto(live, { waitUntil: 'networkidle' })]);
+    check(await plateIn(dp, 8_000 - (Date.now() - t0)), `итоги дня: за 8 с после загрузки нет плашки «итоги 11.11» (плашка «${await plateOf(dp)}»)`);
+    check(await plateIn(rp, 8_000 - (Date.now() - t0)), `итоги дня, reduced motion: за 8 с нет плашки «итоги 11.11» (плашка «${await plateOf(rp)}»)`);
+    // последняя комната (СР9) ждёт очереди: игрушка за 11.11 в ящик ещё не упала, хотя data-toys уже новый
+    const waiting = (await rooms(dp)).find((r) => r.group === 'СР9');
+    check(waiting?.toysShown === waiting?.toys - 1, `итоги дня: СР9 до своей очереди ${JSON.stringify(waiting)}, ожидалось игрушек на 1 меньше data-toys`);
+    for (const [p, label] of [[dp, 'итоги дня'], [rp, 'итоги дня, reduced motion']]) {
+      check(await endIn(p, 50_000 - (Date.now() - t0)), `${label}: событие не закончилось за 50 с после загрузки`);
+      const end = await rooms(p);
+      check(settled(end), `${label}: в конце видимое не равно состоянию ${JSON.stringify(end.filter((r) => !settled([r, r, r, r, r, r])))}`);
+    }
+    await dp.reload({ waitUntil: 'networkidle' });
+    let replay = '';
+    for (let k = 0; k < 20 && !replay; k++) {
+      const text = await plateOf(dp);
+      if (text.includes('итоги')) replay = text;
+      else await dp.waitForTimeout(500);
+    }
+    check(replay === '', `итоги дня: после перезагрузки событие повторилось («${replay}»)`);
+    check(dayErrors.length === 0, `итоги дня: ошибки страницы ${dayErrors.join('; ')}`);
+    await ctx.close();
+    await still.close();
   }
 
   // --- рука РГ (R20, R24): расход предмета подхватывает опрос; первый снимок после загрузки молчит.

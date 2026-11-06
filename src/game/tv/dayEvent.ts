@@ -79,3 +79,53 @@ export function dayEventPlan(prev: Snapshot | null, s: Snapshot, asOf: DateStr, 
   }
   return rooms.length ? { through, days, rooms } : null;
 }
+
+/** Камера держит комнату события столько, но всё событие — не дольше `DAY_EVENT_MS`. */
+const DAY_ROOM_MS = 7_000;
+const DAY_EVENT_MS = 45_000;
+/** Событие, прождавшее в режиме экономии дольше этого, снимается: числа в комнатах сразу текущие. */
+const DAY_STALE_MS = 15 * 60_000;
+/** Ящиков и облачков одного вида за комнату не больше: остальное — сразу конечными числами. */
+const MAX_REPEAT = 2;
+
+/** Время на комнату при `n` комнатах в очереди события. */
+export function dayRoomMs(n: number): number {
+  return Math.min(DAY_ROOM_MS, Math.floor(DAY_EVENT_MS / Math.max(1, n)));
+}
+
+/** Комната, поставленная в очередь в `at`, ждала в `idle` (с `idleSince`) дольше 15 мин. */
+export function staleDay(at: number, idleSince: number, now: number): boolean {
+  return now - Math.max(at, idleSince) > DAY_STALE_MS;
+}
+
+/** Анимация комнаты: `pile` — питомец тужится, потом новые кучки «пум»; `poof` — кучка исчезает облачком; ящики — в свой ящик. */
+export type DayStep = 'pile' | 'poof' | 'medkit' | 'toy';
+
+/**
+ * Анимации по разнице «было → стало» в порядке плашки: длинные (кучка; или аптечка, потом убранные кучки), потом игрушки.
+ * Одна потуга на все новые кучки; ящиков и облачков каждого вида не больше двух. Убыль запасов (потрачены) не анимируется.
+ */
+export function daySteps(from: PetState, to: PetState): DayStep[] {
+  const times = (step: DayStep, n: number) => Array<DayStep>(Math.max(0, Math.min(MAX_REPEAT, n))).fill(step);
+  return [
+    ...(to.piles > from.piles ? ['pile' as const] : []),
+    ...times('medkit', to.medkits - from.medkits),
+    ...times('poof', from.piles - to.piles),
+    ...times('toy', to.toys - from.toys),
+  ];
+}
+
+/**
+ * Вторая загрузка во время события: её комнаты — в конец очереди. Группа, которая ещё ждёт очереди, заменяется новой
+ * записью в конце, но «было» остаётся прежним — его и показывает комната. Показываемой сейчас группы в очереди нет:
+ * её новая запись просто встаёт в конец.
+ */
+export function enqueueDay<T extends RoomEvent>(queue: readonly T[], rooms: readonly T[]): T[] {
+  const out = [...queue];
+  for (const r of rooms) {
+    const k = out.findIndex((q) => q.group === r.group);
+    const from = k < 0 ? r.from : out.splice(k, 1)[0]!.from;
+    out.push({ ...r, from });
+  }
+  return out;
+}

@@ -7,12 +7,13 @@ import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
 import type { PowerMode } from '@/game/PowerSaver';
 import { mountRanking, short } from '@/game/RankingPanel';
 import { PLANTS } from './art';
+import { dayRoomMs, daySteps, enqueueDay, staleDay, type DayEventPlan, type RoomEvent } from './dayEvent';
 import { Hall } from './Hall';
 import { BOARDS, CAMERA, roomCamera, roomRect, STAGE } from './layout';
 import { dayLine, groupFunnel, partyBanner, paymentGains, type FunnelTotal } from './metrics';
 import { careRooms, growthMoments, MAX_MOMENTS, type RoomMoment } from './moments';
 import { PetActor } from './PetActor';
-import { HAND_MS, RoomView, TOY_LAND_MS } from './RoomView';
+import { CRATE_LAND_MS, HAND_MS, RoomView, TOY_LAND_MS } from './RoomView';
 import { careTurn, shotAt, walkFor, type Shot } from './schedule';
 import { toyForRoom, type ToyKind } from './toys';
 
@@ -32,6 +33,8 @@ export interface TvOptions {
 export interface Tv {
   update(): void;
   playHand(group: GroupCode, item: 'medkit' | 'toy'): void;
+  /** Событие «итоги дня»: комнаты по очереди крупно, с плашкой и анимацией «было → стало» (`dayEvent.ts`). */
+  playDay(plan: DayEventPlan): void;
   setPower(mode: PowerMode): void;
 }
 
@@ -47,6 +50,20 @@ const MIN_WALKERS = 2;
 const HOLD_MS = 15_000;
 /** Крупный план при вылуплении или росте держится столько. */
 const MOMENT_MS = 8_000;
+/** Событие «итоги дня»: анимации комнаты начинаются, когда камера долетела (переход мира в событии — 1,6 с, `tv.css`). */
+const DAY_ACT_MS = 1_500;
+/** Ящики одной комнаты падают через столько, мс. */
+const DAY_CRATE_GAP_MS = 850;
+/** Питомец тужится правее места новой кучки на столько px (кучка — позади него) и бежит туда не дольше `HURRY_MS`. */
+const STRAIN_AT = 58;
+const HURRY_MS = 900;
+/** Пока падают ящики, питомец стоит левее этого места комнаты, px: не заслоняет ящики запасов справа. */
+const CLEAR_X = 300;
+
+/** Комната события в очереди; `at` — когда поставлена (для снятия после долгого `idle`). */
+interface DayRoom extends RoomEvent { at: number }
+
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const div = (cls: string, text?: string) => {
   const node = document.createElement('div');
@@ -106,6 +123,7 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
   const hud = div('hud');
   hud.append(title, fresh);
   const banner = div('banner');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const stage = div('tv-stage');
   stage.append(world, plant('left'), plant('right'), hud, banner);
@@ -202,8 +220,20 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
   };
   setShot('overview', false);
 
-  const showBanner = (text: string | null) => {
-    if (text !== null) banner.textContent = text;
+  /** `day` — плашка итогов дня: код группы и дата цветом группы, при смене комнаты плашка вздрагивает. */
+  const showBanner = (text: string | null, day?: GroupCode) => {
+    if (text !== null && banner.textContent !== text) {
+      const was = banner.classList.contains('on');
+      banner.classList.toggle('day', !!day);
+      if (day) {
+        const cut = text.indexOf(':');
+        const head = document.createElement('b');
+        head.textContent = cut < 0 ? text : text.slice(0, cut);
+        banner.style.setProperty('--accent', THEME[day].accent);
+        banner.replaceChildren(head, cut < 0 ? '' : text.slice(cut));
+        if (was && !reduced) banner.animate([{ translate: '0 14px', opacity: 0.3 }, { translate: '0 0', opacity: 1 }], { duration: 380, easing: 'cubic-bezier(.3, 1.5, .5, 1)' });
+      } else banner.textContent = text;
+    }
     banner.classList.toggle('on', text !== null);
     screen.toggleAttribute('data-banner', text !== null); // плашка внизу: нижняя панель на это время уезжает
   };
@@ -226,9 +256,32 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
   let moments: RoomMoment[] = [];
   let moment: (RoomMoment & { until: number }) | null = null;
   let states: Record<GroupCode, PetState> | null = null;
+  let totals: Record<GroupCode, FunnelTotal> | undefined;
   let roomBanner = false;
+
+  /**
+   * Событие «итоги дня»: комнаты ждут в `dayQueue`, `turn` — показываемая. Видимое комнаты (`held`) — «было», пока не
+   * пройдёт её очередь; `data-*` всегда настоящие. Время на комнату — `dayRoomMs` (вся очередь ≤ 45 с).
+   */
+  let dayQueue: DayRoom[] = [];
+  let turn: { room: DayRoom; i: number; until: number; acting: boolean } | null = null;
+  let dayMs = dayRoomMs(1);
+  let dayTimer: ReturnType<typeof setTimeout> | undefined;
+  let actTimer: ReturnType<typeof setTimeout> | undefined;
+  const held = new Map<GroupCode, PetState>();
+  let idleSince: number | null = null;
+
+  /** Комната и питомец по состоянию: видимое — придержанное событием, если есть; `pop` — новые кучки «пум» (`actDay`). */
+  const paint = (i: number, pop = false) => {
+    if (!states) return;
+    const g = GROUPS[i];
+    const shown = held.get(g);
+    rooms[i].update(states[g], totals?.[g], shown, pop);
+    pets[i].update(shown ?? states[g]);
+  };
+
   /** Крупный план комнаты с плашкой; `null` — убрать плашку крупного плана. Из зала питомец сразу дома. */
-  const focusRoom = (m: RoomMoment | null) => {
+  const focusRoom = (m: RoomMoment | null, day = false) => {
     if (!m) {
       if (roomBanner) showBanner(null);
       roomBanner = false;
@@ -238,18 +291,138 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     const i = GROUPS.indexOf(m.group);
     if (setShot('room', true, i)) pets[i].release();
     roomBanner = true;
-    showBanner(m.text);
+    showBanner(m.text, day ? m.group : undefined);
+  };
+
+  /** Очередь комнаты закончилась: видимое — настоящее (или «было» её следующей записи в очереди). */
+  const endTurn = () => {
+    const { room, i } = turn!;
+    turn = null;
+    clearTimeout(actTimer);
+    const again = dayQueue.find((q) => q.group === room.group);
+    if (again) held.set(room.group, again.from);
+    else held.delete(room.group);
+    paint(i);
+    if (!dayQueue.length) delete screen.dataset.day;
+  };
+
+  /**
+   * Праздник, выбор на панели или режим экономии перебили событие: комната, где анимация ещё не началась, снова ждёт
+   * первой в очереди; начатая доигрывает сама, а её время идёт.
+   */
+  const pauseDay = () => {
+    clearTimeout(dayTimer);
+    if (!turn || turn.acting) return;
+    clearTimeout(actTimer);
+    dayQueue.unshift(turn.room);
+    turn = null;
+  };
+
+  /** Камера в событии: следующая комната по очереди; `false` — события нет. */
+  const dayCamera = (now: number): boolean => {
+    if (turn && now >= turn.until) endTurn();
+    if (!turn && dayQueue.length) {
+      const room = dayQueue.shift()!;
+      if (moment) {
+        moments.unshift({ group: moment.group, text: moment.text }); // рост — после итогов
+        moment = null;
+      }
+      const me = { room, i: GROUPS.indexOf(room.group), until: now + dayMs, acting: false };
+      turn = me;
+      screen.dataset.day = '';
+      actTimer = setTimeout(() => {
+        if (turn !== me) return;
+        me.acting = true;
+        void actDay(me);
+      }, reduced ? 0 : DAY_ACT_MS);
+    }
+    if (!turn) return false;
+    focusRoom(turn.room, true);
+    clearTimeout(dayTimer);
+    dayTimer = setTimeout(camera, turn.until - now);
+    return true;
+  };
+
+  /**
+   * Анимации комнаты по разнице «было → стало» (`daySteps`): кучка — питомец бежит к её месту, отворачивается, тужится,
+   * «пум», отскакивает и оглядывается; убранная кучка — облачко; аптечки и игрушки — ящики сверху в ящики запасов, питомец
+   * отходит, смотрит и радуется. Видимое меняется, только пока это её очередь; при reduced motion — сразу конечное.
+   */
+  async function actDay(me: NonNullable<typeof turn>): Promise<void> {
+    const { room, i } = me;
+    const r = rooms[i];
+    const p = pets[i];
+    let shown = held.get(room.group) ?? room.from;
+    const show = (next: PetState) => {
+      shown = next;
+      if (turn !== me) return;
+      held.set(room.group, next);
+      paint(i, true);
+    };
+    if (reduced) return show(room.to);
+    const token = p.hold();
+    const walker = p.walker;
+    const mine = () => p.owns(token);
+    const hurry = (x: number) => p.moveTo({ x }, Math.min(HURRY_MS, Math.max(250, Math.abs(x - p.x) / 0.3)), token);
+    let crates = 0;
+    for (const step of daySteps(shown, room.to)) {
+      if (turn !== me) break;
+      if (step === 'pile') {
+        if (walker && mine()) {
+          await hurry(r.nextPileX() + STRAIN_AT);
+          p.face(1); // спиной к месту кучки
+          await wait(260);
+        }
+        if (mine()) await p.strain();
+        show({ ...shown, piles: room.to.piles });
+        if (walker && mine()) {
+          await p.moveTo({ x: p.x + 34 }, 380, token, 26); // отдача: отскок вперёд, кучка видна
+          await wait(280);
+          if (mine()) p.face(-1); // оглянулся на кучку
+          await wait(650);
+        }
+      } else if (step === 'poof') {
+        r.poofPile();
+        show({ ...shown, piles: shown.piles - 1 });
+        await wait(800);
+      } else {
+        if (!crates && walker && mine() && p.x > r.rect.x + CLEAR_X) await hurry(r.rect.x + CLEAR_X - 60);
+        if (walker && mine()) p.face(1); // смотрит на ящики запасов
+        crates++;
+        const kind = step === 'medkit' ? 'medkits' : 'toys';
+        show({ ...shown, [kind]: shown[kind] + 1 });
+        r.dropCrate(kind);
+        await wait(DAY_CRATE_GAP_MS);
+      }
+    }
+    if (crates) await wait(Math.max(0, CRATE_LAND_MS + 100 - DAY_CRATE_GAP_MS));
+    show(room.to);
+    if (!mine()) return;
+    p.release();
+    if (crates) p.cheer();
+  }
+
+  /** Событие прождало в `idle` дольше 15 мин — снимается: в комнатах сразу текущие числа. */
+  const expireDay = (since: number) => {
+    const now = Date.now();
+    dayQueue = dayQueue.filter((q) => !staleDay(q.at, since, now));
+    if (turn && staleDay(turn.room.at, since, now)) endTurn();
+    for (const g of [...held.keys()]) if (turn?.room.group !== g && !dayQueue.some((q) => q.group === g)) held.delete(g);
+    GROUPS.forEach((_, i) => paint(i));
+    if (!turn && !dayQueue.length) delete screen.dataset.day;
   };
   function camera(): void {
-    if (power === null || power === 'idle' || partyUntil !== null) return;
+    if (power === null || power === 'idle' || partyUntil !== null) return pauseDay();
     const now = Date.now();
     if (hold && now < hold.until) {
+      pauseDay();
       endWalk();
       focusRoom(null);
       setShot(hold.shot);
       return;
     }
     dropHold();
+    if (dayCamera(now)) return;
     if (moment && now >= moment.until) moment = null;
     if (!moment && moments.length) moment = { ...moments.shift()!, until: now + MOMENT_MS };
     if (moment) return focusRoom(moment);
@@ -278,6 +451,7 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
   const startParty = (gains: ReturnType<typeof paymentGains>) => {
     endWalk();
     dropHold();
+    pauseDay();
     const star = pets[GROUPS.indexOf(gains[0].group)];
     partyUntil = Date.now() + PARTY_MS;
     screen.dataset.party = gains[0].group;
@@ -309,6 +483,8 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     const was = power;
     power = mode;
     if (mode === 'idle') {
+      idleSince = Date.now();
+      pauseDay();
       endWalk();
       endParty();
       clearInterval(loop);
@@ -318,6 +494,8 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     }
     loop ??= setInterval(tick, 1000);
     pets.forEach((p) => p.setRunning(true));
+    if (idleSince !== null) expireDay(idleSince);
+    idleSince = null;
     // ввод (`active`) кадр не меняет, цикл идёт дальше; с начала — только после скрытой вкладки
     if (was === null || was === 'idle') {
       cycleStart = Date.now();
@@ -335,15 +513,14 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
   const update = () => {
     const next = o.states();
     const asOf = o.asOf();
-    const totals = o.rank ? funnelOf(o.rank(), asOf) : undefined;
+    totals = o.rank ? funnelOf(o.rank(), asOf) : undefined;
     const toys = o.toys?.();
-    rooms.forEach((r, i) => {
-      r.update(next[r.group], totals?.[r.group]);
-      pets[i].update(next[r.group]);
-      r.setToy(toyForRoom(toys?.[r.group] ?? null, next[r.group]), false); // после перезагрузки игрушка уже лежит
-    });
     moments = [...moments, ...growthMoments(states, next)].slice(-MAX_MOMENTS);
     states = next;
+    rooms.forEach((r, i) => {
+      paint(i);
+      r.setToy(toyForRoom(toys?.[r.group] ?? null, next[r.group]), false); // после перезагрузки игрушка уже лежит
+    });
     ranking?.update();
     syncDock();
     day.textContent = dayLine(asOf, o.cfg());
@@ -370,7 +547,23 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     }
   };
 
+  /**
+   * Итоги дня: комнаты плана — в конец очереди (повтор ждущей группы заменяется, `enqueueDay`), до своей очереди
+   * показывают «было». Зовётся до `update` того же снимка (и сразу после `mountTv` при запуске): «стало» не мелькает.
+   */
+  const playDay = (plan: DayEventPlan) => {
+    const at = Date.now();
+    for (const r of plan.rooms) {
+      if (turn?.room.group !== r.group && !dayQueue.some((q) => q.group === r.group)) held.set(r.group, r.from);
+    }
+    dayQueue = enqueueDay(dayQueue, plan.rooms.map((r) => ({ ...r, at })));
+    dayMs = dayRoomMs(dayQueue.length + (turn ? 1 : 0));
+    screen.dataset.day = '';
+    GROUPS.forEach((_, i) => paint(i));
+    camera();
+  };
+
   update();
   setPower('active');
-  return { update, playHand, setPower };
+  return { update, playHand, playDay, setPower };
 }
