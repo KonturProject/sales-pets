@@ -192,6 +192,72 @@ try {
     await wp.close();
   }
 
+  // --- живость прогулки (часы Playwright): гуляющие (крупные питомцы) не замирают ни всем залом, ни поодиночке;
+  // замер раз в 500 мс с 6-й секунды кадра до начала дороги домой. Начало кадра прогулки считается от констант расписания.
+  {
+    const { WALK_MS, CYCLE, walkFor } = await server.ssrLoadModule('/src/game/tv/schedule.ts');
+    const { HOME_MS } = await server.ssrLoadModule('/src/game/tv/Hall.ts');
+    /** Начало кадра прогулки от начала цикла: всё, что в цикле идёт до неё. */
+    const walkStartMs = () => CYCLE.filter(([s]) => s !== 'walk').reduce((sum, [, ms]) => sum + ms, 0);
+    const GROUP_ORDER = Object.keys(EXPECTED);
+    const STEP = 500;
+    const lp = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+    const lpErrors = [];
+    lp.on('pageerror', (e) => lpErrors.push(e.message));
+    await lp.clock.install();
+    await lp.goto(`${base}?demo=1`, { waitUntil: 'networkidle' });
+    const snap = () => lp.$$eval('.pet', (els) => els.map((e) => {
+      const m = e.style.transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([\d.]+)\)/);
+      return { kind: e.dataset.kind, mood: e.dataset.mood, x: m ? Number(m[1]) : NaN, y: m ? Number(m[2]) : NaN, s: m ? Number(m[3]) : NaN };
+    }));
+    const shot = () => lp.$eval('.tv', (e) => e.dataset.shot);
+    await lp.clock.runFor(1_000);
+    await lp.clock.fastForward(walkStartMs() - 1_000);
+    check(await shot() === 'walk', `живость прогулки: после перемотки кадр ${await shot()}, ожидался walk`);
+    let at = 0;
+    const advance = async (ms) => { await lp.clock.runFor(ms); at += ms; };
+    await advance(6_000);
+    const last = walkFor(0) - HOME_MS;
+    let prev = await snap();
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    // самое долгое окно, где не двигался никто из гуляющих, и самый долгий простой одного здорового гуляющего
+    const all = { len: 0, from: 0, best: 0, bestFrom: 0 };
+    const idle = {};
+    const worst = { len: 0, i: -1, from: 0 };
+    let walkersSeen = 0;
+    const closeAll = () => { if (all.len > all.best) { all.best = all.len; all.bestFrom = all.from; } all.len = 0; };
+    const closeIdle = (i) => { const r = idle[i]; if (r && r.len > worst.len) Object.assign(worst, r); delete idle[i]; };
+    while (at + STEP <= last) {
+      await advance(STEP);
+      const cur = await snap();
+      const walkers = cur.map((_, i) => i).filter((i) => cur[i].kind === 'pet' && cur[i].s > 1.4);
+      walkersSeen = Math.max(walkersSeen, walkers.length);
+      const moved = (i) => dist(cur[i], prev[i]) > 2;
+      if (walkers.some(moved)) closeAll();
+      else { if (all.len === 0) all.from = at - STEP; all.len++; }
+      for (let i = 0; i < cur.length; i++) {
+        if (!walkers.includes(i) || cur[i].mood === 'sick' || moved(i)) { closeIdle(i); continue; }
+        idle[i] = idle[i] ?? { len: 0, i, from: at - STEP };
+        idle[i].len++;
+      }
+      prev = cur;
+    }
+    closeAll();
+    for (const i of Object.keys(idle)) closeIdle(i);
+    const sec = (n) => (n * STEP / 1000).toFixed(1);
+    check(walkersSeen >= 2, `живость прогулки: в замере было гуляющих ${walkersSeen}, ожидалось не меньше 2`);
+    check(all.best * STEP < 3_000,
+      `живость прогулки: с ${(all.bestFrom / 1000).toFixed(1)} по ${((all.bestFrom + all.best * STEP) / 1000).toFixed(1)} с кадра (${sec(all.best)} с) не двигался никто из гуляющих, допустимо меньше 3 с`);
+    check(worst.len * STEP <= 7_000,
+      `живость прогулки: ${GROUP_ORDER[worst.i] ?? '#' + worst.i} стоит с ${(worst.from / 1000).toFixed(1)} по ${((worst.from + worst.len * STEP) / 1000).toFixed(1)} с кадра (${sec(worst.len)} с), допустимо не больше 7 с`);
+    // конец кадра за 1,5 с до смены, без шагов по 500 мс: все дома
+    await lp.clock.runFor(WALK_MS - 1_500 - at);
+    const homeNow = (await snap()).filter((p) => p.kind === 'pet');
+    check(homeNow.every((p) => p.y <= 940 && p.s === 1), `живость прогулки: за 1,5 с до конца кадра не все дома ${JSON.stringify(homeNow)}`);
+    check(lpErrors.length === 0, `живость прогулки: ошибки страницы ${lpErrors.join('; ')}`);
+    await lp.close();
+  }
+
   // мусор в ?asOf= не должен вешать вкладку: рисуется дата по умолчанию
   await page.goto(`${base}?demo=1&asOf=today`, { waitUntil: 'networkidle', timeout: 10_000 });
   check((await read()).length === 6, 'asOf=today: ожидалось 6 групп (откат на дату по умолчанию)');
