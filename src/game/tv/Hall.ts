@@ -216,9 +216,13 @@ export class Hall {
     sick.forEach((p, k) => void this.watch(w, p, k));
   }
 
-  /** Больной медленно отходит к заднему краю зала со стороны своей комнаты (оттуда ближе домой) и смотрит на игры. */
+  /**
+   * Больной медленно отходит к заднему краю зала со стороны своей комнаты (оттуда ближе домой) и смотрит на игры.
+   * Жетон записан как бродящий: вылеченного посреди прогулки брожение второй раз не запускает, а сцена забирает (`take`).
+   */
   private async watch(w: Walk, p: PetActor, k: number): Promise<void> {
     const t = this.tok(w, p);
+    w.roaming.set(p, t);
     const mid = (HALL.x0 + HALL.x1) / 2;
     const x = p.room.rect.cx < mid ? HALL.x0 + WATCH_IN : HALL.x1 - WATCH_IN;
     if (!(await p.run([{ x, y: HALL.y0 + k * WATCH_ROW }], SPEED.hall, t))) return;
