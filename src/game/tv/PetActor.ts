@@ -4,6 +4,7 @@ import type { GroupCode } from '@/engine/types';
 import { petScale, stageSprite } from '@/game/PetView';
 import { EMOTE, PLUS, type Emote } from './art';
 import { kickBall } from './ball';
+import { headingAt, pathLength, pointAt, type Pt } from './hallGames';
 import { HUG_MS, SPIN_MS, type RoomView } from './RoomView';
 import type { ToyPlay } from './toys';
 
@@ -249,6 +250,11 @@ export class PetActor {
    */
   cheer(): void {
     this.eager = true;
+    this.joy();
+  }
+
+  /** Радость (конец игры в зале): прыжок на месте, потом сердечко, когда питомец уже на полу. Цикл не трогает. */
+  joy(): void {
     this.jump(46);
     setTimeout(() => this.emote('joy', 1300), JUMP_MS);
   }
@@ -320,6 +326,45 @@ export class PetActor {
         else finish(true);
       };
       const safety = setTimeout(() => step(t0 + ms), ms + 150);
+      requestAnimationFrame(step);
+    });
+  }
+
+  /**
+   * Бег от текущей точки через `points` с постоянной скоростью `speed` (px мира в мс; больной — в `SICK` раз медленнее),
+   * без разгона и торможения: на длинном пути с изгибами ход ровный. Смотрит по ходу отрезка, почти вертикальный
+   * отрезок (|dx| ≤ 3) не разворачивает. `false`, если питомца перехватили. В фоне кадров нет — по таймеру сразу в конец.
+   */
+  run(points: readonly Pt[], speed: number, token: number): Promise<boolean> {
+    const path = [{ x: this.x, y: this.y }, ...points];
+    const len = pathLength(path);
+    const v = this.state === 'sick' ? speed * SICK : speed;
+    this.el.classList.add('walking');
+    return new Promise((resolve) => {
+      const t0 = performance.now();
+      let done = false;
+      const finish = (ok: boolean) => {
+        if (done) return;
+        done = true;
+        clearTimeout(safety);
+        if (ok) this.el.classList.remove('walking');
+        resolve(ok);
+      };
+      const step = (now: number) => {
+        if (done) return;
+        if (token !== this.gen) return finish(false);
+        const d = Math.min(len, (now - t0) * v);
+        const dir = headingAt(path, d);
+        if (dir && dir !== this.facing) this.face(dir);
+        const p = pointAt(path, d);
+        this.x = p.x;
+        this.y = p.y;
+        this.place();
+        if (d < len) requestAnimationFrame(step);
+        else finish(true);
+      };
+      // Infinity, а не t0 + ms: из-за округления `(t0 + ms − t0) × v` бывает чуть меньше длины, и бег ждал бы кадра
+      const safety = setTimeout(() => step(Infinity), len / v + 150);
       requestAnimationFrame(step);
     });
   }
