@@ -154,6 +154,8 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 .pet .bob img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: 50% 100%; }
 .pet.walking .bob { animation: tv-hop .42s ease-in-out infinite; }
 .pet.sneak .bob { transform: scale(1.06, .82); }
+/* присел на месте (чехарда): покачивание анимирует transform и перебило бы присед */
+.pet.sneak:not(.walking) .bob { animation: none; transition: transform .12s ease-out; }
 .pet.sneak.walking .bob { animation: tv-sneak .9s ease-in-out infinite; }
 /* без сдвига оттенка: на рисованных героях он красит кожу в зелёный; болезнь видна по бледности и градуснику */
 .pet[data-mood='sick'] img { filter: saturate(.5) brightness(.93); }
@@ -238,7 +240,7 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 .hall-ball {
   position: absolute; left: -30px; top: 0; width: 60px; height: 60px; border-radius: 50%; z-index: 1500; pointer-events: none;
   background: radial-gradient(circle at 35% 35%, #fff9, transparent 40%), #d98b6a;
-  transition: transform .85s ease-out;
+  transition: transform .85s ease-out, opacity .3s;
 }
 
 /* событие «итоги дня» (TvScreen.playDay): камера между комнатами быстрее; плашка — код и дата цветом группы, в две строки,

@@ -6,6 +6,8 @@ export interface Pt {
 
 /** Где в зале стоят ноги питомца во время игр (ниже `y1` зал закрывает нижняя панель). */
 export const HALL = { x0: 800, x1: 2000, y0: 1130, y1: 1410 };
+/** В зале питомец крупнее: камера на общем плане отдалена. */
+export const HALL_SCALE = 1.55;
 /** Скорости, px мира в мс: бег (догонялки, мяч) и паровозик. */
 export const RUN = 0.4;
 export const TRAIN = 0.3;
@@ -21,7 +23,7 @@ export const KICK_MAX = 600;
  * - `gather` — сбор на исходные места бегом (`RUN`) из любой точки зала: его диагональ / `RUN` ≈ 3,1 с;
  * - `joy` — радость в конце игры: `PetActor.joy()` (прыжок 650 мс) и облачко;
  * - `kick` — замах пинка, пока мяч не покатился; `roll` — мяч катится после пинка;
- * - `crouch` — перепрыгиваемый пригибается; `hop` — прыжок через него (`moveTo` с дугой).
+ * - `crouch` — перепрыгиваемый пригибается; `hop` — прыжок пары через одного (`moveTo` с дугой), у тройки дольше: `hopMs`.
  */
 export const TIMING = {
   gather: Math.ceil(Math.hypot(HALL.x1 - HALL.x0, HALL.y1 - HALL.y0) / RUN),
@@ -46,19 +48,23 @@ const CX = 1400;
 const CY = 1265;
 /** Мяч не ближе этого к краю зала по x: питомец встаёт сбоку от мяча и тоже остаётся в зале. */
 const BALL_IN = 120;
-/** Брожение не ближе этого к краю зала по x. */
+/** Брожение не ближе этого к краю зала по x; отрезок короче `ROAM_MIN` px не начинается. */
 const ROAM_IN = 60;
+const ROAM_MIN = 40;
+/** Пинающий встаёт к мячу ногами на этой доле стороны картинки (`size × HALL_SCALE`) плюс полмяча. */
+const KICK_FOOT = 0.38;
+const KICK_BALL = 25;
 /** Чехарда: задние встают у левого края зала с этим отступом; шаг соседей — `(a + b) / 2 × scale × LEAP_GAP`. */
 const LEAP_X0 = HALL.x0 + 40;
 const LEAP_GAP = 0.75;
 /** Ноги прыгуна проходят над перепрыгиваемым на этой доле его роста (`size × scale`): пригнувшийся ниже картинки. */
 const CLEAR = 0.85;
-/** Крайние дорожки чехарды не ближе этого к краю зала по y. */
+/** Крайние дорожки чехарды не ближе этого к краю зала по y; прыжков у группы не больше `MAX_HOPS` (сторож). */
 const LANE_IN = 20;
-/** = `HALL_SCALE` из `Hall.ts`: здесь без импорта — `Hall` сам зависит от этого модуля. */
-const SCALE = 1.55;
+const MAX_HOPS = 50;
 
 const seg = (a: Pt, b: Pt) => Math.hypot(b.x - a.x, b.y - a.y);
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 /** Длина ломаной. */
 export function pathLength(points: readonly Pt[]): number {
@@ -164,11 +170,58 @@ export function roamPoint(rnd: () => number): Pt {
 }
 
 /**
+ * Отрезок брожения из `from` к `to`, который со скоростью `speed` (px мира в мс) займёт не больше `ms`: дальняя точка
+ * подтягивается к `from` по той же прямой. Если за `ms` не пройти и `ROAM_MIN` px — `null`: питомец ждёт срока.
+ */
+export function roamLeg(from: Pt, to: Pt, ms: number, speed: number): Pt | null {
+  const reach = ms * speed;
+  if (!(reach >= ROAM_MIN)) return null;
+  const d = seg(from, to);
+  const k = d > reach ? reach / d : 1;
+  return { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k };
+}
+
+/** Где встать пинающему питомцу со стороной картинки `size` у мяча `ball`, чтобы пнуть его в сторону `dir` по x: сбоку, в зале. */
+export function kickSpot(ball: Pt, dir: 1 | -1, size: number): Pt {
+  return { x: clamp(ball.x - dir * (size * HALL_SCALE * KICK_FOOT + KICK_BALL), HALL.x0, HALL.x1), y: ball.y };
+}
+
+/**
+ * Где встать зрителю, который подбегает из `from` к мячу `ball` (мяч дальше полетит в сторону `dir` по x): на луче от мяча
+ * в `r` px, со своей стороны, но не ближе 45° к линии полёта — ни на пути мяча, ни за спиной пинающего. Если луч упирается
+ * в край зала, точка ближе по тому же лучу; со стороны, где места больше (зал неглубокий, у края места мало).
+ */
+export function ballWatch(from: Pt, ball: Pt, dir: 1 | -1, r: number): Pt {
+  const a0 = Math.atan2(from.y - ball.y, (from.x - ball.x) * dir);
+  const a = clamp(Math.abs(a0), Math.PI / 4, (3 * Math.PI) / 4);
+  const room = (v: number, at: number, lo: number, hi: number) => (v > 0 ? (hi - at) / v : v < 0 ? (lo - at) / v : Infinity);
+  const spot = (side: number) => {
+    const u = { x: Math.cos(a) * dir, y: side * Math.sin(a) };
+    const t = Math.min(r, room(u.x, ball.x, HALL.x0, HALL.x1), room(u.y, ball.y, HALL.y0, HALL.y1));
+    return { t, p: { x: clamp(ball.x + t * u.x, HALL.x0, HALL.x1), y: clamp(ball.y + t * u.y, HALL.y0, HALL.y1) } };
+  };
+  const [mine, other] = a0 < 0 ? [spot(-1), spot(1)] : [spot(1), spot(-1)];
+  return (other.t > mine.t ? other : mine).p;
+}
+
+/** Расстояние вдоль петли (от её начала) до вершины, ближайшей к `p`: с этого места игра начинается у питомца под рукой. */
+export function nearestOnLoop(loop: readonly Pt[], p: Pt): number {
+  let [best, at, len] = [Infinity, 0, 0];
+  for (let i = 0; i < loop.length; i++) {
+    if (i) len += seg(loop[i - 1], loop[i]);
+    const d = seg(loop[i], p);
+    if (d < best) [best, at] = [d, len];
+  }
+  return at;
+}
+
+/**
  * Чехарда для питомцев со сторонами картинок `sizes` в масштабе `scale`. Группы — пары по порядку индексов,
  * при нечётном числе последняя — тройка; меньше двух питомцев — групп нет. Дорожки групп по y — поровну по высоте зала.
  * Группа стоит слева направо в порядке `members`, задний у левого края; шаг соседей —
  * `(a + b) / 2 × scale × LEAP_GAP`. Прыгает всегда задний: перелетает всех и встаёт перед передним на тот же шаг.
  * Прыжки идут, пока место приземления в зале. Дуга такая, чтобы ноги прыгуна прошли над каждым на `CLEAR` его роста.
+ * Размер 0 или NaN (прыжок не продвигает вперёд) — у группы прыжков нет; больше `MAX_HOPS` прыжков группа не делает.
  */
 export function leapPlan(sizes: readonly number[], scale: number): LeapGroup[] {
   const n = sizes.length;
@@ -189,7 +242,7 @@ export function leapPlan(sizes: readonly number[], scale: number): LeapGroup[] {
       const who = line[0];
       const front = line[line.length - 1];
       const [from, to] = [x.get(who)!, x.get(front)! + gap(front, who)];
-      if (to > HALL.x1) break;
+      if (!(to > from) || to > HALL.x1 || hops.length >= MAX_HOPS) break;
       const arc = Math.max(...line.slice(1).map((m) => (sizes[m] * scale * CLEAR) / Math.sin((Math.PI * (x.get(m)! - from)) / (to - from))));
       hops.push({ who, to: { x: to, y }, arc });
       x.set(who, to);
@@ -204,12 +257,13 @@ export function leapPlan(sizes: readonly number[], scale: number): LeapGroup[] {
  * - догонялки: сбор на круг, `CHASE_LAPS` круга `ringLoop` бегом, радость;
  * - мяч: `KICKS` раз замах и пробег до мяча (`KICK_MAX` + 100 px, на которых пнувший стоял у мяча), радость;
  * - паровозик: сбор в цепочку на петле, один круг `trainLoop` шагом `TRAIN`, радость;
- * - чехарда: сбор на старт, самая длинная группа `leapPlan` (пригнулся + прыжок на каждый), радость.
+ * - чехарда: сбор на старт, самая поздняя группа `leapPlan` (её задержка `leapDelay` и на каждый прыжок «пригнулся» +
+ *   `hopMs`), радость.
  * Меньше двух здоровых — `Infinity`: такую игру `Hall` пропускает.
  */
 export function gameMs(game: Game, sizes: readonly number[]): number {
   if (sizes.length < 2) return Infinity;
-  const { gather, joy, kick, crouch, hop } = TIMING;
+  const { gather, joy, kick, crouch } = TIMING;
   switch (game) {
     case 'chase':
       return gather + (CHASE_LAPS * pathLength(ringLoop())) / RUN + joy;
@@ -218,8 +272,18 @@ export function gameMs(game: Game, sizes: readonly number[]): number {
     case 'train':
       return gather + pathLength(trainLoop()) / TRAIN + joy;
     case 'leap':
-      return gather + Math.max(...leapPlan(sizes, SCALE).map((g) => g.hops.length)) * (crouch + hop) + joy;
+      return gather + Math.max(...leapPlan(sizes, HALL_SCALE).map((g, i, plan) => leapDelay(i, plan.length) + g.hops.length * (crouch + hopMs(g)))) + joy;
   }
+}
+
+/** Прыжок в чехарде, мс: прыгун пролетает над группой столько зазоров, сколько в ней питомцев (пара — 2, тройка — 3). */
+export function hopMs(g: LeapGroup): number {
+  return (TIMING.hop * g.members.length) / 2;
+}
+
+/** Группа `g` из `groups` начинает прыгать через столько мс после сбора: соседние дорожки не прыгают столбиками. */
+export function leapDelay(g: number, groups: number): number {
+  return (g * (TIMING.crouch + TIMING.hop)) / groups;
 }
 
 /** Игры после догонялок: мяч, паровозик и чехарда в случайном порядке; при reduced motion без чехарды (нет дуг). */

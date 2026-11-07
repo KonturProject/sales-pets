@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CHASE_LAPS, HALL, KICK_MAX, KICK_MIN, RUN, TIMING, TRAIN, ballSpot, gameMs, gamesFor, headingAt, leapPlan, loopPath,
-  pathLength, pointAt, ringLoop, roamPoint, trainLoop, type Game, type Pt,
+  CHASE_LAPS, HALL, HALL_SCALE, KICK_MAX, KICK_MIN, RUN, TIMING, TRAIN, ballSpot, ballWatch, gameMs, gamesFor, headingAt,
+  hopMs, kickSpot, leapDelay, leapPlan, loopPath, nearestOnLoop, pathLength, pointAt, ringLoop, roamLeg, roamPoint,
+  trainLoop, type Game, type Pt,
 } from './hallGames';
 
 /** Детерминированный генератор (LCG) для серий случайных вызовов. */
@@ -10,7 +11,7 @@ const lcg = (seed: number) => () => {
   return seed / 4294967296;
 };
 
-const SCALE = 1.55;
+const SCALE = HALL_SCALE;
 const GAMES: Game[] = ['chase', 'ball', 'train', 'leap'];
 const inHall = (p: Pt) => p.x >= HALL.x0 && p.x <= HALL.x1 && p.y >= HALL.y0 && p.y <= HALL.y1;
 const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -234,6 +235,112 @@ describe('leapPlan', () => {
   it('меньше двух питомцев — прыгать некому', () => {
     expect(leapPlan([], SCALE)).toEqual([]);
     expect(leapPlan([120], SCALE)).toEqual([]);
+  });
+
+  it('размер 0 или NaN не вешает план: такая группа без прыжков', () => {
+    expect(leapPlan([0, 0], SCALE).map((g) => g.hops.length)).toEqual([0]);
+    expect(leapPlan([NaN, 120], SCALE).map((g) => g.hops.length)).toEqual([0]);
+    expect(leapPlan([0, 0, 120, 120], SCALE).map((g) => g.hops.length > 0)).toEqual([false, true]);
+  });
+
+  it('прыжок тройки дольше прыжка пары по числу зазоров; группы стартуют вразнобой, в пределах одного прыжка', () => {
+    const [pair, trio] = [leapPlan([120, 120], SCALE)[0], leapPlan([120, 120, 120], SCALE)[0]];
+    expect(hopMs(pair)).toBe(TIMING.hop);
+    expect(hopMs(trio)).toBe(TIMING.hop * 1.5);
+    for (const n of [1, 2, 3]) {
+      const delays = Array.from({ length: n }, (_, g) => leapDelay(g, n));
+      expect(delays[0]).toBe(0);
+      expect(new Set(delays).size).toBe(n);
+      expect(Math.max(...delays)).toBeLessThan(TIMING.crouch + TIMING.hop);
+    }
+  });
+});
+
+describe('nearestOnLoop', () => {
+  const ring = ringLoop();
+  const per = pathLength(ring);
+
+  it('расстояние вдоль петли до ближайшей к точке вершины', () => {
+    expect(nearestOnLoop(ring, { x: 1950, y: 1265 })).toBe(0);
+    expect(nearestOnLoop(ring, { x: 860, y: 1265 })).toBeCloseTo(per / 2, -1);
+    expect(nearestOnLoop(ring, { x: 1400, y: 1100 })).toBeCloseTo(per / 4, -1);
+    expect(nearestOnLoop(ring, { x: 1400, y: 1400 })).toBeCloseTo((3 * per) / 4, -1);
+  });
+
+  it('точка петли на найденном расстоянии — ближайшая к питомцу', () => {
+    const rnd = lcg(5);
+    for (let k = 0; k < 50; k++) {
+      const p = roamPoint(rnd);
+      const best = Math.min(...ring.map((q) => dist(q, p)));
+      expect(dist(pointAt(ring, nearestOnLoop(ring, p)), p)).toBeCloseTo(best, 6);
+    }
+  });
+});
+
+describe('roamLeg', () => {
+  const from = { x: 1000, y: 1200 };
+
+  it('успевает — до самой точки', () => {
+    expect(roamLeg(from, { x: 1400, y: 1200 }, 5_000, 0.2)).toEqual({ x: 1400, y: 1200 });
+  });
+
+  it('не успевает — отрезок короче, на той же прямой, ровно на время', () => {
+    const leg = roamLeg(from, { x: 1600, y: 1200 }, 1_000, 0.2)!;
+    expect(leg.x).toBeCloseTo(1200);
+    expect(leg.y).toBeCloseTo(1200);
+  });
+
+  it('времени меньше чем на 40 px (или его нет) — null: питомец ждёт срока', () => {
+    expect(roamLeg(from, { x: 1600, y: 1200 }, 150, 0.2)).toBeNull();
+    expect(roamLeg(from, { x: 1600, y: 1200 }, -500, 0.2)).toBeNull();
+    expect(roamLeg(from, { x: 1600, y: 1200 }, NaN, 0.2)).toBeNull();
+  });
+
+  it('точка рядом, а время есть — короткий отрезок, не null (брожение не обрывается)', () => {
+    expect(roamLeg(from, { x: 1010, y: 1200 }, 5_000, 0.2)).toEqual({ x: 1010, y: 1200 });
+    expect(roamLeg(from, from, 5_000, 0.2)).toEqual(from);
+  });
+});
+
+describe('мяч: где встать пинающему и зрителям', () => {
+  /** Угол между направлением от мяча к точке и линией полёта (`dir` по x), 0…π. */
+  const angle = (p: Pt, ball: Pt, dir: 1 | -1) => Math.abs(Math.atan2(p.y - ball.y, (p.x - ball.x) * dir));
+
+  it('kickSpot: сбоку от мяча, против полёта, на той же глубине, в зале', () => {
+    const ball = { x: 1300, y: 1250 };
+    const right = kickSpot(ball, 1, 170);
+    expect(right.y).toBe(ball.y);
+    expect(right.x).toBeLessThan(ball.x - 60);
+    expect(kickSpot(ball, -1, 170).x).toBeGreaterThan(ball.x + 60);
+    expect(kickSpot(ball, 1, 170).x).toBeLessThan(kickSpot(ball, 1, 94).x); // крупный встаёт дальше
+    expect(inHall(kickSpot({ x: HALL.x0 + 20, y: 1250 }, 1, 170))).toBe(true);
+  });
+
+  it('ballWatch: в зале, не дальше r, не ближе 45° к линии полёта ни спереди, ни сзади', () => {
+    const rnd = lcg(9);
+    for (let k = 0; k < 300; k++) {
+      const ball = { x: 920 + rnd() * 960, y: HALL.y0 + rnd() * (HALL.y1 - HALL.y0) };
+      const from = roamPoint(rnd);
+      const dir = rnd() < 0.5 ? 1 : -1;
+      const r = 150 + rnd() * 70;
+      const p = ballWatch(from, ball, dir, r);
+      expect(inHall(p)).toBe(true);
+      expect(dist(p, ball)).toBeLessThanOrEqual(r + 1e-6);
+      expect(dist(p, ball)).toBeGreaterThan(60); // не на мяче
+      const a = angle(p, ball, dir);
+      expect(a).toBeGreaterThanOrEqual(Math.PI / 4 - 1e-6);
+      expect(a).toBeLessThanOrEqual((3 * Math.PI) / 4 + 1e-6);
+    }
+  });
+
+  it('ballWatch: подбегает со своей стороны, у края зала — с той, где есть место', () => {
+    const mid = { x: 1400, y: 1270 };
+    expect(ballWatch({ x: 1400, y: 1400 }, mid, 1, 120).y).toBeGreaterThan(mid.y);
+    expect(ballWatch({ x: 1400, y: 1140 }, mid, 1, 120).y).toBeLessThan(mid.y);
+    const back = { x: 1400, y: HALL.y0 + 10 };
+    const p = ballWatch({ x: 1400, y: HALL.y0 }, back, 1, 180);
+    expect(p.y).toBeGreaterThan(back.y);
+    expect(dist(p, back)).toBeCloseTo(180);
   });
 });
 

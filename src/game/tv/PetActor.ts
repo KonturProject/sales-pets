@@ -205,6 +205,11 @@ export class PetActor {
     }, ms);
   }
 
+  /** Присел на месте (через него прыгают в чехарде); снимается и сам, когда цикл питомца останавливают. */
+  crouch(on: boolean): void {
+    this.el.classList.toggle('sneak', on);
+  }
+
   /** Крадущийся шаг до точки (пригнувшись, втрое медленнее зала); `false`, если питомца перехватили. */
   async sneak(x: number, y: number, token: number): Promise<boolean> {
     this.el.classList.add('sneak');
@@ -325,7 +330,8 @@ export class PetActor {
         if (k < 1) requestAnimationFrame(step);
         else finish(true);
       };
-      const safety = setTimeout(() => step(t0 + ms), ms + 150);
+      // Infinity, а не t0 + ms: из-за округления `(t0 + ms − t0) / ms` бывает чуть меньше 1, и переход ждал бы кадра
+      const safety = setTimeout(() => step(Infinity), ms + 150);
       requestAnimationFrame(step);
     });
   }
@@ -380,7 +386,7 @@ export class PetActor {
 
   private halt(): void {
     this.gen++;
-    this.el.classList.remove('walking');
+    this.el.classList.remove('walking', 'sneak');
     this.acts.forEach((a) => a.cancel());
     this.acts = [];
   }
@@ -509,11 +515,14 @@ export class PetActor {
     return Math.max(1, this.side / REACH_SIZE);
   }
 
-  /** `lift` — высота над полом в прыжке: тень остаётся на полу и уменьшается. */
+  /**
+   * `lift` — высота над полом в прыжке: тень остаётся на полу и уменьшается. Прыгун в воздухе выше стоящего на той же
+   * линии (чехарда: ноги над пригнувшимся, а не за ним).
+   */
   private place(lift = 0): void {
     this.el.style.transform = `translate(${this.x}px, ${this.y - lift}px) scale(${this.s})`;
     this.shadow.style.transform = `translate(${this.x}px, ${this.y}px) scale(${this.s * (1 - Math.min(lift, 300) / 500)})`;
-    this.el.style.zIndex = String(10 + Math.round(this.y) + (this.talk.classList.contains('on') ? 1 : 0));
+    this.el.style.zIndex = String(10 + Math.round(this.y) + (this.talk.classList.contains('on') ? 1 : 0) + (lift > 1 ? 1 : 0));
     this.shadow.style.zIndex = String(9 + Math.round(this.y));
   }
 }
