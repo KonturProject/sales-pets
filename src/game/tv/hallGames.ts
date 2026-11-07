@@ -59,10 +59,15 @@ const LEAP_X0 = HALL.x0 + 40;
 const LEAP_GAP = 0.75;
 /** Ноги прыгуна проходят над перепрыгиваемым на этой доле его роста (`size × scale`): пригнувшийся ниже картинки. */
 const CLEAR = 0.85;
-/** Больной смотрит на игры вне площадки: столько px за краем зала по x, ноги на `WATCH_Y`; второй больной — на ряд ближе. */
-const WATCH_OUT = 260;
+/**
+ * Больной смотрит на игры вне площадки: столько px за краем зала по x (облачко над ним — рядом с доской, не на ней), ноги
+ * на `WATCH_Y`. Следующий больной с той же стороны — на `WATCH_STEP` дальше в сторону и на `WATCH_ROW` ближе к зрителю:
+ * не стоит за первым, а его облачко уже ниже доски.
+ */
+const WATCH_OUT = 200;
 const WATCH_Y = 1180;
-const WATCH_ROW = 90;
+const WATCH_STEP = 140;
+const WATCH_ROW = 120;
 /** Крайние дорожки чехарды не ближе этого к краю зала по y; прыжков у группы не больше `MAX_HOPS` (сторож). */
 const LANE_IN = 20;
 const MAX_HOPS = 50;
@@ -213,7 +218,8 @@ export function ballWatch(from: Pt, ball: Pt, dir: 1 | -1, r: number): Pt {
  * со стороны своей комнаты (её середина — `roomCx`); `k` — который больной по счёту.
  */
 export function watchSpot(roomCx: number, k: number): Pt {
-  return { x: roomCx < CX ? HALL.x0 - WATCH_OUT : HALL.x1 + WATCH_OUT, y: WATCH_Y + k * WATCH_ROW };
+  const out = WATCH_OUT + k * WATCH_STEP;
+  return { x: roomCx < CX ? HALL.x0 - out : HALL.x1 + out, y: WATCH_Y + k * WATCH_ROW };
 }
 
 /**
@@ -238,8 +244,8 @@ export function nearestOnLoop(loop: readonly Pt[], p: Pt): number {
 /**
  * Чехарда для питомцев со сторонами картинок `sizes` в масштабе `scale`. Группы — пары по порядку индексов,
  * при нечётном числе последняя — тройка; меньше двух питомцев — групп нет. Дорожки групп по y — поровну по высоте зала.
- * Группа стоит слева направо в порядке `members`, задний у левого края; шаг соседей —
- * `(a + b) / 2 × scale × LEAP_GAP`. Прыгает всегда задний: перелетает всех и встаёт перед передним на тот же шаг.
+ * Группа стоит слева направо в порядке `members`, задний у левого края (на нечётных дорожках — на полшага правее, чтобы
+ * соседние дорожки не стояли «столбиками»); шаг соседей — `(a + b) / 2 × scale × LEAP_GAP`. Прыгает всегда задний: перелетает всех и встаёт перед передним на тот же шаг.
  * Прыжки идут, пока место приземления в зале. Дуга такая, чтобы ноги прыгуна прошли над каждым на `CLEAR` его роста.
  * Размер 0 или NaN (прыжок не продвигает вперёд) — у группы прыжков нет; больше `MAX_HOPS` прыжков группа не делает.
  */
@@ -254,7 +260,8 @@ export function leapPlan(sizes: readonly number[], scale: number): LeapGroup[] {
   return groups.map((members, g) => {
     const y = groups.length > 1 ? HALL.y0 + LANE_IN + g * step : (HALL.y0 + HALL.y1) / 2;
     const x = new Map<number, number>();
-    members.forEach((m, k) => x.set(m, k ? x.get(members[k - 1])! + gap(members[k - 1], m) : LEAP_X0));
+    const x0 = LEAP_X0 + ((g % 2) * gap(members[0], members[1])) / 2;
+    members.forEach((m, k) => x.set(m, k ? x.get(members[k - 1])! + gap(members[k - 1], m) : x0));
     const start = members.map((m) => ({ x: x.get(m)!, y }));
     const line = [...members];
     const hops: LeapGroup['hops'] = [];

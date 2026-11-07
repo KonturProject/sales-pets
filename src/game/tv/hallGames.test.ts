@@ -4,6 +4,7 @@ import {
   homeLead, hopMs, kickSpot, leapDelay, leapPlan, loopPath, nearestOnLoop, pathLength, pointAt, ringLoop, roamLeg, roamPoint,
   trainLoop, watchSpot, type Game, type Pt,
 } from './hallGames';
+import { BOARDS } from './layout';
 
 /** Детерминированный генератор (LCG) для серий случайных вызовов. */
 const lcg = (seed: number) => () => {
@@ -232,6 +233,17 @@ describe('leapPlan', () => {
     }
   });
 
+  it('соседние дорожки стартуют вразбег — не «столбиками»: сдвиг по x не меньше 0,4 шага пары', () => {
+    for (const sizes of cases.filter((c) => c.length >= 4)) {
+      const plan = leapPlan(sizes, SCALE);
+      for (let g = 1; g < plan.length; g++) {
+        const odd = plan[g % 2 ? g : g - 1].members;
+        const gap = ((sizes[odd[0]] + sizes[odd[1]]) / 2) * SCALE * 0.75;
+        expect(Math.abs(plan[g].start[0].x - plan[g - 1].start[0].x)).toBeGreaterThanOrEqual(0.4 * gap);
+      }
+    }
+  });
+
   it('меньше двух питомцев — прыгать некому', () => {
     expect(leapPlan([], SCALE)).toEqual([]);
     expect(leapPlan([120], SCALE)).toEqual([]);
@@ -303,14 +315,33 @@ describe('roamLeg', () => {
 });
 
 describe('больной смотрит на игры', () => {
-  it('watchSpot: вне игровой площадки, со стороны своей комнаты, y 1180; второй больной — на ряд ближе', () => {
-    expect(watchSpot(864.5, 0)).toEqual({ x: HALL.x0 - 260, y: 1180 });
-    expect(watchSpot(1935.5, 0)).toEqual({ x: HALL.x1 + 260, y: 1180 });
-    expect(watchSpot(1402.5, 0).x).toBe(HALL.x1 + 260); // средняя комната чуть правее середины зала
-    expect(watchSpot(864.5, 1)).toEqual({ x: HALL.x0 - 260, y: 1270 });
+  it('watchSpot: вне игровой площадки, со стороны своей комнаты, y 1180; второй больной — дальше в сторону и ближе', () => {
+    expect(watchSpot(864.5, 0)).toEqual({ x: HALL.x0 - 200, y: 1180 });
+    expect(watchSpot(1935.5, 0)).toEqual({ x: HALL.x1 + 200, y: 1180 });
+    expect(watchSpot(1402.5, 0).x).toBe(HALL.x1 + 200); // средняя комната чуть правее середины зала
+    expect(watchSpot(864.5, 1)).toEqual({ x: HALL.x0 - 340, y: 1300 });
+    expect(watchSpot(1935.5, 1)).toEqual({ x: HALL.x1 + 340, y: 1300 });
     for (const cx of [864.5, 1402.5, 1935.5]) {
-      const p = watchSpot(cx, 0);
-      expect(p.x < HALL.x0 || p.x > HALL.x1).toBe(true);
+      for (const k of [0, 1]) {
+        const p = watchSpot(cx, k);
+        expect(p.x < HALL.x0 || p.x > HALL.x1).toBe(true);
+      }
+    }
+  });
+
+  it('watchSpot: облачко над самым крупным больным не заходит на доски, второй не стоит за первым', () => {
+    // доски — 470×780 и тень 10 px вниз (tv.css .board); облачко .emote — 60 px шириной, от size + 72 до size + 3 над ногами
+    const [s, size] = [HALL_SCALE, 170];
+    const boards = [BOARDS.heroes, BOARDS.group].map((b) => ({ x0: b.x, x1: b.x + 470, y0: b.y, y1: b.y + 790 }));
+    for (const cx of [864.5, 1935.5]) {
+      for (const k of [0, 1]) {
+        const p = watchSpot(cx, k);
+        const cloud = { x0: p.x - 30 * s, x1: p.x + 30 * s, y0: p.y - (size + 72) * s, y1: p.y - (size + 3) * s };
+        for (const b of boards) expect(cloud.x1 < b.x0 || cloud.x0 > b.x1 || cloud.y1 < b.y0 || cloud.y0 > b.y1).toBe(true);
+      }
+      const [a, b] = [watchSpot(cx, 0), watchSpot(cx, 1)];
+      expect(Math.abs(b.x - a.x)).toBeGreaterThanOrEqual(140);
+      expect(b.y).toBeGreaterThan(a.y);
     }
   });
 

@@ -50,6 +50,8 @@ interface Walk {
   tokens: Map<PetActor, number>;
   deadline: number;
   roaming: Map<PetActor, number>;
+  /** Больные, что смотрят на игры (`watch`), — с жетоном наблюдения. */
+  watching: Map<PetActor, number>;
 }
 
 /**
@@ -75,7 +77,7 @@ export class Hall {
     const my = ++this.gen;
     const order = star ? [star, ...pets.filter((p) => p !== star)] : pets;
     this.out = order;
-    const w: Walk = { my, tokens: new Map(order.map((p) => [p, p.hold()])), deadline: Date.now() + ms - HOME_MS, roaming: new Map() };
+    const w: Walk = { my, tokens: new Map(order.map((p) => [p, p.hold()])), deadline: Date.now() + ms - HOME_MS, roaming: new Map(), watching: new Map() };
     this.homeTimer = setTimeout(() => void this.goHome(my), Math.max(0, ms - HOME_MS));
     void this.play(w, order, star);
   }
@@ -134,6 +136,7 @@ export class Hall {
     }
     if (!this.on(w)) return;
     this.mark('roam');
+    this.tend(w, !star);
     this.roam(w, this.healthy(w));
   }
 
@@ -196,7 +199,7 @@ export class Hall {
 
   /**
    * Визит к больному: двое ближайших здоровых подходят с двух сторон (ближний выходит позже, доходят вместе) и радуются,
-   * больной улыбается; остальные бродят. Потом каждый больной сам уходит смотреть на игры (`watch`).
+   * больной улыбается; остальные бродят. Потом больные уходят смотреть на игры или, если игр не будет, бродят (`tend`).
    */
   private async visit(w: Walk): Promise<void> {
     const sick = this.live(w).filter((p) => p.mood === 'sick');
@@ -220,7 +223,23 @@ export class Hall {
       await sleep(1400);
       if (!this.on(w)) return;
     }
-    sick.forEach((p, k) => void this.watch(w, p, k));
+    this.tend(w, true);
+  }
+
+  /**
+   * Дело для больных: смотреть на игры (`watch`; бродивший уходит к краю, уже смотрящий остаётся), а если игр не будет
+   * (праздник или здоровых меньше двух) — медленно бродить по залу (`roam`, `run` сам замедляет больного). Зовётся после
+   * визита, перед каждой игрой и перед финальным брожением: заболевший посреди прогулки не остаётся стоять на поле.
+   * Наблюдатели встают по очереди: ряд — сколько больных уже смотрят.
+   */
+  private tend(w: Walk, games: boolean): void {
+    const watch = games && this.healthy(w).length >= 2;
+    for (const p of this.live(w).filter((q) => q.mood === 'sick')) {
+      if (!watch) this.roam(w, [p]);
+      else if (w.watching.get(p) !== this.tok(w, p)) {
+        void this.watch(w, p, this.live(w).filter((q) => w.watching.get(q) === this.tok(w, q)).length);
+      }
+    }
   }
 
   /**
@@ -233,6 +252,7 @@ export class Hall {
     if (!this.take(w, [p]).length) return;
     const t = this.tok(w, p);
     w.roaming.set(p, t);
+    w.watching.set(p, t);
     const r = p.room.rect;
     const spot = watchSpot(r.cx, k);
     const door = { x: r.cx, y: DOOR_Y };
@@ -251,6 +271,7 @@ export class Hall {
     }
     if (this.on(w) && p.owns(t) && p.mood !== 'sick') {
       w.roaming.delete(p);
+      w.watching.delete(p);
       this.roam(w, [p]);
     }
   }
@@ -288,9 +309,10 @@ export class Hall {
 
   /**
    * Игра `game` для всех здоровых, если она укладывается до срока и их не меньше двух (иначе пропускается); `first` —
-   * впереди (догонялки: кусачий, за ним укушенный). Участники забираются у брожения, больной смотрит с края.
+   * впереди (догонялки: кусачий, за ним укушенный). Участники забираются у брожения; больные — к краю (`tend`).
    */
   private async game(w: Walk, game: Game, first: PetActor[] = []): Promise<void> {
+    if (this.on(w)) this.tend(w, true);
     const kids = this.healthy(w);
     if (!this.on(w) || Date.now() + gameMs(game, kids.map((p) => p.size)) > w.deadline) return;
     const lead = first.filter((p) => kids.includes(p));

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { HOME_MS } from './Hall';
 import { careTurn, CYCLE_MS, MIN_WALK_MS, PASS, PASSES_PER_WALK, shotAt, WALK_MS, walkFor } from './schedule';
 
 const LAP = 55_000;
@@ -69,6 +70,10 @@ describe('walkFor: сколько гулять, если кадр «прогул
   test('застали под конец — прогулку не начинаем', () => {
     expect(walkFor(WALK_MS - MIN_WALK_MS)).toBeGreaterThan(0);
     expect(walkFor(WALK_MS - MIN_WALK_MS + 1)).toBe(0);
+  });
+
+  test('самая короткая поздняя прогулка: до ухода домой успевают выйти (~7 с) и побродить', () => {
+    expect(walkFor(WALK_MS - MIN_WALK_MS) - HOME_MS).toBeGreaterThanOrEqual(9_000);
   });
 });
 
