@@ -54,6 +54,10 @@ function checkStates(groups, label) {
 
 const server = await createServer({ logLevel: 'error', server: { port: 0 } });
 await server.listen();
+// расписание камеры берём у игры, чтобы сценарии прогулки не ломались от смены цифр
+const { PASS, PASSES_PER_WALK, WALK_MS, CYCLE_MS, walkFor } = await server.ssrLoadModule('/src/game/tv/schedule.ts');
+/** Начало кадра прогулки от начала цикла: столько идут круги камеры до неё. */
+const walkStartMs = () => PASSES_PER_WALK * PASS.reduce((sum, [, ms]) => sum + ms, 0);
 const { port } = server.httpServer.address();
 const base = `http://localhost:${port}/`;
 const mock = await startMockBackend({ port: 0 });
@@ -121,7 +125,7 @@ try {
     await tv.close();
   }
 
-  // --- прогулка (фаза Б), часы Playwright: 60 с без ввода включают стену, цикл через 55 с доходит до зала
+  // --- прогулка (фаза Б), часы Playwright: камера автоматическая, после четырёх кругов доходит до зала
   {
     const wp = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
     const walkErrors = [];
@@ -140,9 +144,9 @@ try {
     const nodes = () => wp.evaluate(() => document.querySelectorAll('*:not(.emote *):not(.ticker *)').length);
 
     // часы Playwright медленные (≈0,6 с на секунду): паузы без событий перематываются, прогулки идут по-настоящему.
-    // Цикл 85 с идёт с загрузки (камера автоматическая и без режима стены): прогулка с 55 по 85 с; pos — где в цикле стоим.
+    // Цикл идёт с загрузки (камера автоматическая и без режима стены): прогулка в конце цикла; pos — где в цикле стоим.
     let pos = 0;
-    const toWalk = async (into) => { await wp.clock.fastForward((55_000 - pos + 85_000) % 85_000); await wp.clock.runFor(into); pos = (55_000 + into) % 85_000; };
+    const toWalk = async (into) => { await wp.clock.fastForward((walkStartMs() - pos + CYCLE_MS) % CYCLE_MS); await wp.clock.runFor(into); pos = (walkStartMs() + into) % CYCLE_MS; };
     await wp.clock.runFor(1_000);
     pos = 1_000;
     check(await shot() === 'rooms', `после загрузки: кадр ${await shot()}, ожидался rooms (цикл без ожидания режима стены)`);
@@ -163,20 +167,18 @@ try {
     check((await banner()).includes('Прогулка'), `прогулка: плашка «${await banner()}»`);
     const out = (await pets()).filter((p) => p.kind === 'pet');
     check(out.length >= 2 && out.every((p) => p.y > 980 && p.s > 1.4), `прогулка: питомцы не в зале ${JSON.stringify(out)}`);
-    await wp.clock.runFor(25_000);
-    pos = 89_000 % 85_000;
+    await wp.clock.runFor(WALK_MS - 10_000 + 4_000);
+    pos = 4_000;
     check(await shot() === 'rooms', `после прогулки: кадр ${await shot()}`);
     check(inRooms(await pets()), `после прогулки: не все дома ${JSON.stringify(await pets())}`);
     check(await banner() === '' && await litter() === 0, 'после прогулки: осталась плашка, конфетти или мяч');
 
-    // ещё две прогулки целиком не растят DOM: работа на стене сутками
+    // ещё одна прогулка целиком не растит DOM: работа на стене сутками (часы Playwright медленные, прогулка 80 с)
     const before = await nodes();
-    for (let k = 0; k < 2; k++) {
-      await toWalk(34_000);
-      check(inRooms(await pets()) && await litter() === 0, `прогулка ${k + 2}: после неё не все дома или остался мусор`);
-    }
+    await toWalk(WALK_MS + 4_000);
+    check(inRooms(await pets()) && await litter() === 0, 'прогулка 2: после неё не все дома или остался мусор');
     const after = await nodes();
-    check(after === before, `три прогулки подряд: узлов было ${before}, стало ${after}`);
+    check(after === before, `две прогулки подряд: узлов было ${before}, стало ${after}`);
 
     // вкладку скрыли посреди прогулки: через тик экономии все дома, зал пуст
     await toWalk(6_000);
@@ -195,10 +197,7 @@ try {
   // --- живость прогулки (часы Playwright): гуляющие (крупные питомцы) не замирают ни всем залом, ни поодиночке;
   // замер раз в 500 мс с 6-й секунды кадра до начала дороги домой. Начало кадра прогулки считается от констант расписания.
   {
-    const { WALK_MS, CYCLE, walkFor } = await server.ssrLoadModule('/src/game/tv/schedule.ts');
     const { HOME_MS } = await server.ssrLoadModule('/src/game/tv/Hall.ts');
-    /** Начало кадра прогулки от начала цикла: всё, что в цикле идёт до неё. */
-    const walkStartMs = () => CYCLE.filter(([s]) => s !== 'walk').reduce((sum, [, ms]) => sum + ms, 0);
     const GROUP_ORDER = Object.keys(EXPECTED);
     const STEP = 500;
     const lp = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
@@ -329,7 +328,7 @@ try {
   check(await valueOf('.dock [aria-pressed="true"]', (e) => e.dataset.pick) === 'СР2', 'нижняя панель: СР2 не отмечена');
   check(await valueOf('[data-block="heroes"]', (e) => e.dataset.day) === '2026-11-10', 'выбор дня сбросился после тика обновления');
 
-  // удержание доски (часы Playwright): выбор дня в конце кадра «группа» (54 с цикла) держит доску 15 с и съедает
+  // удержание доски (часы Playwright): выбор дня в конце кадра «группа» (за 2 с до прогулки) держит доску 15 с и съедает
   // начало прогулки — прогулка короче, но питомцы дома до смены кадра (а не телепортом); после удержания у героев
   // снова день по умолчанию
   {
@@ -344,13 +343,14 @@ try {
       const m = e.style.transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([\d.]+)\)/);
       return m ? Number(m[2]) <= 940 && Number(m[3]) === 1 : false;
     }));
-    await hp.clock.fastForward(53_000);
+    await hp.clock.fastForward(walkStartMs() - 1_000 - 2_000);
     await hp.$eval('.dock-days button[aria-label="Предыдущий день"]', (b) => b.click());
     check(await shot() === 'heroes' && await heroDay() === '2026-11-10', `удержание: кадр ${await shot()}, день ${await heroDay()}`);
     await hp.clock.fastForward(16_000);
     check(await shot() === 'walk', `после удержания: кадр ${await shot()}, ожидался walk (остаток прогулки)`);
     check(await heroDay() === '2026-11-11', `после удержания: день героев ${await heroDay()}, ожидался 2026-11-11`);
-    await hp.clock.runFor(14_500);
+    // от начала кадра прошло 14 с (16 с после клика, клик за 2 с до кадра); все дома — за 1,5 с до конца кадра
+    await hp.clock.runFor(WALK_MS - 1_500 - 14_000);
     const atEnd = await home();
     check(atEnd.length >= 2 && atEnd.every(Boolean), `поздняя прогулка: к концу кадра не все дома ${JSON.stringify(atEnd)}`);
     await hp.close();
