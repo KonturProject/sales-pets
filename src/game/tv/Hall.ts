@@ -470,17 +470,27 @@ export class Hall {
   }
 
   /**
-   * Отрезки брожения: к `roamPoint` бегом шага зала (`SPEED.hall`), пауза 0,5–1,5 с, изредка улыбка или сердечко.
-   * Отрезок с паузой кончается до срока: последний короче и с короткой паузой; когда времени нет — стоит до срока.
+   * Отрезки брожения: к `roamPoint` своим шагом (`SPEED.hall`, больной в `SICK` раз медленнее), пауза 0,5–1,5 с, изредка
+   * улыбка или сердечко. Отрезок с паузой кончается до срока, а у нижнего ряда — заранее, чтобы после срока дойти до двери
+   * за `HOME_WALK` (`homeLead`): последний короче и с короткой паузой. Когда времени нет — стоит до срока, а если оттуда
+   * домой не успеть, идёт к двери.
    */
   private async wander(w: Walk, p: PetActor, t: number): Promise<void> {
+    const r = p.room.rect;
+    const door = { x: r.cx, y: DOOR_Y };
     while (this.on(w) && p.owns(t)) {
-      const left = w.deadline - Date.now();
+      const v = p.mood === 'sick' ? SPEED.hall * SICK : SPEED.hall;
+      const lead = (q: Pt) => (r.row === 0 ? 0 : homeLead(q, door, v, HOME_WALK)); // верхний ряд прыгает домой за 1,5 с
       const to = roamPoint(Math.random);
+      const left = w.deadline - Math.max(lead(p), lead(to)) - Date.now();
       let pause = ROAM_PAUSE + Math.random() * 1_000;
-      if (far(p, to) / SPEED.hall + pause > left) pause = ROAM_PAUSE;
-      const leg = roamLeg(p, to, left - pause, SPEED.hall);
-      if (!leg || !(await p.run([leg], SPEED.hall, t))) return;
+      if (far(p, to) / v + pause > left) pause = ROAM_PAUSE;
+      const leg = roamLeg(p, to, left - pause, v);
+      if (!leg) {
+        if (lead(p) > 0) await p.run([door], SPEED.hall, t);
+        return;
+      }
+      if (!(await p.run([leg], SPEED.hall, t))) return;
       if (Math.random() < 0.25) p.emote(Math.random() < 0.5 ? 'smile' : 'joy', 1300);
       await sleep(pause);
     }
