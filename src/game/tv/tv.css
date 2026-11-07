@@ -150,12 +150,15 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
   position: absolute; left: calc(var(--size) / -2); top: calc(var(--size) * -1);
   width: var(--size); height: var(--size); transition: transform .2s;
 }
-.pet .bob { width: 100%; height: 100%; transform-origin: 50% 100%; animation: tv-idle calc(2.6s * var(--speed)) ease-in-out infinite; }
+.pet .bob {
+  width: 100%; height: 100%; transform-origin: 50% 100%; animation: tv-idle calc(2.6s * var(--speed)) ease-in-out infinite;
+  transition: transform .12s ease-out; /* присед и распрямление плавно, в обе стороны */
+}
 .pet .bob img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: 50% 100%; }
 .pet.walking .bob { animation: tv-hop .42s ease-in-out infinite; }
 .pet.sneak .bob { transform: scale(1.06, .82); }
 /* присел на месте (чехарда): покачивание анимирует transform и перебило бы присед */
-.pet.sneak:not(.walking) .bob { animation: none; transition: transform .12s ease-out; }
+.pet.sneak:not(.walking) .bob { animation: none; }
 .pet.sneak.walking .bob { animation: tv-sneak .9s ease-in-out infinite; }
 /* без сдвига оттенка: на рисованных героях он красит кожу в зелёный; болезнь видна по бледности и градуснику */
 .pet[data-mood='sick'] img { filter: saturate(.5) brightness(.93); }
@@ -238,7 +241,7 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 .tv[data-shot='walk'] .fg.right, .tv[data-party] .fg.right { transform: scaleX(-1); }
 .confetti { position: absolute; width: 14px; height: 18px; border-radius: 3px; z-index: 2000; pointer-events: none; }
 .hall-ball {
-  position: absolute; left: -30px; top: 0; width: 60px; height: 60px; border-radius: 50%; z-index: 1500; pointer-events: none;
+  position: absolute; left: -30px; top: 0; width: 60px; height: 60px; border-radius: 50%; pointer-events: none;
   background: radial-gradient(circle at 35% 35%, #fff9, transparent 40%), #d98b6a;
   transition: transform .85s ease-out, opacity .3s;
 }
@@ -286,6 +289,7 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .tv-world, .fg, .dock { transition: none; }
   .tv .bob, .tv .pet.sneak.walking .bob, .tv .toy.spin .toy-body { animation: none; }
+  .tv .bob { transition: none; }
   .tv .toy.spin .toy-body::before, .tv .toy.spin .toy-body::after { display: none; }
   .tv .hearts { display: none; }
   .tv .tv-piles .pile.pop, .tv .tv-room .flies.arrive { animation: none; }

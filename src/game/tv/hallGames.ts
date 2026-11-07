@@ -59,6 +59,10 @@ const LEAP_X0 = HALL.x0 + 40;
 const LEAP_GAP = 0.75;
 /** Ноги прыгуна проходят над перепрыгиваемым на этой доле его роста (`size × scale`): пригнувшийся ниже картинки. */
 const CLEAR = 0.85;
+/** Больной смотрит на игры вне площадки: столько px за краем зала по x, ноги на `WATCH_Y`; второй больной — на ряд ближе. */
+const WATCH_OUT = 260;
+const WATCH_Y = 1180;
+const WATCH_ROW = 90;
 /** Крайние дорожки чехарды не ближе этого к краю зала по y; прыжков у группы не больше `MAX_HOPS` (сторож). */
 const LANE_IN = 20;
 const MAX_HOPS = 50;
@@ -202,6 +206,22 @@ export function ballWatch(from: Pt, ball: Pt, dir: 1 | -1, r: number): Pt {
   };
   const [mine, other] = a0 < 0 ? [spot(-1), spot(1)] : [spot(1), spot(-1)];
   return (other.t > mine.t ? other : mine).p;
+}
+
+/**
+ * Где больной смотрит на игры: вне игровой площадки (её не задевают дорожки чехарды, круг, мяч и паровозик), у края зала
+ * со стороны своей комнаты (её середина — `roomCx`); `k` — который больной по счёту.
+ */
+export function watchSpot(roomCx: number, k: number): Pt {
+  return { x: roomCx < CX ? HALL.x0 - WATCH_OUT : HALL.x1 + WATCH_OUT, y: WATCH_Y + k * WATCH_ROW };
+}
+
+/**
+ * За сколько мс до срока стоящему в `from` пора идти к двери `door` со скоростью `speed` (px мира в мс), чтобы после срока
+ * путь до неё занял не больше `ms`; 0 — успевает и так.
+ */
+export function homeLead(from: Pt, door: Pt, speed: number, ms: number): number {
+  return Math.max(0, seg(from, door) / speed - ms);
 }
 
 /** Расстояние вдоль петли (от её начала) до вершины, ближайшей к `p`: с этого места игра начинается у питомца под рукой. */

@@ -2,11 +2,11 @@ import { THEME } from '@/art/manifest';
 import { GROUPS } from '@/engine/types';
 import { pickBite } from './bite';
 import {
-  CHASE_LAPS, HALL, HALL_SCALE, KICKS, RUN, TIMING, TRAIN, ballSpot, ballWatch, gameMs, gamesFor, headingAt, hopMs,
-  kickSpot, leapDelay, leapPlan, loopPath, nearestOnLoop, pathLength, ringLoop, roamLeg, roamPoint, trainLoop,
-  type Game, type LeapGroup, type Pt,
+  CHASE_LAPS, HALL, HALL_SCALE, KICKS, RUN, TIMING, TRAIN, ballSpot, ballWatch, gameMs, gamesFor, headingAt, homeLead,
+  hopMs, kickSpot, leapDelay, leapPlan, loopPath, nearestOnLoop, pathLength, ringLoop, roamLeg, roamPoint, trainLoop,
+  watchSpot, type Game, type LeapGroup, type Pt,
 } from './hallGames';
-import { SPEED, type PetActor } from './PetActor';
+import { SICK, SPEED, type PetActor } from './PetActor';
 
 /** Столько до конца прогулки все идут по домам; кто не дошёл к концу — сразу в комнате. */
 export const HOME_MS = 8_000;
@@ -23,9 +23,13 @@ const COLORS = GROUPS.map((g) => THEME[g].accent);
 const ROAM_PAUSE = 500;
 /** Укус: место встречи не ближе этого к краю зала по x — кусающему нужно место сзади, укушенному — впереди. */
 const BITE_ROOM = 300;
-/** Больной смотрит на игры от заднего края зала, отступив от боковой стены; второй больной — на ряд ближе к зрителю. */
-const WATCH_IN = 30;
-const WATCH_ROW = 90;
+/**
+ * Больной смотрит на игры вне площадки (`watchSpot`); если оттуда после срока не дойти до двери своей комнаты за столько,
+ * он идёт к ней заранее. Остальное время ухода домой — спуск в комнату (0,7 с), очередь (до 1 с) и запас.
+ */
+const HOME_WALK = HOME_MS - 3_000;
+/** Визит: ближний гость выходит позже дальнего (чтобы дойти вместе), но ждёт не дольше этого. */
+const VISIT_WAIT = 3_000;
 /** Мяч: подскок пинающего на замахе, px; зрители встают в `BALL_WATCH`…+70 px от мяча; поворот мяча на 1 px пути, °. */
 const KICK_HOP = 24;
 const BALL_WATCH = 150;
@@ -109,8 +113,8 @@ export class Hall {
   private async play(w: Walk, order: PetActor[], star?: PetActor): Promise<void> {
     this.mark('out');
     await Promise.all(order.map(async (p, k) => {
-      // вышедший бродит, пока выходят остальные
-      if ((await this.goOut(p, k, this.tok(w, p))) && p.mood !== 'sick') this.roam(w, [p]);
+      // вышедший бродит, пока выходят остальные; герой праздника ждёт на своём месте
+      if ((await this.goOut(p, k, this.tok(w, p))) && p.mood !== 'sick' && p !== star) this.roam(w, [p]);
     }));
     if (!this.on(w)) return;
     if (star) await this.celebrate(w, star);
@@ -154,7 +158,9 @@ export class Hall {
     const fans = cast.filter((p) => p !== star && p.owns(this.tok(w, p)));
     await Promise.all(fans.map(async (p, k) => {
       const ang = (Math.PI * k) / Math.max(1, fans.length - 1);
-      if (!(await p.walk(star.x + Math.cos(ang) * 330, star.y + 50 + Math.sin(ang) * 150, this.tok(w, p), SPEED.hall))) return;
+      const x = clamp(star.x + Math.cos(ang) * 330, HALL.x0, HALL.x1);
+      const y = clamp(star.y + 50 + Math.sin(ang) * 150, HALL.y0, HALL.y1);
+      if (!(await p.walk(x, y, this.tok(w, p), SPEED.hall))) return;
       p.face(p.x < star.x ? 1 : -1);
       p.emote('smile');
     }));
@@ -189,8 +195,8 @@ export class Hall {
   }
 
   /**
-   * Визит к больному: двое ближайших здоровых подходят с двух сторон (ближний — медленнее, доходят вместе) и радуются,
-   * больной улыбается; остальные бродят. Потом каждый больной сам отходит к краю зала и смотрит на игры (`watch`).
+   * Визит к больному: двое ближайших здоровых подходят с двух сторон (ближний выходит позже, доходят вместе) и радуются,
+   * больной улыбается; остальные бродят. Потом каждый больной сам уходит смотреть на игры (`watch`).
    */
   private async visit(w: Walk): Promise<void> {
     const sick = this.live(w).filter((p) => p.mood === 'sick');
@@ -203,7 +209,8 @@ export class Hall {
       const spots = guests.map((p, k) => ({ x: ill.x + (guests.length === 2 ? (k ? 170 : -170) : side(p.x - ill.x) * 170), y: ill.y + 10 }));
       const ms = Math.max(1, ...guests.map((p, k) => far(p, spots[k]))) / SPEED.hall;
       await Promise.all(guests.map(async (p, k) => {
-        if (!(await p.walk(spots[k].x, spots[k].y, this.tok(w, p), Math.max(SPEED.hall / 4, far(p, spots[k]) / ms)))) return;
+        await sleep(Math.min(VISIT_WAIT, ms - far(p, spots[k]) / SPEED.hall));
+        if (!this.on(w) || !(await p.walk(spots[k].x, spots[k].y, this.tok(w, p), SPEED.hall))) return;
         p.face(side(ill.x - p.x));
         p.emote('joy', 2000);
       }));
@@ -217,19 +224,34 @@ export class Hall {
   }
 
   /**
-   * Больной медленно отходит к заднему краю зала со стороны своей комнаты (оттуда ближе домой) и смотрит на игры.
-   * Жетон записан как бродящий: вылеченного посреди прогулки брожение второй раз не запускает, а сцена забирает (`take`).
+   * Больной своим медленным шагом уходит за край игровой площадки со стороны своей комнаты (`watchSpot`) и смотрит на игры:
+   * к центру, иногда градусник. Если оттуда домой после срока не успеть, к двери идёт заранее (`homeLead`). Прежний цикл
+   * питомца (заболел посреди прогулки — бродил) обрывается (`take`); жетон записан как бродящий, чтобы брожение не
+   * запустилось второй раз. Вылечили посреди прогулки — снова бродит.
    */
   private async watch(w: Walk, p: PetActor, k: number): Promise<void> {
+    if (!this.take(w, [p]).length) return;
     const t = this.tok(w, p);
     w.roaming.set(p, t);
-    const mid = (HALL.x0 + HALL.x1) / 2;
-    const x = p.room.rect.cx < mid ? HALL.x0 + WATCH_IN : HALL.x1 - WATCH_IN;
-    if (!(await p.run([{ x, y: HALL.y0 + k * WATCH_ROW }], SPEED.hall, t))) return;
-    p.face(side(mid - x));
-    while (this.on(w) && p.owns(t)) {
-      if (Math.random() < 0.5) p.emote('sick', 1800);
-      await sleep(3_000 + Math.random() * 2_000);
+    const r = p.room.rect;
+    const spot = watchSpot(r.cx, k);
+    const door = { x: r.cx, y: DOOR_Y };
+    const leave = w.deadline - homeLead(spot, door, SPEED.hall * SICK, HOME_WALK);
+    const watching = () => this.on(w) && p.owns(t) && p.mood === 'sick';
+    if ((await p.run([spot], SPEED.hall, t)) && watching()) {
+      p.face(side((HALL.x0 + HALL.x1) / 2 - spot.x));
+      while (watching() && Date.now() < leave) {
+        if (Math.random() < 0.5) p.emote('sick', 1800);
+        await sleep(Math.min(3_000 + Math.random() * 2_000, Math.max(0, leave - Date.now())));
+      }
+      if (watching()) {
+        await p.run([door], SPEED.hall, t); // от места наблюдения далеко домой: к двери до срока
+        return;
+      }
+    }
+    if (this.on(w) && p.owns(t) && p.mood !== 'sick') {
+      w.roaming.delete(p);
+      this.roam(w, [p]);
     }
   }
 
@@ -286,15 +308,16 @@ export class Hall {
     const per = pathLength(ring);
     const from = nearestOnLoop(ring, team[0]);
     const laps = team.map((_, k) => loopPath(ring, from - (k * per) / team.length, CHASE_LAPS * per));
-    await this.lineUp(w, team, laps);
+    const ready = await this.lineUp(w, team, laps);
     if (!this.on(w)) return;
-    await Promise.all(team.map((p, k) => p.run(laps[k], RUN, this.tok(w, p))));
+    await Promise.all(team.map((p, k) => ready[k] && p.run(laps[k], RUN, this.tok(w, p))));
     await this.rejoice(w, team);
   }
 
   /**
    * Мяч: появляется у ног случайного игрока, тот пинает от себя. Пока мяч катится, все бегут к нему: ближайший к месту
-   * пинка встаёт вплотную — с той стороны, чтобы следующий пинок унёс мяч от него (к мячу не раньше, чем тот докатится),
+   * пинка встаёт вплотную — с той стороны, чтобы следующий пинок унёс мяч от него (без остановки: не быстрее бега и не
+   * раньше, чем мяч докатится),
    * остальные — вокруг (`ballWatch`), лицом к мячу; следующий пинок их перебивает. После `KICKS` пинков мяч тает, все
    * радуются. Пинок, который не успеть до срока, не начинается.
    */
@@ -325,8 +348,8 @@ export class Hall {
         break;
       }
       for (const p of players) if (p !== next) void this.watchBall(w, p, at, dir);
-      await sleep(Math.max(0, TIMING.roll - ms));
-      if (!this.on(w) || !(await next.run([spot], RUN, this.tok(w, next)))) break;
+      const speed = Math.min(RUN, Math.max(SPEED.hall / 4, far(next, spot) / TIMING.roll));
+      if (!this.on(w) || !(await next.run([spot], speed, this.tok(w, next)))) break;
       next.face(dir);
       kicker = next;
     }
@@ -356,10 +379,10 @@ export class Hall {
       if (k) from -= ((cars[k - 1].size + p.size) / 2) * HALL_SCALE * CAR_GAP;
       return loopPath(loop, from, per);
     });
-    await this.lineUp(w, cars, laps);
+    const ready = await this.lineUp(w, cars, laps);
     if (!this.on(w)) return;
-    if (lead.owns(this.tok(w, lead))) lead.say('ту-ту!', 1400);
-    await Promise.all(cars.map((p, k) => p.run(laps[k], TRAIN, this.tok(w, p))));
+    if (ready[0]) lead.say('ту-ту!', 1400);
+    await Promise.all(cars.map((p, k) => ready[k] && p.run(laps[k], TRAIN, this.tok(w, p))));
     await this.rejoice(w, [lead]);
   }
 
@@ -387,7 +410,7 @@ export class Hall {
       const under = g.members.filter((m) => m !== hop.who).map((m) => team[m]).filter((p) => p.owns(this.tok(w, p)));
       under.forEach((p) => p.crouch(true));
       await sleep(TIMING.crouch);
-      const ok = await who.moveTo(hop.to, ms, this.tok(w, who), this.arc(hop.arc));
+      const ok = this.on(w) && (await who.moveTo(hop.to, ms, this.tok(w, who), this.arc(hop.arc)));
       under.forEach((p) => p.crouch(false));
       if (!ok) break;
     }
@@ -396,12 +419,13 @@ export class Hall {
     if (this.on(w)) this.roam(w, kids);
   }
 
-  /** Сбор на игру: каждый бегом к началу своего пути и разворачивается по ходу; ждём всех. */
-  private async lineUp(w: Walk, pets: PetActor[], paths: Pt[][]): Promise<void> {
-    await Promise.all(pets.map(async (p, k) => {
-      if (!(await p.run([paths[k][0]], RUN, this.tok(w, p)))) return;
+  /** Сбор на игру: каждый бегом к началу своего пути и разворачивается по ходу; ждём всех. `true` — встал на место. */
+  private lineUp(w: Walk, pets: PetActor[], paths: Pt[][]): Promise<boolean[]> {
+    return Promise.all(pets.map(async (p, k) => {
+      if (!(await p.run([paths[k][0]], RUN, this.tok(w, p)))) return false;
       const dir = headingAt(paths[k], LOOK_AHEAD);
       if (dir) p.face(dir);
+      return true;
     }));
   }
 
@@ -515,10 +539,18 @@ export class Hall {
     return ball;
   }
 
-  /** Мяч катится к `at` (переход transform в tv.css) и по глубине — как питомец, стоящий там же. */
+  /**
+   * Мяч катится к `at` (переход transform в tv.css). По глубине на время проката — ближняя к зрителю из старой и новой
+   * точки, по приезде — как питомец, стоящий там же.
+   */
   private putBall(ball: HTMLElement, at: Pt, rot: number): void {
+    const z = String(10 + Math.round(at.y));
     ball.style.transform = `translate(${at.x}px, ${at.y - 60}px) rotate(${rot}deg)`;
-    ball.style.zIndex = String(10 + Math.round(at.y));
+    ball.style.zIndex = String(Math.max(Number(z), Number(ball.style.zIndex) || 0));
+    ball.dataset.z = z;
+    setTimeout(() => {
+      if (ball.dataset.z === z) ball.style.zIndex = z;
+    }, TIMING.roll);
   }
 
   private arc(h: number): number {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHASE_LAPS, HALL, HALL_SCALE, KICK_MAX, KICK_MIN, RUN, TIMING, TRAIN, ballSpot, ballWatch, gameMs, gamesFor, headingAt,
-  hopMs, kickSpot, leapDelay, leapPlan, loopPath, nearestOnLoop, pathLength, pointAt, ringLoop, roamLeg, roamPoint,
-  trainLoop, type Game, type Pt,
+  homeLead, hopMs, kickSpot, leapDelay, leapPlan, loopPath, nearestOnLoop, pathLength, pointAt, ringLoop, roamLeg, roamPoint,
+  trainLoop, watchSpot, type Game, type Pt,
 } from './hallGames';
 
 /** Детерминированный генератор (LCG) для серий случайных вызовов. */
@@ -302,6 +302,26 @@ describe('roamLeg', () => {
   });
 });
 
+describe('больной смотрит на игры', () => {
+  it('watchSpot: вне игровой площадки, со стороны своей комнаты, y 1180; второй больной — на ряд ближе', () => {
+    expect(watchSpot(864.5, 0)).toEqual({ x: HALL.x0 - 260, y: 1180 });
+    expect(watchSpot(1935.5, 0)).toEqual({ x: HALL.x1 + 260, y: 1180 });
+    expect(watchSpot(1402.5, 0).x).toBe(HALL.x1 + 260); // средняя комната чуть правее середины зала
+    expect(watchSpot(864.5, 1)).toEqual({ x: HALL.x0 - 260, y: 1270 });
+    for (const cx of [864.5, 1402.5, 1935.5]) {
+      const p = watchSpot(cx, 0);
+      expect(p.x < HALL.x0 || p.x > HALL.x1).toBe(true);
+    }
+  });
+
+  it('homeLead: за сколько до срока идти к двери, чтобы дойти за отведённое; успевает — 0', () => {
+    const door = { x: 1400, y: 1060 };
+    expect(homeLead({ x: 2260, y: 1060 }, door, 0.1, 5_000)).toBeCloseTo(8_600 - 5_000);
+    expect(homeLead({ x: 1600, y: 1060 }, door, 0.1, 5_000)).toBe(0);
+    expect(homeLead(door, door, 0.1, 5_000)).toBe(0);
+  });
+});
+
 describe('мяч: где встать пинающему и зрителям', () => {
   /** Угол между направлением от мяча к точке и линией полёта (`dir` по x), 0…π. */
   const angle = (p: Pt, ball: Pt, dir: 1 | -1) => Math.abs(Math.atan2(p.y - ball.y, (p.x - ball.x) * dir));
@@ -326,7 +346,7 @@ describe('мяч: где встать пинающему и зрителям', (
       const p = ballWatch(from, ball, dir, r);
       expect(inHall(p)).toBe(true);
       expect(dist(p, ball)).toBeLessThanOrEqual(r + 1e-6);
-      expect(dist(p, ball)).toBeGreaterThan(60); // не на мяче
+      expect(dist(p, ball)).toBeGreaterThanOrEqual(139); // не меньше ≈140: зал глубиной 280, сторона с местом
       const a = angle(p, ball, dir);
       expect(a).toBeGreaterThanOrEqual(Math.PI / 4 - 1e-6);
       expect(a).toBeLessThanOrEqual((3 * Math.PI) / 4 + 1e-6);

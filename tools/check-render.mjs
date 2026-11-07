@@ -575,6 +575,25 @@ try {
   check(partyBanner === 'СР3: +1 оплата! Все на праздник', `праздник: плашка «${partyBanner}»`);
   const confetti = await page.waitForSelector('.tv-world > .confetti', { state: 'attached', timeout: 8_000 }).catch(() => null);
   check(confetti !== null, 'праздник: нет конфетти');
+  // гуляющие на празднике в пределах зала (x 800…2000, ноги не ниже 1410): замер раз в 0,5 с до ухода домой
+  const outside = [];
+  let partyWalkers = 0;
+  for (let k = 0; k < 30; k++) {
+    const s = await page.evaluate(() => ({
+      hall: document.querySelector('.tv-world')?.dataset.hall ?? '',
+      pets: [...document.querySelectorAll('.tv-world > .pet')].map((e, i) => {
+        const m = e.style.transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([\d.]+)\)/);
+        return { i, x: m ? Math.round(Number(m[1])) : NaN, y: m ? Math.round(Number(m[2])) : NaN, s: m ? Number(m[3]) : NaN };
+      }),
+    }));
+    if (s.hall === '' || s.hall === 'home') break;
+    const out = s.pets.filter((p) => p.s > 1);
+    partyWalkers = Math.max(partyWalkers, out.length);
+    outside.push(...out.filter((p) => !(p.x >= 800 && p.x <= 2000 && p.y <= 1410)).map((p) => ({ ...p, hall: s.hall })));
+    await page.waitForTimeout(500);
+  }
+  check(partyWalkers >= 2 && outside.length === 0,
+    `праздник: гуляющие вне зала (гуляющих ${partyWalkers}) ${JSON.stringify(outside.slice(0, 4))}`);
   const over = await page.waitForSelector('.tv:not([data-party])', { timeout: 25_000 }).catch(() => null);
   check(over !== null, 'праздник: не закончился за 25 с');
   await page.waitForTimeout(2_500);

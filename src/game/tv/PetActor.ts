@@ -16,7 +16,7 @@ const EGG_SIZE = 110;
 const GRAVE_SIZE = 120;
 /** Скорость шага, px мира в мс: в зале шаг крупнее (камера отдалена, питомец больше); больной ходит медленнее. */
 export const SPEED = { room: 0.13, hall: 0.2 };
-const SICK = 0.55;
+export const SICK = 0.55;
 /** Питомец не подходит к стене комнаты ближе этого. */
 const EDGE = 70;
 const MOOD_EMOTE: Record<Mood, Emote | null> = { ok: 'ok', sad: 'sad', bored: 'bored', sick: 'sick', dead: null };
@@ -302,6 +302,7 @@ export class PetActor {
    * В фоне кадров нет — переход всё равно заканчивается по таймеру.
    */
   moveTo(to: Move, ms: number, token: number, arc = 0): Promise<boolean> {
+    if (token !== this.gen) return Promise.resolve(false); // чужой жетон: ни поворота, ни шага
     const from = { x: this.x, y: this.y, s: this.s };
     const tx = to.x ?? from.x;
     const ty = to.y ?? from.y;
@@ -342,6 +343,7 @@ export class PetActor {
    * отрезок (|dx| ≤ 3) не разворачивает. `false`, если питомца перехватили. В фоне кадров нет — по таймеру сразу в конец.
    */
   run(points: readonly Pt[], speed: number, token: number): Promise<boolean> {
+    if (token !== this.gen) return Promise.resolve(false); // чужой жетон: ни поворота, ни шага
     const path = [{ x: this.x, y: this.y }, ...points];
     const len = pathLength(path);
     const v = this.state === 'sick' ? speed * SICK : speed;
