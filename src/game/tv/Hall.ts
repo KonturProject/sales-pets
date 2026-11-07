@@ -230,14 +230,15 @@ export class Hall {
    * Дело для больных: смотреть на игры (`watch`; бродивший уходит к краю, уже смотрящий остаётся), а если игр не будет
    * (праздник или здоровых меньше двух) — медленно бродить по залу (`roam`, `run` сам замедляет больного). Зовётся после
    * визита, перед каждой игрой и перед финальным брожением: заболевший посреди прогулки не остаётся стоять на поле.
-   * Наблюдатели встают по очереди: ряд — сколько больных уже смотрят.
+   * Наблюдатели встают по очереди: ряд — сколько больных с той же стороны зала уже смотрят.
    */
   private tend(w: Walk, games: boolean): void {
     const watch = games && this.healthy(w).length >= 2;
+    const edge = (q: PetActor) => watchSpot(q.room.rect.cx, 0).x;
     for (const p of this.live(w).filter((q) => q.mood === 'sick')) {
       if (!watch) this.roam(w, [p]);
       else if (w.watching.get(p) !== this.tok(w, p)) {
-        void this.watch(w, p, this.live(w).filter((q) => w.watching.get(q) === this.tok(w, q)).length);
+        void this.watch(w, p, this.live(w).filter((q) => w.watching.get(q) === this.tok(w, q) && edge(q) === edge(p)).length);
       }
     }
   }
