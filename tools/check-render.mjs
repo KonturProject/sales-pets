@@ -270,7 +270,7 @@ try {
   check(liveBroken.length === 0, `живой экран: не загрузились картинки: ${liveBroken.join(', ')}`);
   check(await valueOf('[role="status"]', (e) => e.hidden) === true, 'живой экран: нет скрытого [role="status"] или показано «Нет связи» при рабочем бэкенде');
   const hud = (await valueOf('.hud', (e) => e.textContent)) ?? '';
-  check(hud.includes('день 8 из 14') && hud.includes('обновлено') && hud.includes('воронка по 11.11'), `живой экран: верхняя строка «${hud}»`);
+  check(hud.includes('день 8 из 20') && hud.includes('обновлено') && hud.includes('воронка по 11.11'), `живой экран: верхняя строка «${hud}»`);
 
   // панель рейтингов: места, полные ФИО, отпускник вне рейтингов
   check(JSON.stringify(await panelRows('group')) === JSON.stringify(SR1_RANKING), `панель «Группа»: ${JSON.stringify(await panelRows('group'))}`);

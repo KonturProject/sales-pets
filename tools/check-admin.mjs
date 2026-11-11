@@ -146,11 +146,11 @@ try {
       const wide = await admin.evaluate(() => document.documentElement.scrollWidth);
       check(wide <= 390, `телефон: вкладка «${tab}» шириной ${wide} px — страница прокручивается вбок`);
     }
-    // сетка выходных: все 21 клетка целиком на экране, а не за краем
+    // сетка выходных: все 29 клеток целиком на экране, а не за краем
     await admin.click('[role="tab"][data-tab="norms"]');
     await admin.waitForSelector('[data-block="holidays"] [data-day]', { timeout: 8_000 });
     const edge = await admin.$$eval('[data-block="holidays"] [data-day]', (days) => ({ n: days.length, right: Math.max(...days.map((d) => d.getBoundingClientRect().right)), left: Math.min(...days.map((d) => d.getBoundingClientRect().left)), clipped: days.filter((d) => d.scrollWidth > d.clientWidth).length }));
-    check(edge.n === 21 && edge.left >= 0 && edge.right <= 390, `телефон: сетка выходных выходит за экран (клеток ${edge.n}, от ${edge.left} до ${edge.right} px)`);
+    check(edge.n === 29 && edge.left >= 0 && edge.right <= 390, `телефон: сетка выходных выходит за экран (клеток ${edge.n}, от ${edge.left} до ${edge.right} px)`);
     check(edge.clipped === 0, `телефон: у клеток выходных обрезан текст (${edge.clipped} шт.)`);
   });
 
@@ -242,7 +242,7 @@ try {
     const admin = await newPage();
     await loginAdmin(admin, urls.admin);
     const today = await waitForText(admin, '[data-today-line]', 'Сегодня');
-    check(today.includes('Сегодня 12.11') && today.includes('день 8 из 14') && today.includes('воронка по 11.11'), `блок «Сегодня»: «${today}»`);
+    check(today.includes('Сегодня 12.11') && today.includes('день 8 из 20') && today.includes('воронка по 11.11'), `блок «Сегодня»: «${today}»`);
     await admin.click('[role="tab"][data-tab="staff"]');
     await admin.waitForSelector('[data-bulk-row]', { timeout: 8_000 });
     const staffBefore = (await publicSnapshot(mock)).staff;
@@ -263,6 +263,39 @@ try {
     const untouched = staffAfter.filter((e) => e.id !== id).every((e) => JSON.stringify(e) === JSON.stringify(staffBefore.find((b) => b.id === e.id)));
     check(untouched, 'таблица уровней: задеты другие сотрудники');
     check((await textOf(admin, '[data-bulk-save]')).endsWith('(0)'), 'таблица уровней: после записи не перерисована из снимка');
+
+    // личный план на месяц: «6,5» в таблице → 6.5 на сервере; в карточке пусто — план снят
+    const planOnServer = async (want) => {
+      for (let i = 0; i < 40; i++) {
+        if ((await publicSnapshot(mock)).staff.find((e) => e.id === id).paymentPlan === want) return true;
+        await admin.waitForTimeout(200);
+      }
+      return false;
+    };
+    await admin.fill(`[data-bulk-plan="${id}"]`, '6,5');
+    check((await textOf(admin, '[data-bulk-save]')).endsWith('(1)'), `план: после правки кнопка «${await textOf(admin, '[data-bulk-save]')}»`);
+    await admin.click('[data-bulk-save]');
+    check(await planOnServer(6.5), `план из таблицы не записан: «${await textOf(admin, '[data-alert="bulk"]')}»`);
+    await admin.waitForFunction((rid) => document.querySelector(`[data-bulk-plan="${rid}"]`)?.value === '6.5', id, { timeout: 8_000 }).catch(() => {});
+    check(await admin.inputValue(`[data-bulk-plan="${id}"]`) === '6.5', 'план: таблица не перечитана после записи');
+    await admin.click(`[data-employee="${id}"]`);
+    check(await admin.inputValue('[data-staff-card] [data-field="paymentPlan"]') === '6.5', 'план: в карточке не тот план');
+    await admin.fill('[data-staff-card] [data-field="paymentPlan"]', '');
+    await admin.click('[data-save="staff"]');
+    check(await planOnServer(null), `план из карточки не снят: «${await textOf(admin, '[data-alert="staff-form"]')}»`);
+
+    // загрузка штата JSON-файлом (как файл владельца): у одного дата приёма и план, у другого только план
+    const other = staffAfter.find((e) => e.id !== id);
+    await admin.setInputFiles('[data-file="staff"]', { name: 'staff.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify([
+      { name: me.name, group: me.group, hireDate: '2026-10-26', paymentPlan: 6.5 },
+      { name: other.name, group: other.group, paymentPlan: 2 },
+    ])) });
+    const jsonPreview = await waitForText(admin, '[data-report="staff"]', 'Записей: 2');
+    check(jsonPreview.includes('Записей: 2; новых: 0; обновится: 2'), `JSON штата: превью «${jsonPreview}»`);
+    await admin.click('[data-confirm="staff"]');
+    check(await planOnServer(6.5), `JSON штата: план не записан «${await textOf(admin, '[data-report="staff"]')}»`);
+    const otherOnServer = (await publicSnapshot(mock)).staff.find((e) => e.id === other.id);
+    check(otherOnServer.paymentPlan === 2 && otherOnServer.hireDate === other.hireDate && otherOnServer.group === other.group, `JSON штата: второй записан как ${JSON.stringify(otherOnServer)}`);
 
     // недописанная дата (стёрт один сегмент) — у поля пустое value: без проверки ушло бы «даты приёма нет»
     await admin.click(`[data-bulk-hire="${id}"]`);
@@ -1091,7 +1124,7 @@ try {
     check(await field('norm-experienced-quality') === '5' && await field('norm-rookie1-quality') === '1', 'нормы не предзаполнены текущими значениями');
     check(await field('maxPiles') === '5' && await field('threshold-1') === '25', 'пороги не предзаполнены текущими значениями');
     check(await admin.locator('[data-field^="threshold-"]').count() === 4, 'порогов стадий не 4');
-    check(await field('norm-experienced-payments') === '0,4', `норма оплат опытных не предзаполнена: «${await field('norm-experienced-payments')}»`);
+    check(await field('norm-experienced-payments') === '0,3', `норма оплат опытных не предзаполнена: «${await field('norm-experienced-payments')}»`);
     for (const f of ['quality', 'long', 'payments']) {
       check(await admin.getAttribute(`[data-field="norm-experienced-${f}"]`, 'inputmode') === 'decimal', `у нормы «${f}» нет дробной клавиатуры`);
     }
@@ -1252,7 +1285,7 @@ try {
 
   // «Выходные дни» (нормы и пороги): сетка пн–вс, превью до записи, запись через общий поток страницы
   const HOLIDAYS_BLOCK = '[data-block="holidays"]';
-  const BUILT_IN_OFF = ['2026-11-04', '2026-11-07', '2026-11-08', '2026-11-14', '2026-11-15', '2026-11-21', '2026-11-22'];
+  const BUILT_IN_OFF = ['2026-11-04', '2026-11-07', '2026-11-08', '2026-11-14', '2026-11-15', '2026-11-21', '2026-11-22', '2026-11-28', '2026-11-29'];
   const HOLIDAYS_UNRESOLVED = 'Связь прервалась во время записи выходных — сохраните их ещё раз (повтор безопасен: список заменяется целиком).';
   const holidaysTab = async (admin) => {
     await admin.click('[role="tab"][data-tab="norms"]');
@@ -1277,8 +1310,8 @@ try {
     const dayLine = () => textOf(admin, '[data-today-line]');
     const status = () => waitForText(admin, `${HOLIDAYS_BLOCK} [data-status="holidays"]`, 'Сохранено');
 
-    // сетка: 21 день, пн–вс, понедельник первой строки — 02.11; встроенные выходные отмечены
-    check(await admin.locator(`${HOLIDAYS_BLOCK} [data-day]`).count() === 21 && await admin.locator(`${HOLIDAYS_BLOCK} .wd`).count() === 7, 'сетка выходных: не 21 день или не 7 заголовков');
+    // сетка: 29 дней (02–30.11), пн–вс, понедельник первой строки — 02.11; встроенные выходные отмечены
+    check(await admin.locator(`${HOLIDAYS_BLOCK} [data-day]`).count() === 29 && await admin.locator(`${HOLIDAYS_BLOCK} .wd`).count() === 7, 'сетка выходных: не 29 дней или не 7 заголовков');
     check(await admin.$eval(`${HOLIDAYS_BLOCK} [data-day]`, (e) => e.dataset.day) === '2026-11-02', 'первая клетка сетки — не 02.11');
     for (const d of BUILT_IN_OFF) check(await dayPressed(admin, d) === 'true', `встроенный выходной ${d} не отмечен`);
     check(await dayPressed(admin, '2026-11-05') === 'false', '05.11 отмечен выходным без правки');
@@ -1287,7 +1320,7 @@ try {
       check(block.includes(phrase), `в блоке нет пояснения «${phrase}»`);
     }
     check(await nonWorking() === undefined, 'на свежем моке список выходных уже записан на сервер');
-    check((await dayLine()).includes('день 8 из 14'), `блок «Сегодня» до правки: «${await dayLine()}»`);
+    check((await dayLine()).includes('день 8 из 20'), `блок «Сегодня» до правки: «${await dayLine()}»`);
 
     // 05.11 → выходной: день отмечен «изменено», на сервер ничего не ушло, превью называет день и последствия
     const v0 = await version();
@@ -1303,11 +1336,11 @@ try {
     check(await admin.locator(`${HOLIDAYS_BLOCK} [data-preview]`).count() === 0 && await dayPressed(admin, '2026-11-05') === 'true', '«Отмена» не убрала превью или сбросила выбранный день');
     check(await version() === v0, '«Отмена» записала выходные');
 
-    // «Применить»: запись, блок «Сегодня» (день 7 из 13), календарь без пометок «изменено»
+    // «Применить»: запись, блок «Сегодня» (день 7 из 19), календарь без пометок «изменено»
     await saveHolidays(admin);
     check((await status()).includes('Сохранено'), `выходные не сохранены: «${await textOf(admin, `${HOLIDAYS_BLOCK} [data-alert="holidays"]`)}»`);
     check(JSON.stringify(await nonWorking()) === JSON.stringify([...BUILT_IN_OFF, '2026-11-05'].sort()), `на сервере список выходных: ${JSON.stringify(await nonWorking())}`);
-    check((await waitForText(admin, '[data-today-line]', 'день 7 из 13')).includes('день 7 из 13'), `блок «Сегодня» не показал новый выходной: «${await dayLine()}»`);
+    check((await waitForText(admin, '[data-today-line]', 'день 7 из 19')).includes('день 7 из 19'), `блок «Сегодня» не показал новый выходной: «${await dayLine()}»`);
     check(await dayPressed(admin, '2026-11-05') === 'true' && await admin.locator(`${HOLIDAYS_BLOCK} .day.changed`).count() === 0, 'после записи календарь не показывает 05.11 выходным или остались пометки «изменено»');
     check(await admin.locator(`${HOLIDAYS_BLOCK} [data-preview]`).count() === 0, 'после записи превью осталось');
 
@@ -1323,7 +1356,7 @@ try {
     check(back.includes('Станут рабочими: 05.11') && /СР\d 05\.11: выходной → /.test(back), `превью возврата: «${back}»`);
     check((await status()).includes('Сохранено'), 'возврат не сохранён');
     check(JSON.stringify(await nonWorking()) === JSON.stringify(BUILT_IN_OFF), `после возврата на сервере: ${JSON.stringify(await nonWorking())}`);
-    check((await waitForText(admin, '[data-today-line]', 'день 8 из 14')).includes('день 8 из 14'), `блок «Сегодня» после возврата: «${await dayLine()}»`);
+    check((await waitForText(admin, '[data-today-line]', 'день 8 из 20')).includes('день 8 из 20'), `блок «Сегодня» после возврата: «${await dayLine()}»`);
 
     // сегодняшний день (12.11) тоже можно сделать выходным; воронка за него ещё не загружена — итоги дней не меняются
     check(await admin.locator(`${HOLIDAYS_BLOCK} [data-day="2026-11-12"].today`).count() === 1, 'сегодняшний день в сетке не помечен');
@@ -1331,7 +1364,7 @@ try {
     const today = await saveHolidays(admin);
     check(today.includes('Станут выходными: 12.11') && today.includes('ничего: итоги оценённых дней те же'), `превью сегодняшнего выходного: «${today}»`);
     check((await status()).includes('Сохранено'), 'сегодняшний выходной не сохранён');
-    check((await waitForText(admin, '[data-today-line]', 'выходной ·')).includes('выходной · день 7 из 13'), `блок «Сегодня» в выходной: «${await dayLine()}»`);
+    check((await waitForText(admin, '[data-today-line]', 'выходной ·')).includes('выходной · день 7 из 19'), `блок «Сегодня» в выходной: «${await dayLine()}»`);
   });
 
   await scenario('выходные: пока пишется — всё закрыто; ответ потерян — закрывает только повтор; отказ сервера', async ({ mock, newPage, check, urls }) => {
