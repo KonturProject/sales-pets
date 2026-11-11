@@ -76,7 +76,7 @@ describe('resultsDays и defaultResultsDay', () => {
     expect(resultsDays(snap({ serverNow: '2026-11-02T09:00:00+03:00' }))).toEqual([]);
     const late = resultsDays(snap({ serverNow: '2026-12-31T09:00:00+03:00' }));
     expect(late[0].date).toBe('2026-11-02');
-    expect(late.at(-1)).toEqual({ date: '2026-11-22', working: false });
+    expect(late.at(-1)).toEqual({ date: '2026-11-30', working: true });
   });
 
   test('пустой список выходных: все дни рабочие', () => {
@@ -183,8 +183,8 @@ describe('dayResults: строка группы за рабочий день', (
   });
 
   test('последний рабочий день игры: награде применяться некуда', () => {
-    const last = world({ serverNow: '2026-11-25T10:00:00+03:00', funnelThrough: '2026-11-22' });
-    expect(lineOf(dayResults(last, '2026-11-20'), 'СР1').outcome).toMatchObject({ evaluated: true, appliesOn: null });
+    const last = world({ serverNow: '2026-12-03T10:00:00+03:00', funnelThrough: '2026-11-30' });
+    expect(lineOf(dayResults(last, '2026-11-30'), 'СР1').outcome).toMatchObject({ evaluated: true, appliesOn: null });
   });
 });
 
@@ -228,9 +228,11 @@ describe('dayResults: с начала игры по день', () => {
     const sr1 = lineOf(dayResults(s, '2026-11-03'), 'СР1');
     const cfg = timelineOf(s).at('2026-11-03');
     const { gameCents } = groupPlan('СР1', '2026-11-03', s.staff, s.absences, timelineOf(s).at, cfg);
-    expect(gameCents).toBe(3200);
+    // 20 рабочих дней по 1: Альфов 20, Бетов 18 (отпуск 03 и 05.11); Гаммов (принят 02.11) — новичок 1 до 16.11 (0),
+    // новичок 2 до 30.11 (10 дней по 0,1), 30.11 опытный (1)
+    expect(gameCents).toBe(4000);
     expect(sr1.gamePlanPercent).toBe(Math.floor((5 * 10000) / gameCents));
-    expect(sr1.gamePlanPercent).toBe(15);
+    expect(sr1.gamePlanPercent).toBe(12);
   });
 
   test('плана оплат нет совсем: процент null', () => {
@@ -270,6 +272,14 @@ describe('dayResults: сотрудники', () => {
     expect(a2.total.quality).toMatchObject({ fact: 12, plan: 4 });
     expect(a2.total.long).toMatchObject({ fact: 10, plan: 1.5 });
     expect(a2.total.payments).toMatchObject({ fact: 1, plan: 1 });
+  });
+
+  test('личный план на месяц: план дня и накопленный — из него (× 105% / 20 рабочих дней), а не из нормы уровня', () => {
+    const s2 = world({ staff: [emp('a1', 'Тест Альфов', 'СР1', { paymentPlan: 6 })] });
+    const a1 = personOf(dayResults(s2, '2026-11-05'), 'СР1', 'a1');
+    expect(a1.day.payments.plan).toBe(0.32);
+    expect(a1.total.payments.plan).toBe(0.95); // 02, 03, 05.11 по 31,5 сотых
+    expect(lineOf(dayResults(s2, '2026-11-05'), 'СР1').total.payments.plan).toBe(0.95);
   });
 
   test('больничный и «другое» тоже видны в строке', () => {

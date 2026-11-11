@@ -46,19 +46,35 @@ export function evaluateDay(
   };
 }
 
-/** План оплат группы на день в сотых оплаты: сумма личных норм «оплат в день» присутствующих сотрудников по уровню. */
+const gameDaysCache = new WeakMap<Config, number>();
+const gameWorkingDays = (cfg: Config): number => {
+  let n = gameDaysCache.get(cfg);
+  if (n === undefined) gameDaysCache.set(cfg, (n = workingDaysBetween(cfg.startDate, cfg.endDate, cfg).length));
+  return n;
+};
+
+/**
+ * План оплат сотрудника на рабочий день в сотых, дробно (округляет тот, кто складывает): личный план на месяц × запас /
+ * рабочих дней игры, а без личного плана — норма «оплат в день» его уровня. Присутствие не проверяет.
+ */
+export function employeePlanCents(e: Employee, date: DateStr, cfg: Config): number {
+  if (typeof e.paymentPlan === 'number') return (e.paymentPlan * cfg.personalPlanPercent) / Math.max(1, gameWorkingDays(cfg));
+  return Math.round(cfg.norms[levelOn(e, date)].payments * 100);
+}
+
+/** План оплат группы на день в сотых оплаты (дробно): сумма планов присутствующих сотрудников группы. */
 export function paymentPlanCents(group: GroupCode, date: DateStr, staff: Employee[], absences: Absence[], cfg: Config): number {
   let cents = 0;
   for (const e of staff) {
-    if (groupOn(e, date) === group && isPresent(e, date, absences)) cents += Math.round(cfg.norms[levelOn(e, date)].payments * 100);
+    if (groupOn(e, date) === group && isPresent(e, date, absences)) cents += employeePlanCents(e, date, cfg);
   }
   return cents;
 }
 
 export interface GroupPlan {
-  /** план оплат группы на все рабочие дни игры, в сотых */
+  /** план оплат группы на все рабочие дни игры, в целых сотых */
   gameCents: number;
-  /** план на день asOf, в сотых: от него сытость */
+  /** план на день asOf, в целых сотых: от него сытость */
   dayCents: number;
 }
 
@@ -68,5 +84,6 @@ export function groupPlan(
 ): GroupPlan {
   let gameCents = 0;
   for (const d of workingDaysBetween(cfg.startDate, cfg.endDate, cfg)) gameCents += paymentPlanCents(group, d, staff, absences, cfgOn(d));
-  return { gameCents, dayCents: paymentPlanCents(group, asOf, staff, absences, cfgOn(asOf)) };
+  // дробные сотые округляются один раз: иначе 20 дней по 31,5 дали бы 6,4 оплаты вместо 6,3
+  return { gameCents: Math.round(gameCents), dayCents: Math.round(paymentPlanCents(group, asOf, staff, absences, cfgOn(asOf))) };
 }

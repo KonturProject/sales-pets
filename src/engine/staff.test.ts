@@ -8,11 +8,21 @@ const emp = (o: Partial<Employee> = {}): Employee => ({
 
 describe('levelOn', () => {
   const e = emp({ hireDate: '2026-11-02', baseLevel: 'rookie1' });
-  test('новичок: неделя 1, неделя 2, затем опытный', () => {
-    expect(levelOn(e, '2026-11-08')).toBe('rookie1');
-    expect(levelOn(e, '2026-11-09')).toBe('rookie2');
-    expect(levelOn(e, '2026-11-15')).toBe('rookie2');
-    expect(levelOn(e, '2026-11-16')).toBe('experienced');
+  test('новичок: недели 1–2 — новичок 1, недели 3–4 — новичок 2, затем опытный', () => {
+    expect(levelOn(e, '2026-11-15')).toBe('rookie1');
+    expect(levelOn(e, '2026-11-16')).toBe('rookie2');
+    expect(levelOn(e, '2026-11-29')).toBe('rookie2');
+    expect(levelOn(e, '2026-11-30')).toBe('experienced');
+  });
+  test('принят до игры: уровень по дням от даты приёма', () => {
+    const late = emp({ hireDate: '2026-10-28', baseLevel: 'rookie1' });
+    expect(levelOn(late, '2026-11-10')).toBe('rookie1');
+    expect(levelOn(late, '2026-11-11')).toBe('rookie2');
+    expect(levelOn(late, '2026-11-24')).toBe('rookie2');
+    expect(levelOn(late, '2026-11-25')).toBe('experienced');
+  });
+  test('базовый «опытный» с датой приёма — опытный с первого дня', () => {
+    expect(levelOn(emp({ hireDate: '2026-11-09' }), '2026-11-09')).toBe('experienced');
   });
   test('без даты выхода уровень = базовый', () => {
     expect(levelOn(emp({ baseLevel: 'rookie2' }), '2026-11-10')).toBe('rookie2');

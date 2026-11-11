@@ -10,7 +10,7 @@ describe('configFormOf', () => {
     const form = configFormOf(current);
     expect(form.maxPiles).toBe('5');
     expect(form).not.toHaveProperty('dailyNorm');
-    expect(form.norms.experienced).toEqual({ quality: '5', long: '3', payments: '0,4' });
+    expect(form.norms.experienced).toEqual({ quality: '5', long: '3', payments: '0,3' });
     expect(form.stageThresholds).toEqual(['25', '50', '75', '100']);
   });
 
@@ -30,7 +30,7 @@ describe('configPatch с датой', () => {
   });
 
   test('дата не в формате yyyy-MM-dd или вне дат игры — ошибка', () => {
-    for (const from of ['', '9.11.2026', '2026-11-9', 'x', '2026-11-01', '2026-11-23']) {
+    for (const from of ['', '9.11.2026', '2026-11-9', 'x', '2026-11-01', '2026-12-01']) {
       expect(at(from, { maxPiles: '3' }), from).toMatchObject({ error: expect.stringContaining('Дата') });
     }
   });
@@ -72,7 +72,7 @@ describe('configPatch', () => {
     expect(pays('0,5')).toEqual({ norms: { experienced: { payments: 0.5 } } });
     expect(pays(' 0.57 ')).toEqual({ norms: { experienced: { payments: 0.57 } } });
     expect(pays('2')).toEqual({ norms: { experienced: { payments: 2 } } });
-    expect(pays('0.4')).toEqual({ error: 'Ничего не изменено' });
+    expect(pays('0.3')).toEqual({ error: 'Ничего не изменено' });
     for (const bad of ['', 'x', '0,123', '-1', '1,2,3']) {
       expect(pays(bad), bad).toMatchObject({ error: expect.stringContaining('Опытный, оплат в день') });
     }

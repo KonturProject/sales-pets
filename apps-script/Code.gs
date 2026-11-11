@@ -46,8 +46,8 @@ const MAX_USES_PER_DAY = 20;
 const REF_MAX = 64;
 /** Период игры (включительно): правки фактов и выходные только внутри него. */
 const GAME_START = '2026-11-02';
-const GAME_END = '2026-11-22';
-const NON_WORKING_MAX = 21;
+const GAME_END = '2026-11-30';
+const NON_WORKING_MAX = 29;
 /** Ручные правки фактов: показатель, дельта (целая, не 0), записей в запросе и всего. */
 const CORRECTION_KINDS = ['quality', 'long', 'payments'];
 const CORRECTION_DELTA_MAX = 50;
@@ -59,7 +59,7 @@ const SHEETS = {
   Payments: ['date', 'group', 'author', 'invoice'],
   Provisional: ['date', 'group', 'count'],
   Funnel: ['employeeId', 'date', 'quality', 'long'],
-  Staff: ['id', 'name', 'shortName', 'group', 'hireDate', 'fireDate', 'baseLevel', 'hiddenFromRating', 'transfers', 'hiddenReason'],
+  Staff: ['id', 'name', 'shortName', 'group', 'hireDate', 'fireDate', 'baseLevel', 'hiddenFromRating', 'transfers', 'hiddenReason', 'paymentPlan'],
   Absences: ['employeeId', 'kind', 'from', 'to'],
   Overrides: ['id', 'date', 'group', 'kind', 'delta', 'ref'],
   Corrections: ['id', 'date', 'employeeId', 'kind', 'delta', 'base', 'ref'],
@@ -153,6 +153,11 @@ function sheetFor_(name) {
     sheet = ss.insertSheet(name);
     sheet.getRange(1, 1, 1, SHEETS[name].length).setNumberFormat('@').setValues([SHEETS[name]]);
     sheet.setFrozenRows(1);
+  } else {
+    // лист создан до нового столбца (Staff.paymentPlan): добавляем столбцы и дописываем заголовок
+    const width = SHEETS[name].length;
+    if (sheet.getMaxColumns() < width) sheet.insertColumnsAfter(sheet.getMaxColumns(), width - sheet.getMaxColumns());
+    if (sheet.getRange(1, width).getValues()[0][0] === '') sheet.getRange(1, 1, 1, width).setNumberFormat('@').setValues([SHEETS[name]]);
   }
   return sheet;
 }
@@ -170,13 +175,17 @@ function readRows_(name) {
   const last = sheet.getLastRow();
   if (last < 2) return [];
   const tz = spreadsheet_().getSpreadsheetTimeZone();
+  const width = SHEETS[name].length;
+  // у листа, созданного до нового столбца, столбцов может не хватать: недостающие читаются пустыми
   return sheet
-    .getRange(2, 1, last - 1, SHEETS[name].length)
+    .getRange(2, 1, last - 1, Math.min(width, sheet.getMaxColumns()))
     .getValues()
     .map(function (row) {
-      return row.map(function (v) {
+      const out = row.map(function (v) {
         return cellText_(v, tz);
       });
+      while (out.length < width) out.push('');
+      return out;
     })
     .filter(function (row) {
       return row.some(function (v) {
@@ -256,19 +265,27 @@ function readStaff_() {
       hiddenFromRating: r[7].toLowerCase() === 'true',
       transfers: transfers,
       hiddenReason: r[9] || '',
+      paymentPlan: planCell_(r[10]),
     };
   });
 }
 
+/** Личный план из ячейки: годное число (как норма: 0…50, до сотых) или null — пусто, мусор, испорчено руками. */
+function planCell_(text) {
+  if (!/^\d+(\.\d+)?$/.test(String(text).trim())) return null;
+  const v = Number(text);
+  return isNorm_(v) ? v : null;
+}
+
 function publicStaff_(e) {
-  return { id: e.id, name: e.name, shortName: e.shortName, group: e.group, hireDate: e.hireDate, fireDate: e.fireDate, baseLevel: e.baseLevel, hiddenFromRating: e.hiddenFromRating, transfers: e.transfers };
+  return { id: e.id, name: e.name, shortName: e.shortName, group: e.group, hireDate: e.hireDate, fireDate: e.fireDate, baseLevel: e.baseLevel, hiddenFromRating: e.hiddenFromRating, transfers: e.transfers, paymentPlan: e.paymentPlan };
 }
 
 function writeStaff_(staff) {
   writeRows_(
     'Staff',
     staff.map(function (e) {
-      return [e.id, e.name, e.shortName, e.group, e.hireDate || '', e.fireDate || '', e.baseLevel, e.hiddenFromRating ? 'true' : 'false', JSON.stringify(e.transfers), e.hiddenReason];
+      return [e.id, e.name, e.shortName, e.group, e.hireDate || '', e.fireDate || '', e.baseLevel, e.hiddenFromRating ? 'true' : 'false', JSON.stringify(e.transfers), e.hiddenReason, e.paymentPlan === null ? '' : String(e.paymentPlan)];
     })
   );
 }
@@ -637,7 +654,7 @@ function setStaffAction_(body) {
       updated++;
     } else {
       if (!isGroup_(item.group)) fail_();
-      e = { id: 'e' + ++maxId, name: name, shortName: defaultShortName_(name), group: item.group, hireDate: null, fireDate: null, baseLevel: 'experienced', hiddenFromRating: false, transfers: [], hiddenReason: '' };
+      e = { id: 'e' + ++maxId, name: name, shortName: defaultShortName_(name), group: item.group, hireDate: null, fireDate: null, baseLevel: 'experienced', hiddenFromRating: false, transfers: [], hiddenReason: '', paymentPlan: null };
       byKey[key] = e;
       staff.push(e);
       added++;
@@ -671,6 +688,10 @@ function setStaffAction_(body) {
       else if (e.hiddenReason === '') fail_();
     }
     if (item.transfers !== undefined) e.transfers = validTransfers_(item.transfers);
+    if (item.paymentPlan !== undefined) {
+      if (item.paymentPlan !== null && !isNorm_(item.paymentPlan)) fail_();
+      e.paymentPlan = item.paymentPlan;
+    }
   });
   if (added + updated === 0) return { ok: true, version: currentVersion_(), added: 0, updated: 0 };
   writeStaff_(staff);

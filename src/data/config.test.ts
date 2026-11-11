@@ -21,9 +21,9 @@ describe('configOf', () => {
   test('нормы сливаются по уровням и по полям: нетронутое остаётся умолчанием', () => {
     const cfg = configOf({ norms: { rookie1: { quality: 3 }, experienced: { long: 0 } } });
     expect(cfg.norms).toEqual({
-      experienced: { quality: 5, long: 0, payments: 0.4 },
+      experienced: { quality: 5, long: 0, payments: 0.3 },
       rookie1: { quality: 3, long: 0, payments: 0 },
-      rookie2: { quality: 2, long: 1, payments: 0.2 },
+      rookie2: { quality: 2, long: 1, payments: 0.1 },
     });
   });
 
@@ -47,7 +47,7 @@ describe('configOf', () => {
   });
 
   test('качественные и длинные — дробные, до двух знаков, 0…50', () => {
-    expect(configOf({ norms: { experienced: { long: 1.5 } } }).norms.experienced).toEqual({ quality: 5, long: 1.5, payments: 0.4 });
+    expect(configOf({ norms: { experienced: { long: 1.5 } } }).norms.experienced).toEqual({ quality: 5, long: 1.5, payments: 0.3 });
     for (const field of ['quality', 'long'] as const) {
       for (const v of [0, 0.01, 0.25, 1.15, 50]) {
         expect(configOf({ norms: { rookie1: { [field]: v } } }).norms.rookie1[field]).toBe(v);
@@ -75,10 +75,10 @@ describe('configOf', () => {
     expect(defaultConfig.nonWorking).not.toEqual([]);
   });
 
-  test('выходные: весь период (21 день) принимается', () => {
-    const all = Array.from({ length: 21 }, (_, i) => `2026-11-${String(i + 2).padStart(2, '0')}`);
+  test('выходные: весь период (29 дней) принимается', () => {
+    const all = Array.from({ length: 29 }, (_, i) => `2026-11-${String(i + 2).padStart(2, '0')}`);
     expect(all[0]).toBe('2026-11-02');
-    expect(all[20]).toBe('2026-11-22');
+    expect(all[28]).toBe('2026-11-30');
     expect(configOf({ nonWorking: all }).nonWorking).toEqual(all);
   });
 
@@ -87,9 +87,9 @@ describe('configOf', () => {
     const bad = [
       ['x'],
       ['2026-11-31'],
-      ['2026-11-30'],
+      ['2026-12-01'],
       ['2026-11-01'],
-      ['2026-11-23'],
+      ['2026-12-02'],
       ['2026-11-05', '2026-11-05'],
       ['2026-11-05', 'x'],
       [20261105],
@@ -97,8 +97,8 @@ describe('configOf', () => {
       'x',
       null,
       { 0: '2026-11-05' },
-      // 22 даты: период игры вмещает 21 день, поэтому лишняя может быть только повтором
-      [...Array.from({ length: 21 }, (_, i) => day(i + 2)), day(5)],
+      // 30 дат: период игры вмещает 29 дней, поэтому лишняя может быть только повтором
+      [...Array.from({ length: 29 }, (_, i) => day(i + 2)), day(5)],
     ] as unknown[];
     for (const nonWorking of bad) {
       const raw = { nonWorking, sickPilesAbove: 3 } as unknown as SnapshotConfig;
@@ -135,7 +135,7 @@ describe('configOf', () => {
 
   test('одно испорченное поле нормы не отбрасывает исправное в том же уровне', () => {
     const raw = { norms: { experienced: { quality: 'x', long: 2 } } } as unknown as SnapshotConfig;
-    expect(configOf(raw).norms.experienced).toEqual({ quality: 5, long: 2, payments: 0.4 });
+    expect(configOf(raw).norms.experienced).toEqual({ quality: 5, long: 2, payments: 0.3 });
   });
 
   test('не объект (null, число, строка, массив) — умолчания', () => {
@@ -172,9 +172,9 @@ describe('timelineOf', () => {
 
   test('запись меняет нормы с своей даты: до даты база, с даты — новое значение, нетронутое остаётся', () => {
     const t = tl({}, [change('2026-11-09', { norms: { experienced: { quality: 2 } } })]);
-    expect(t.at('2026-11-06').norms.experienced).toEqual({ quality: 5, long: 3, payments: 0.4 });
-    expect(t.at('2026-11-09').norms.experienced).toEqual({ quality: 2, long: 3, payments: 0.4 });
-    expect(t.at('2026-11-20').norms.experienced).toEqual({ quality: 2, long: 3, payments: 0.4 });
+    expect(t.at('2026-11-06').norms.experienced).toEqual({ quality: 5, long: 3, payments: 0.3 });
+    expect(t.at('2026-11-09').norms.experienced).toEqual({ quality: 2, long: 3, payments: 0.3 });
+    expect(t.at('2026-11-20').norms.experienced).toEqual({ quality: 2, long: 3, payments: 0.3 });
     expect(t.at('2026-11-09').maxPiles).toBe(defaultConfig.maxPiles);
   });
 
@@ -245,7 +245,7 @@ describe('timelineOf', () => {
       change('2026-11-12', { norms: { experienced: { long: 1.555, quality: 0.25 } } }),
     ]);
     expect(t.at('2026-11-09').norms.experienced.long).toBe(1.5);
-    expect(t.at('2026-11-12').norms.experienced).toEqual({ quality: 0.25, long: 1.5, payments: 0.4 });
+    expect(t.at('2026-11-12').norms.experienced).toEqual({ quality: 0.25, long: 1.5, payments: 0.3 });
   });
 
   test('один и тот же снимок — один и тот же Timeline', () => {

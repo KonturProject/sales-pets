@@ -28,10 +28,10 @@ describe('heroDays (R8): рабочие дни для выбора и день �
     expect(heroDays('2026-11-02', cfg)).toEqual({ days: ['2026-11-02'], initial: null });
   });
 
-  test('после конца игры все 14 рабочих дней, по умолчанию последний; мусор не зацикливает', () => {
+  test('после конца игры все 20 рабочих дней, по умолчанию последний; мусор не зацикливает', () => {
     const { days, initial } = heroDays('9999-12-31', cfg);
-    expect(days).toHaveLength(14);
-    expect(initial).toBe('2026-11-20');
+    expect(days).toHaveLength(20);
+    expect(initial).toBe('2026-11-30');
   });
 });
 

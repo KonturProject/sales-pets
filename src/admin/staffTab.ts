@@ -4,7 +4,7 @@ import { GROUPS, type DateStr, type Level } from '@/engine/types';
 import type { AdminCtx } from './ctx';
 import { errorText, h, ruDate } from './dom';
 import { fileBlock } from './importTab';
-import { buildAbsence, buildStaffPatch, bulkStaffPatches, filterStaff, formOf, parseStaffJson, type BulkEdit, type StaffCurrent } from './staffForm';
+import { buildAbsence, buildStaffPatch, bulkStaffPatches, filterStaff, formOf, parseStaffJson, planText, readPlan, type BulkEdit, type StaffCurrent } from './staffForm';
 
 const LEVEL_TITLE: Record<Level, string> = { experienced: 'Опытный', rookie1: 'Новичок 1', rookie2: 'Новичок 2' };
 const KIND_TITLE: Record<Absence['kind'], string> = { vacation: 'Отпуск', sick: 'Больничный', other: 'Другое' };
@@ -17,6 +17,8 @@ interface Data {
 }
 
 const field = (label: string, control: HTMLElement) => h('label', {}, `${label} `, control);
+/** Поле личного плана: текст, чтобы принять и запятую (6,5); проверка — `readPlan` в `staffForm`. */
+const planInput = (value: string, attrs: Record<string, string>) => h('input', { type: 'text', inputmode: 'decimal', size: 5, value, ...attrs });
 const option = (value: string, title: string, selected = false) => h('option', { value, selected }, title);
 /**
  * Вкладка «Сотрудники»: поиск и карточка (приём, увольнение, перевод, уровень, исключение из рейтинга), отсутствия,
@@ -86,6 +88,7 @@ export async function staffTab(ctx: AdminCtx): Promise<HTMLElement> {
     const hire = h('input', { type: 'date', 'data-field': 'hireDate', value: start.hireDate });
     const fire = h('input', { type: 'date', 'data-field': 'fireDate', value: start.fireDate });
     const level = h('select', { 'data-field': 'baseLevel' }, ...(Object.keys(LEVEL_TITLE) as Level[]).map((l) => option(l, LEVEL_TITLE[l], l === start.baseLevel)));
+    const plan = planInput(start.paymentPlan, { 'data-field': 'paymentPlan' });
     const hidden = h('input', { type: 'checkbox', 'data-field': 'hiddenFromRating', checked: start.hiddenFromRating });
     const reason = h('input', { type: 'text', 'data-field': 'hiddenReason', maxlength: 200, value: start.hiddenReason });
     const transferDate = h('input', { type: 'date', 'data-field': 'transferDate' });
@@ -101,6 +104,7 @@ export async function staffTab(ctx: AdminCtx): Promise<HTMLElement> {
         hiddenReason: reason.value,
         transferDate: transferDate.value,
         transferGroup: transferGroup.value as '' | (typeof GROUPS)[number],
+        paymentPlan: plan.value,
       });
       if ('error' in patch) {
         status.textContent = '';
@@ -134,6 +138,7 @@ export async function staffTab(ctx: AdminCtx): Promise<HTMLElement> {
         field('Принят', hire),
         field('Уволен', fire),
         field('Уровень', level),
+        field('План оплат на месяц (из служебки; пусто — по норме уровня)', plan),
         h('label', {}, hidden, ' Исключить из рейтинга'),
         field('Причина (видна только админу)', reason),
         h('p', {}, e.transfers.length
@@ -202,15 +207,15 @@ export async function staffTab(ctx: AdminCtx): Promise<HTMLElement> {
   // фильтр только прячет строки: правки в скрытых строках не теряются и уходят той же кнопкой
   const bulkFilter = h('select', { 'data-bulk-filter': true, 'aria-label': 'Группа', onchange: () => filterBulk() },
     option('', 'Все группы'), ...GROUPS.map((g) => option(g, g)));
-  let bulkFields = new Map<string, { level: HTMLSelectElement; hire: HTMLInputElement; row: HTMLElement; group: string }>();
+  let bulkFields = new Map<string, { level: HTMLSelectElement; hire: HTMLInputElement; plan: HTMLInputElement; row: HTMLElement; group: string }>();
   const bulkEdits = (): Record<string, BulkEdit> =>
-    Object.fromEntries([...bulkFields].map(([id, f]) => [id, { baseLevel: f.level.value as Level, hireDate: f.hire.value }]));
+    Object.fromEntries([...bulkFields].map(([id, f]) => [id, { baseLevel: f.level.value as Level, hireDate: f.hire.value, paymentPlan: f.plan.value }]));
   const countBulk = () => {
     const byId = new Map(data.staff.map((e) => [e.id, e]));
     let undated = 0;
     for (const [id, f] of bulkFields) {
       const e = byId.get(id);
-      f.row.classList.toggle('changed', !!e && (f.level.value !== e.baseLevel || f.hire.value !== (e.hireDate ?? '') || f.hire.validity.badInput));
+      f.row.classList.toggle('changed', !!e && (f.level.value !== e.baseLevel || f.hire.value !== (e.hireDate ?? '') || f.hire.validity.badInput || readPlan(f.plan.value) !== (e.paymentPlan ?? null)));
       if (f.level.value !== 'experienced' && !f.hire.value) undated++;
     }
     bulkHint.textContent = undated ? `Новички без даты приёма: ${undated} — без даты уровень не меняется сам: «Новичок 1» останется им до конца игры, а не перейдёт во второй уровень и в опытные.` : '';
@@ -227,9 +232,11 @@ export async function staffTab(ctx: AdminCtx): Promise<HTMLElement> {
       const level = h('select', { 'data-bulk-level': e.id, 'aria-label': `Уровень, строка ${i + 1}`, onchange: countBulk },
         ...(Object.keys(LEVEL_TITLE) as Level[]).map((l) => option(l, LEVEL_TITLE[l], l === e.baseLevel)));
       const hire = h('input', { type: 'date', 'data-bulk-hire': e.id, value: e.hireDate ?? '', 'aria-label': `Дата приёма, строка ${i + 1}`, oninput: countBulk });
+      const plan = planInput(planText(e.paymentPlan), { 'data-bulk-plan': e.id, 'aria-label': `План оплат на месяц, строка ${i + 1}` });
+      plan.addEventListener('input', countBulk);
       const group = groupOn(e, data.today);
-      const row = h('tr', { 'data-bulk-row': e.id }, h('td', {}, String(i + 1)), h('td', {}, e.name), h('td', {}, group), h('td', {}, level), h('td', {}, hire));
-      bulkFields.set(e.id, { level, hire, row, group });
+      const row = h('tr', { 'data-bulk-row': e.id }, h('td', {}, String(i + 1)), h('td', {}, e.name), h('td', {}, group), h('td', {}, level), h('td', {}, hire), h('td', {}, plan));
+      bulkFields.set(e.id, { level, hire, plan, row, group });
       return row;
     }));
     countBulk();
@@ -271,10 +278,10 @@ export async function staffTab(ctx: AdminCtx): Promise<HTMLElement> {
   const bulk = h(
     'section',
     { 'data-bulk': true },
-    h('h2', {}, 'Уровни и даты приёма'),
-    h('p', {}, 'Новичкам — уровень («Новичок 1» — первая неделя, «Новичок 2» — вторая) и дату приёма; изменённые строки подсвечены, сохраняются одной кнопкой.'),
+    h('h2', {}, 'Уровни, даты приёма и план'),
+    h('p', {}, 'Новичкам — уровень и дату приёма: от неё «Новичок 1» — первые две недели, «Новичок 2» — третья и четвёртая, дальше опытный. План — оплат на месяц из служебки (пусто — по норме уровня). Изменённые строки подсвечены, сохраняются одной кнопкой.'),
     h('div', { class: 'toolbar' }, h('label', {}, 'Показать ', bulkFilter), bulkHint),
-    h('div', { class: 'table-wrap' }, h('table', { class: 'bulk' }, h('thead', {}, h('tr', {}, ...['№', 'Сотрудник', 'Группа', 'Уровень', 'Принят'].map((t) => h('th', {}, t)))), bulkBody)),
+    h('div', { class: 'table-wrap' }, h('table', { class: 'bulk' }, h('thead', {}, h('tr', {}, ...['№', 'Сотрудник', 'Группа', 'Уровень', 'Принят', 'План/мес'].map((t) => h('th', {}, t)))), bulkBody)),
     bulkSave,
     bulkAlert,
     bulkStatus,

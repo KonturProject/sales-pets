@@ -492,6 +492,7 @@ describe('setStaff', () => {
       baseLevel: 'experienced',
       hiddenFromRating: false,
       transfers: [],
+      paymentPlan: null,
     });
   });
 
@@ -540,6 +541,65 @@ describe('setStaff', () => {
     for (const staff of bad) expect(admin(b, 'setStaff', { staff }), JSON.stringify(staff)).toEqual({ ok: false, error: 'bad_request' });
     expect(admin(b, 'setStaff', {})).toEqual({ ok: false, error: 'bad_request' });
     expect(b.get()).toEqual(before);
+  });
+});
+
+describe('личный план оплат на месяц (paymentPlan)', () => {
+  const ivanov = (b) => b.get().staff.find((e) => e.name === 'Иванов Иван');
+  const setPlan = (b, paymentPlan) => admin(b, 'setStaff', { staff: [{ name: 'Иванов Иван', group: 'СР1', paymentPlan }] });
+
+  test('число до сотых сохраняется, 0 — это план 0, null снимает, без поля — прежний', () => {
+    const { b } = withStaff();
+    expect(setPlan(b, 6.3).ok).toBe(true);
+    expect(ivanov(b).paymentPlan).toBe(6.3);
+    admin(b, 'setStaff', { staff: [{ name: 'Иванов Иван', group: 'СР1', hireDate: '2026-10-14' }] });
+    expect(ivanov(b)).toMatchObject({ paymentPlan: 6.3, hireDate: '2026-10-14' });
+    setPlan(b, 0);
+    expect(ivanov(b).paymentPlan).toBe(0);
+    setPlan(b, null);
+    expect(ivanov(b).paymentPlan).toBe(null);
+  });
+
+  test('вне 0…50, больше двух знаков, строка, логическое — bad_request, лист на месте', () => {
+    const { b } = withStaff();
+    setPlan(b, 6);
+    const before = b.get();
+    for (const v of [51, -1, 1.234, '6', true, {}]) expect(setPlan(b, v), JSON.stringify(v)).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.get()).toEqual(before);
+  });
+
+  test('старый лист без столбца: план читается как null, при записи дописывается заголовок', () => {
+    const { b } = withStaff();
+    const sheet = b.sheet('Staff');
+    sheet.rows = sheet.rows.map((r) => r.slice(0, 10));
+    expect(ivanov(b).paymentPlan).toBe(null);
+    setPlan(b, 2);
+    expect(sheet.rows[0][10]).toBe('paymentPlan');
+    expect(ivanov(b).paymentPlan).toBe(2);
+  });
+
+  test('у старого листа всего 10 столбцов: GET работает, запись добавляет столбец', () => {
+    const { b } = withStaff();
+    const sheet = b.sheet('Staff');
+    sheet.rows = sheet.rows.map((r) => r.slice(0, 10));
+    sheet.maxColumns = 10;
+    expect(ivanov(b).paymentPlan).toBe(null);
+    expect(setPlan(b, 3).ok).toBe(true);
+    expect(sheet.maxColumns).toBe(11);
+    expect(sheet.rows[0][10]).toBe('paymentPlan');
+    expect(ivanov(b).paymentPlan).toBe(3);
+  });
+
+  test('ячейку испортили руками: мусор и отрицательное — null; число, которое Таблица распознала сама, читается', () => {
+    const { b } = withStaff();
+    const sheet = b.sheet('Staff');
+    const row = sheet.rows.findIndex((r) => r[1] === 'Иванов Иван');
+    for (const junk of ['abc', '-1', '51', '1,5']) {
+      sheet.rows[row][10] = junk;
+      expect(ivanov(b).paymentPlan, junk).toBe(null);
+    }
+    sheet.rows[row][10] = 6;
+    expect(ivanov(b).paymentPlan).toBe(6);
   });
 });
 
@@ -893,7 +953,7 @@ describe('Дробные нормы', () => {
 
 describe('Выходные', () => {
   const setNonWorking = (b, nonWorking, extra = {}) => admin(b, 'setNonWorking', { nonWorking, ...extra });
-  const allDays = Array.from({ length: 21 }, (_, i) => `2026-11-${String(i + 2).padStart(2, '0')}`);
+  const allDays = Array.from({ length: 29 }, (_, i) => `2026-11-${String(i + 2).padStart(2, '0')}`);
 
   test('список сортируется по дате и лежит в config.nonWorking; ответ {ok, version, nonWorking}', () => {
     const b = loadBackend();
@@ -906,22 +966,22 @@ describe('Выходные', () => {
   test('новый список заменяет прежний целиком; пустой список, первый и последний день игры допустимы', () => {
     const b = loadBackend();
     setNonWorking(b, ['2026-11-04', '2026-11-07']);
-    expect(setNonWorking(b, ['2026-11-22', '2026-11-02']).nonWorking).toEqual(['2026-11-02', '2026-11-22']);
-    expect(b.get().config.nonWorking).toEqual(['2026-11-02', '2026-11-22']);
+    expect(setNonWorking(b, ['2026-11-30', '2026-11-02']).nonWorking).toEqual(['2026-11-02', '2026-11-30']);
+    expect(b.get().config.nonWorking).toEqual(['2026-11-02', '2026-11-30']);
     expect(setNonWorking(b, allDays).nonWorking).toEqual(allDays);
     expect(setNonWorking(b, []).nonWorking).toEqual([]);
     expect(b.get().config.nonWorking).toEqual([]);
   });
 
-  test('дата вне периода, повтор, не массив, больше 21 даты, мусор — bad_request, список на месте', () => {
+  test('дата вне периода, повтор, не массив, больше 29 дат, мусор — bad_request, список на месте', () => {
     const b = loadBackend();
     setNonWorking(b, ['2026-11-07']);
     const before = b.get();
     const bad = [
-      ['2026-11-23'], ['2026-11-01'], ['2026-11-07', '2026-11-23'],
+      ['2026-12-01'], ['2026-11-01'], ['2026-11-07', '2026-12-01'],
       ['2026-11-07', '2026-11-07'], ['2026-11-04', '2026-11-07', '2026-11-04'],
       '2026-11-07', { 0: '2026-11-07' }, null, undefined, 5,
-      [...allDays, '2026-11-23'], [...allDays, '2026-11-02'],
+      [...allDays, '2026-12-01'], [...allDays, '2026-11-02'],
       ['мусор'], ['2026-02-30'], ['2026-11-7'], [5], [null], [['2026-11-07']], [{}],
     ];
     for (const list of bad) expect(setNonWorking(b, list), JSON.stringify(list)).toEqual({ ok: false, error: 'bad_request' });
@@ -1208,12 +1268,12 @@ describe('Правки фактов', () => {
     expect(JSON.stringify(b.sheet('Corrections').rows)).toBe(rowsBefore);
   });
 
-  test('дата строго раньше сегодня и в пределах игры: после конца игры 22.11 верхней границей служит конец игры', () => {
+  test('дата строго раньше сегодня и в пределах игры: после конца игры 30.11 верхней границей служит конец игры', () => {
     const { b, item } = withIds();
-    b.advance(13 * 24 * 60 * MIN);
-    expect(b.get().serverNow).toBe('2026-11-25T10:00:00+03:00');
-    expect(add(b, [item({ date: '2026-11-22' })], 'a').ok).toBe(true);
-    for (const date of ['2026-11-23', '2026-11-24', '2026-11-25']) expect(add(b, [item({ date })], `r-${date}`), date).toEqual({ ok: false, error: 'bad_request' });
+    b.advance(21 * 24 * 60 * MIN);
+    expect(b.get().serverNow).toBe('2026-12-03T10:00:00+03:00');
+    expect(add(b, [item({ date: '2026-11-30' })], 'a').ok).toBe(true);
+    for (const date of ['2026-12-01', '2026-12-02', '2026-12-03']) expect(add(b, [item({ date })], `r-${date}`), date).toEqual({ ok: false, error: 'bad_request' });
     expect(b.get().corrections).toHaveLength(1);
   });
 

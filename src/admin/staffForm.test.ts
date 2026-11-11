@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
-  buildAbsence, buildStaffPatch, bulkStaffPatches, filterStaff, formOf, parseStaffJson,
+  buildAbsence, buildStaffPatch, bulkStaffPatches, filterStaff, formOf, parseStaffJson, readPlan,
   type StaffCurrent,
 } from './staffForm';
 
@@ -87,6 +87,40 @@ describe('buildStaffPatch', () => {
   });
 });
 
+describe('buildStaffPatch: личный план оплат на месяц', () => {
+  const patch = (current: StaffCurrent, paymentPlan: string) => buildStaffPatch(current, { ...formOf(current), paymentPlan });
+  const NAME = 'Иванова Анна Сергеевна';
+
+  test('число, дробь через запятую или точку; пусто снимает план', () => {
+    expect(patch(person(), '6')).toEqual({ name: NAME, paymentPlan: 6 });
+    expect(patch(person(), ' 6,5 ')).toEqual({ name: NAME, paymentPlan: 6.5 });
+    expect(patch(person(), '0')).toEqual({ name: NAME, paymentPlan: 0 });
+    expect(patch(person({ paymentPlan: 6 }), '')).toEqual({ name: NAME, paymentPlan: null });
+    expect(formOf(person({ paymentPlan: 2.5 })).paymentPlan).toBe('2.5');
+  });
+
+  test('тот же план — изменений нет', () => {
+    expect(patch(person({ paymentPlan: 6 }), '6')).toEqual({ error: 'Ничего не изменено' });
+  });
+
+  test('не число, больше 50, больше двух знаков, отрицательное — ошибка', () => {
+    for (const bad of ['abc', '51', '1.234', '-1', '6 шт']) {
+      expect(patch(person(), bad), bad).toEqual({ error: 'План оплат: число от 0 до 50, не больше двух знаков после запятой' });
+    }
+  });
+});
+
+describe('readPlan: поле плана (подсветка «изменено» в таблице сравнивает число, а не текст)', () => {
+  test('6,5 / 6.50 / « 6.5 » — одно и то же число; пусто — нет плана; мусор — bad', () => {
+    expect(readPlan('6,5')).toBe(6.5);
+    expect(readPlan('6.50')).toBe(6.5);
+    expect(readPlan(' 6.5 ')).toBe(6.5);
+    expect(readPlan('')).toBeNull();
+    expect(readPlan('abc')).toBe('bad');
+    expect(readPlan('51')).toBe('bad');
+  });
+});
+
 describe('parseStaffJson', () => {
   const ok = [
     { name: 'Тест Один', group: 'СР1' },
@@ -95,6 +129,15 @@ describe('parseStaffJson', () => {
 
   test('корректный список проходит как есть', () => {
     expect(parseStaffJson(JSON.stringify(ok))).toEqual(ok);
+  });
+
+  test('личный план: число до сотых от 0 до 50 или null; иначе ошибка с номером записи', () => {
+    const plans = [{ name: 'Тест Один', group: 'СР1', paymentPlan: 6 }, { name: 'Тест Два', group: 'СР2', paymentPlan: null }];
+    expect(parseStaffJson(JSON.stringify(plans))).toEqual(plans);
+    for (const bad of ['6', 1.234, 51, -1, true]) {
+      expect(parseStaffJson(JSON.stringify([{ name: 'Тест Один', group: 'СР1', paymentPlan: bad }])), String(bad))
+        .toEqual({ error: 'Запись 1: paymentPlan — число от 0 до 50, не больше двух знаков после запятой, или null' });
+    }
   });
 
   test('не JSON и не список — ошибка без цитаты из файла', () => {
@@ -184,5 +227,16 @@ describe('bulkStaffPatches: уровни и даты приёма всего ш�
   test('приём не раньше увольнения — ошибка', () => {
     expect(bulkStaffPatches(staff, { ...same(), e3: { baseLevel: 'experienced', hireDate: '2026-11-10' } }))
       .toEqual({ error: 'Строка 3: увольнение должно быть позже приёма' });
+  });
+
+  test('личный план: уходит только изменённый, пусто снимает, неверный — ошибка с номером строки', () => {
+    const withPlan = [staff[0], person({ id: 'e2', name: 'Тест Два', paymentPlan: 3 })];
+    const base = { e1: { baseLevel: 'experienced' as const, hireDate: '', paymentPlan: '' }, e2: { baseLevel: 'experienced' as const, hireDate: '', paymentPlan: '3' } };
+    expect(bulkStaffPatches(withPlan, base)).toEqual({ patches: [] });
+    expect(bulkStaffPatches(withPlan, { ...base, e1: { ...base.e1, paymentPlan: '6' }, e2: { ...base.e2, paymentPlan: '' } })).toEqual({
+      patches: [{ name: 'Тест Один', paymentPlan: 6 }, { name: 'Тест Два', paymentPlan: null }],
+    });
+    expect(bulkStaffPatches(withPlan, { ...base, e2: { ...base.e2, paymentPlan: 'много' } }))
+      .toEqual({ error: 'Строка 2: план оплат — число от 0 до 50, не больше двух знаков после запятой' });
   });
 });

@@ -10,10 +10,13 @@ describe('calendar', () => {
     expect(isWorkingDay('2026-11-05', cfg)).toBe(true);
     expect(isWorkingDay('2026-11-08', cfg)).toBe(false);
     expect(isWorkingDay('2026-11-21', cfg)).toBe(false);
+    expect(isWorkingDay('2026-11-28', cfg)).toBe(false);
+    expect(isWorkingDay('2026-11-29', cfg)).toBe(false);
+    expect(isWorkingDay('2026-11-30', cfg)).toBe(true);
   });
   test('вне периода игры день нерабочий', () => {
     expect(isWorkingDay('2026-11-01', cfg)).toBe(false);
-    expect(isWorkingDay('2026-11-23', cfg)).toBe(false);
+    expect(isWorkingDay('2026-12-01', cfg)).toBe(false);
   });
   test('prevWorkingDay: после праздника и выходных', () => {
     expect(prevWorkingDay('2026-11-09', cfg)).toBe('2026-11-06');
@@ -30,8 +33,8 @@ describe('calendar', () => {
     expect(workingDaysBetween('2026-11-02', '2026-11-09', cfg)).toEqual(
       ['2026-11-02', '2026-11-03', '2026-11-05', '2026-11-06', '2026-11-09']);
   });
-  test('14 рабочих дней за игру (21 день минус 6 выходных и 4.11)', () => {
-    expect(workingDaysBetween(cfg.startDate, cfg.endDate, cfg)).toHaveLength(14);
+  test('20 рабочих дней за игру (02–30.11: 29 дней минус 8 выходных и 4.11)', () => {
+    expect(workingDaysBetween(cfg.startDate, cfg.endDate, cfg)).toHaveLength(20);
   });
 });
 

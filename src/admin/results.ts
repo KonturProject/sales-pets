@@ -4,7 +4,7 @@ import { timelineOf } from '@/data/config';
 import { buildFacts, effectiveFacts } from '@/data/facts';
 import { addDays, isWorkingDay, nextWorkingDay, prevWorkingDay, workingDaysBetween } from '@/engine/calendar';
 import type { Config } from '@/engine/config';
-import { evaluateDay, groupPlan, paymentPlanCents, type DayResult } from '@/engine/evaluate';
+import { employeePlanCents, evaluateDay, groupPlan, paymentPlanCents, type DayResult } from '@/engine/evaluate';
 import { ruNum } from '@/engine/format';
 import type { PetState } from '@/engine/pet';
 import { groupOn, isPresent, levelOn, type Absence, type Employee } from '@/engine/staff';
@@ -186,14 +186,14 @@ export function dayResults(s: Snapshot, date: DateStr): GroupLine[] {
 
     const basketFact = days.reduce((a, x) => a + payOf(e.id, x), 0);
     const payDayCell: Cell = {
-      fact: basketFact, plan: working ? (present ? norm.payments : 0) : null,
+      fact: basketFact, plan: working ? (present ? Math.round(employeePlanCents(e, date, cfg)) / 100 : 0) : null,
       ...corrections(views, (v) => v.c.employeeId === e.id && v.c.kind === 'payments' && days.includes(v.c.date)),
       weekend: working ? basketFact - current.payments : 0,
     };
     let payPlanCents = 0;
-    for (const x of workDays) if (isPresent(e, x, s.absences)) payPlanCents += cents(tl.at(x).norms[levelOn(e, x)].payments);
+    for (const x of workDays) if (isPresent(e, x, s.absences)) payPlanCents += employeePlanCents(e, x, tl.at(x));
     const payTotalCell: Cell = {
-      fact: Math.max(0, gameDays.reduce((a, x) => a + rawOf(e.id, x), 0)), plan: workDays.length ? payPlanCents / 100 : null,
+      fact: Math.max(0, gameDays.reduce((a, x) => a + rawOf(e.id, x), 0)), plan: workDays.length ? Math.round(payPlanCents) / 100 : null,
       ...corrections(views, (v) => v.c.employeeId === e.id && v.c.kind === 'payments' && inGame(v.c.date)),
     };
 
@@ -235,7 +235,7 @@ export function dayResults(s: Snapshot, date: DateStr): GroupLine[] {
         ...corrections(views, (v) => v.c.kind === 'long' && v.c.date === date && inGroup(v) && present(v)),
       },
       payments: {
-        fact: payFact, plan: working ? paymentPlanCents(group, date, s.staff, s.absences, cfg) / 100 : null,
+        fact: payFact, plan: working ? Math.round(paymentPlanCents(group, date, s.staff, s.absences, cfg)) / 100 : null,
         ...corrections(views, (v) => v.c.kind === 'payments' && inGroup(v) && days.includes(v.c.date)),
         weekend: working ? payFact - (byDay[date] ?? 0) : 0,
       },
@@ -244,7 +244,7 @@ export function dayResults(s: Snapshot, date: DateStr): GroupLine[] {
       quality: { fact: tv[group].quality, plan: planOf('normQuality'), ...corrections(views, (v) => v.c.kind === 'quality' && inGroup(v) && inFunnel(v.c.date)) },
       long: { fact: tv[group].long, plan: planOf('normLong'), ...corrections(views, (v) => v.c.kind === 'long' && inGroup(v) && inFunnel(v.c.date)) },
       payments: {
-        fact: payTotal, plan: workDays.length ? payPlanCents / 100 : null,
+        fact: payTotal, plan: workDays.length ? Math.round(payPlanCents) / 100 : null,
         ...corrections(views, (v) => v.c.kind === 'payments' && inGroup(v) && inGame(v.c.date)),
       },
     };

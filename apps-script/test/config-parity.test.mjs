@@ -57,7 +57,7 @@ describe('дробные нормы и выходные в config', () => {
     const b = loadBackend();
     const patch = { norms: { experienced: { quality: 1.5, long: 0.25 } } };
     expect(admin(b, { action: 'setConfig', config: patch }).ok).toBe(true);
-    expect(configOf(b.get().config).norms.experienced).toEqual({ quality: 1.5, long: 0.25, payments: 0.4 });
+    expect(configOf(b.get().config).norms.experienced).toEqual({ quality: 1.5, long: 0.25, payments: 0.3 });
     for (const bad of [1.555, -0.5, 50.01]) {
       const norms = { experienced: { long: bad } };
       expect(admin(b, { action: 'setConfig', config: { norms } }).ok, `сервер ${bad}`).toBe(false);

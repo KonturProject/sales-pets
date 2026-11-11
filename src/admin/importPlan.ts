@@ -126,7 +126,7 @@ const newId = (n: number) => `new:${n}`;
 
 /**
  * Снимок «как будто файл воронки уже загружен»: зеркало `setStaff` (новые сотрудники в конце штата, опытные, в группе из
- * файла, без дат) и `importFunnel` сервера (строки файла заменяют загруженные по паре «сотрудник, день»; `funnelThrough`
+ * файла, без дат и без личного плана) и `importFunnel` сервера (строки файла заменяют загруженные по паре «сотрудник, день»; `funnelThrough`
  * становится `through`, даже если он раньше прежнего). Исходный снимок не меняется: на него завязан кэш фактов.
  * Совпадение с `Code.gs` проверяет apps-script/test/import-parity.test.mjs.
  */
@@ -141,7 +141,7 @@ export function withFunnelImport(s: Snapshot, plan: FunnelPlan): Snapshot {
     seen.add(normalizeName(name));
     added.push({
       id: newId(added.length + 1), name, shortName: shortNameOf(name), group: p.group, hireDate: null, fireDate: null,
-      baseLevel: 'experienced', hiddenFromRating: false, transfers: [],
+      baseLevel: 'experienced', hiddenFromRating: false, transfers: [], paymentPlan: null,
     });
   }
   const staff = [...s.staff, ...added];

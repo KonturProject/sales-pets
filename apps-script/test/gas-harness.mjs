@@ -55,6 +55,7 @@ class FakeSheet {
   getMaxRows() { return this.maxRows; }
   getMaxColumns() { return this.maxColumns; }
   insertRowsAfter(_after, count) { this.maxRows += count; }
+  insertColumnsAfter(_after, count) { this.maxColumns += count; }
   setFrozenRows() {}
   appendRow(values) {
     const row = this.getLastRow() + 1;

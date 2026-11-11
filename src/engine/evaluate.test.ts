@@ -16,10 +16,10 @@ describe('evaluateDay', () => {
     expect(r.normQuality).toBe(10);
     expect(r.normLong).toBe(6);
   });
-  test('опытный + новичок недели 2: 7 и 4', () => {
+  test('опытный + новичок 2 (недели 3–4): 7 и 4', () => {
     const staff = [emp('a'), emp('b', { hireDate: '2026-11-02', baseLevel: 'rookie1' })];
-    // 11-09: b — rookie2 (2/1)
-    const r = evaluateDay('СР1', '2026-11-09', staff, [], [], cfg);
+    // 16.11: b — rookie2 (2/1)
+    const r = evaluateDay('СР1', '2026-11-16', staff, [], [], cfg);
     expect(r.normQuality).toBe(7);
     expect(r.normLong).toBe(4);
   });
@@ -108,33 +108,69 @@ describe('план оплат группы: сумма личных норм «�
   const away: Absence[] = [{ employeeId: 'a', from: '2026-11-05', to: '2026-11-05', kind: 'sick' }];
 
   test('день: присутствующие сотрудники группы, в сотых оплаты', () => {
-    expect(paymentPlanCents('СР1', D, staff, [], cfg)).toBe(40 + 20 + 0);
-    expect(paymentPlanCents('СР1', '2026-11-02', staff, [], cfg)).toBe(40 + 20 + 0 + 40);
-    expect(paymentPlanCents('СР1', '2026-11-05', staff, away, cfg)).toBe(20);
-    expect(paymentPlanCents('СР2', D, staff, [], cfg)).toBe(40);
+    expect(paymentPlanCents('СР1', D, staff, [], cfg)).toBe(30 + 10 + 0);
+    expect(paymentPlanCents('СР1', '2026-11-02', staff, [], cfg)).toBe(30 + 10 + 0 + 30);
+    expect(paymentPlanCents('СР1', '2026-11-05', staff, away, cfg)).toBe(10);
+    expect(paymentPlanCents('СР2', D, staff, [], cfg)).toBe(30);
   });
 
-  test('игра: все рабочие дни 02–20.11 (14), и план на день asOf', () => {
+  test('игра: все рабочие дни 02–30.11 (20), и план на день asOf', () => {
     const one = [emp('a')];
-    expect(groupPlan('СР1', D, one, [], () => cfg, cfg)).toEqual({ gameCents: 14 * 40, dayCents: 40 });
+    expect(groupPlan('СР1', D, one, [], () => cfg, cfg)).toEqual({ gameCents: 20 * 30, dayCents: 30 });
   });
 
   test('правка нормы «с даты» меняет план только с этой даты', () => {
     const later = { ...cfg, norms: { ...cfg.norms, experienced: { ...cfg.norms.experienced, payments: 0.5 } } };
     const cfgOn = (d: string) => (d >= '2026-11-16' ? later : cfg);
-    // 9 рабочих дней до 16.11 по 0.4 и 5 дней с 16.11 по 0.5
-    expect(groupPlan('СР1', '2026-11-17', [emp('a')], [], cfgOn, cfg)).toEqual({ gameCents: 9 * 40 + 5 * 50, dayCents: 50 });
+    // 9 рабочих дней до 16.11 по 0.3 и 11 дней с 16.11 по 0.5
+    expect(groupPlan('СР1', '2026-11-17', [emp('a')], [], cfgOn, cfg)).toEqual({ gameCents: 9 * 30 + 11 * 50, dayCents: 50 });
   });
 
   test('перевод между группами: дни до перевода — в план старой группы, после — новой', () => {
     const moved = [emp('a', { transfers: [{ date: '2026-11-09', group: 'СР2' }] })];
-    // 4 рабочих дня до 09.11 (02, 03, 05, 06) — СР1, остальные 10 — СР2
-    expect(groupPlan('СР1', D, moved, [], () => cfg, cfg).gameCents).toBe(4 * 40);
-    expect(groupPlan('СР2', D, moved, [], () => cfg, cfg).gameCents).toBe(10 * 40);
+    // 4 рабочих дня до 09.11 (02, 03, 05, 06) — СР1, остальные 16 — СР2
+    expect(groupPlan('СР1', D, moved, [], () => cfg, cfg).gameCents).toBe(4 * 30);
+    expect(groupPlan('СР2', D, moved, [], () => cfg, cfg).gameCents).toBe(16 * 30);
   });
 
   test('дробные нормы складываются без ошибок округления', () => {
     const ten = Array.from({ length: 10 }, (_, i) => emp(`p${i}`));
-    expect(groupPlan('СР1', D, ten, [], () => cfg, cfg).gameCents).toBe(14 * 400);
+    expect(groupPlan('СР1', D, ten, [], () => cfg, cfg).gameCents).toBe(20 * 300);
+  });
+});
+
+describe('личный план оплат на месяц: × 105% по рабочим дням игры', () => {
+  test('весь месяц: план × 1,05; на день — 1/20, округление один раз', () => {
+    expect(groupPlan('СР1', D, [emp('a', { paymentPlan: 6 })], [], () => cfg, cfg)).toEqual({ gameCents: 630, dayCents: 32 });
+  });
+  test('личный план важнее нормы уровня; 0 — это план 0, а не «нет плана»', () => {
+    expect(groupPlan('СР1', D, [emp('a', { paymentPlan: 0 })], [], () => cfg, cfg).gameCents).toBe(0);
+    expect(groupPlan('СР1', D, [emp('a', { baseLevel: 'rookie1', paymentPlan: 2 })], [], () => cfg, cfg).gameCents).toBe(210);
+  });
+  test('нет поля (старый бэкенд) или null — норма уровня', () => {
+    const noField = emp('a');
+    expect('paymentPlan' in noField).toBe(false);
+    expect(groupPlan('СР1', D, [noField], [], () => cfg, cfg).gameCents).toBe(600);
+    expect(groupPlan('СР1', D, [emp('a', { paymentPlan: null })], [], () => cfg, cfg).gameCents).toBe(600);
+  });
+  test('приём посреди месяца: только дни после приёма (16 из 20)', () => {
+    expect(groupPlan('СР1', D, [emp('a', { hireDate: '2026-11-09', paymentPlan: 2 })], [], () => cfg, cfg).gameCents).toBe(168);
+  });
+  test('отпуск уменьшает план на свои рабочие дни', () => {
+    const away: Absence[] = [{ employeeId: 'a', from: '2026-11-23', to: '2026-11-27', kind: 'vacation' }];
+    expect(groupPlan('СР1', D, [emp('a', { paymentPlan: 6 })], away, () => cfg, cfg).gameCents).toBe(Math.round((630 * 15) / 20));
+  });
+  test('лишний выходной: за игру всё равно план × 1,05', () => {
+    const fewer = { ...cfg, nonWorking: [...cfg.nonWorking, '2026-11-30'] };
+    expect(groupPlan('СР1', D, [emp('a', { paymentPlan: 6 })], [], () => fewer, fewer).gameCents).toBe(630);
+  });
+  test('неточные в двоичной записи планы: десять по 6,3 — ровно 66,15 оплаты, три по 1,01 — 3,18', () => {
+    const many = (n: number, plan: number) => Array.from({ length: n }, (_, i) => emp(`p${i}`, { paymentPlan: plan }));
+    expect(groupPlan('СР1', D, many(10, 6.3), [], () => cfg, cfg).gameCents).toBe(6615);
+    expect(groupPlan('СР1', D, many(3, 1.01), [], () => cfg, cfg).gameCents).toBe(318);
+  });
+  test('сумма дробных сотых — целые сотые: восемь планов по 5 дают ровно 42 оплаты', () => {
+    const eight = Array.from({ length: 8 }, (_, i) => emp(`p${i}`, { paymentPlan: 5 }));
+    expect(groupPlan('СР1', D, eight, [], () => cfg, cfg).gameCents).toBe(4200);
   });
 });

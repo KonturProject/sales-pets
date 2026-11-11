@@ -58,9 +58,9 @@ describe('configPreview', () => {
   });
 
   test('норма оплат меняет процент плана без смены стадии — это видно в предпросмотре', () => {
-    // три опытных: план 16.8 → 18.9 оплаты на игру, 12 оплат — 71 % → 63 %, стадия 3 остаётся
-    const { changes } = configPreview(withTwelve(), { norms: { experienced: { payments: 0.45 } } });
-    expect(changes).toEqual([expect.objectContaining({ group: 'СР1', before: expect.objectContaining({ stage: 3, planPercent: 71 }), after: expect.objectContaining({ stage: 3, planPercent: 63 }) })]);
+    // три опытных, 20 рабочих дней: план 18 → 21 оплата на игру, 12 оплат — 66 % → 57 %, стадия 3 остаётся
+    const { changes } = configPreview(withTwelve(), { norms: { experienced: { payments: 0.35 } } });
+    expect(changes).toEqual([expect.objectContaining({ group: 'СР1', before: expect.objectContaining({ stage: 3, planPercent: 66 }), after: expect.objectContaining({ stage: 3, planPercent: 57 }) })]);
   });
 
   test('правка, после которой у всех всё так же, даёт пустой список', () => {
@@ -192,7 +192,8 @@ describe('removalPreview', () => {
   });
 
   test('норма оплат с будущей даты меняет план на игру: стадия видна сегодня, и при «Убрать» тоже', () => {
-    const low = { norms: { experienced: { payments: 0.1 } } };
+    // 9 дней до 16.11 по 0,3 и 11 дней с 16.11 по 0,2 на троих: план 18 → 14,7, 12 оплат — 66 % → 81 %
+    const low = { norms: { experienced: { payments: 0.2 } } };
     const p = configPreview(withTwelve(), low, '2026-11-16');
     expect(p.future).toBe(true);
     expect(p.changes[0]).toMatchObject({ group: 'СР1', before: { stage: 3 }, after: { stage: 4 } });

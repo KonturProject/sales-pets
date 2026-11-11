@@ -6,7 +6,11 @@ const LEVELS: Level[] = ['experienced', 'rookie1', 'rookie2'];
 const KINDS: Absence['kind'][] = ['vacation', 'sick', 'other'];
 /** Как `HIDDEN_REASON_MAX` в `Code.gs`: длиннее сервер отклонит. */
 const HIDDEN_REASON_MAX = 200;
-const JSON_KEYS = new Set(['name', 'group', 'hireDate', 'fireDate', 'baseLevel', 'hiddenFromRating', 'hiddenReason']);
+const JSON_KEYS = new Set(['name', 'group', 'hireDate', 'fireDate', 'baseLevel', 'hiddenFromRating', 'hiddenReason', 'paymentPlan']);
+/** Как `NORM_MAX` и `isNorm_` в `Code.gs`: личный план оплат на месяц — 0…50, до сотых. */
+const PLAN_MAX = 50;
+const PLAN_RULE = 'число от 0 до 50, не больше двух знаков после запятой';
+const isPlan = (v: unknown): v is number => typeof v === 'number' && v >= 0 && v <= PLAN_MAX && Math.round(v * 100) / 100 === v;
 
 type Transfer = Employee['transfers'][number];
 export type Failure = { error: string };
@@ -23,6 +27,8 @@ export interface StaffForm {
   hiddenReason: string;
   transferDate: string;
   transferGroup: GroupCode | '';
+  /** личный план оплат на месяц, как в поле ввода (`''` — нет плана) */
+  paymentPlan: string;
 }
 
 /** Элемент `setStaff`: ключ — ФИО, дальше только изменённые поля. */
@@ -33,6 +39,7 @@ export type StaffPatch = { name: string } & Partial<{
   hiddenFromRating: boolean;
   hiddenReason: string;
   transfers: Transfer[];
+  paymentPlan: number | null;
 }>;
 
 export const formOf = (e: StaffCurrent): StaffForm => ({
@@ -43,7 +50,20 @@ export const formOf = (e: StaffCurrent): StaffForm => ({
   hiddenReason: e.hiddenReason,
   transferDate: '',
   transferGroup: '',
+  paymentPlan: planText(e.paymentPlan),
 });
+
+/** План для поля ввода: `''` — нет плана. */
+export const planText = (v: number | null | undefined): string => (typeof v === 'number' ? String(v) : '');
+
+/** План из поля: пусто — `null`; запятая как точка; не число 0…50 до сотых — `'bad'`. */
+export function readPlan(raw: string): number | null | 'bad' {
+  const v = raw.trim().replace(',', '.');
+  if (v === '') return null;
+  if (!/^\d+(\.\d+)?$/.test(v)) return 'bad';
+  const n = Number(v);
+  return isPlan(n) ? n : 'bad';
+}
 
 /** Поиск без регистра и лишних пробелов по ФИО и короткому имени; пустой запрос — все. */
 export function filterStaff<T extends Pick<Employee, 'name' | 'shortName'>>(staff: T[], query: string): T[] {
@@ -76,6 +96,10 @@ export function buildStaffPatch(current: StaffCurrent, form: StaffForm): StaffPa
 
   if (form.baseLevel !== current.baseLevel) patch.baseLevel = form.baseLevel;
 
+  const plan = readPlan(form.paymentPlan);
+  if (plan === 'bad') return { error: `План оплат: ${PLAN_RULE}` };
+  if (plan !== (current.paymentPlan ?? null)) patch.paymentPlan = plan;
+
   const reason = form.hiddenReason.trim();
   if (form.hiddenFromRating) {
     if (reason === '') return { error: 'Укажите причину исключения из рейтинга' };
@@ -98,10 +122,11 @@ export function buildStaffPatch(current: StaffCurrent, form: StaffForm): StaffPa
   return Object.keys(patch).length === 1 ? { error: 'Ничего не изменено' } : patch;
 }
 
-/** Строка таблицы «Уровни и даты приёма»: дата пустая — не задана. */
+/** Строка таблицы «Уровни, даты приёма и план»: дата пустая — не задана; плана нет в строке — не меняется. */
 export interface BulkEdit {
   baseLevel: Level;
   hireDate: string;
+  paymentPlan?: string;
 }
 
 /**
@@ -116,9 +141,12 @@ export function bulkStaffPatches(staff: Employee[], edits: Record<string, BulkEd
     const hire = readDate(edit.hireDate);
     if (hire === 'bad') return { error: `Строка ${i + 1}: дата приёма — ожидается дата вида 2026-11-09` };
     if (hire !== null && e.fireDate !== null && e.fireDate <= hire) return { error: `Строка ${i + 1}: увольнение должно быть позже приёма` };
+    const plan = edit.paymentPlan === undefined ? undefined : readPlan(edit.paymentPlan);
+    if (plan === 'bad') return { error: `Строка ${i + 1}: план оплат — ${PLAN_RULE}` };
     const patch: StaffPatch = { name: e.name };
     if (edit.baseLevel !== e.baseLevel) patch.baseLevel = edit.baseLevel;
     if (hire !== e.hireDate) patch.hireDate = hire;
+    if (plan !== undefined && plan !== (e.paymentPlan ?? null)) patch.paymentPlan = plan;
     if (Object.keys(patch).length > 1) patches.push(patch);
   }
   return { patches };
@@ -157,6 +185,7 @@ export function parseStaffJson(text: string): StaffItem[] | Failure {
     if (rec.hiddenFromRating !== undefined && typeof rec.hiddenFromRating !== 'boolean') return at('hiddenFromRating: ожидается true или false');
     if (rec.hiddenReason !== undefined && (typeof rec.hiddenReason !== 'string' || rec.hiddenReason.length > HIDDEN_REASON_MAX)) return at('hiddenReason: текст не длиннее 200 знаков');
     if (rec.hiddenFromRating === true && (typeof rec.hiddenReason !== 'string' || rec.hiddenReason.trim() === '')) return at('для исключения из рейтинга нужна причина');
+    if (rec.paymentPlan !== undefined && rec.paymentPlan !== null && !isPlan(rec.paymentPlan)) return at(`paymentPlan — ${PLAN_RULE}, или null`);
 
     const key = normalizeName(rec.name);
     const first = seen.get(key);

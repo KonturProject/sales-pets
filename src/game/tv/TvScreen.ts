@@ -20,7 +20,7 @@ import { toyForRoom, type ToyKind } from './toys';
 export interface TvOptions {
   states: () => Record<GroupCode, PetState>;
   asOf: () => DateStr;
-  /** настройки на `asOf`: календарь для строки «день N из 14» */
+  /** настройки на `asOf`: календарь для строки «день N из 20» */
   cfg: () => Config;
   /** данные рейтингов; без них (демо) доски пустые */
   rank?: () => RankData;

@@ -11,6 +11,8 @@ export interface Employee {
   baseLevel: Level;
   hiddenFromRating: boolean;
   transfers: { date: DateStr; group: GroupCode }[];
+  /** личный план оплат на месяц из служебки (0…50, до сотых); нет поля или null — план по норме уровня */
+  paymentPlan?: number | null;
 }
 
 export interface Absence {
@@ -32,11 +34,11 @@ export function groupOn(e: Employee, d: DateStr): GroupCode {
   return g;
 }
 
-/** Новичок: 7 дней неделя 1, 7 дней неделя 2, затем опытный. Без даты выхода — базовый уровень. */
+/** Новичок от даты выхода: 14 дней новичок 1, следующие 14 — новичок 2, затем опытный. Без даты выхода — базовый уровень. */
 export function levelOn(e: Employee, d: DateStr): Level {
   if (!e.hireDate || e.baseLevel === 'experienced') return e.baseLevel;
-  if (d < addDays(e.hireDate, 7)) return 'rookie1';
-  if (d < addDays(e.hireDate, 14)) return 'rookie2';
+  if (d < addDays(e.hireDate, 14)) return 'rookie1';
+  if (d < addDays(e.hireDate, 28)) return 'rookie2';
   return 'experienced';
 }
 

@@ -33,19 +33,20 @@ const without = (list: DateStr[], day: DateStr) => list.filter((d) => d !== day)
 describe('calendarWeeks: дни игры сеткой по неделям', () => {
   const weeks = calendarWeeks(defaultConfig);
 
-  test('02.11.2026 — понедельник первой строки, три недели по семь дней, последний день — воскресенье 22.11', () => {
-    expect(weeks).toHaveLength(3);
-    expect(weeks.map((w) => w.length)).toEqual([7, 7, 7]);
+  test('02.11.2026 — понедельник первой строки, четыре недели по семь дней и пятая из одного дня — понедельник 30.11', () => {
+    expect(weeks).toHaveLength(5);
+    expect(weeks.map((w) => w.length)).toEqual([7, 7, 7, 7, 1]);
     expect(weeks[0][0].date).toBe('2026-11-02');
     expect(weeks[1][0].date).toBe('2026-11-09');
-    expect(weeks[2][6].date).toBe('2026-11-22');
+    expect(weeks[3][6].date).toBe('2026-11-29');
+    expect(weeks[4][0].date).toBe('2026-11-30');
     expect(new Date('2026-11-02T00:00:00Z').getUTCDay()).toBe(1);
   });
 
   test('встроенные выходные отмечены, остальные дни рабочие', () => {
     const off = weeks.flat().filter((d) => d.off).map((d) => d.date);
     expect(off).toEqual(defaultConfig.nonWorking);
-    expect(off).toEqual(['2026-11-04', '2026-11-07', '2026-11-08', '2026-11-14', '2026-11-15', '2026-11-21', '2026-11-22']);
+    expect(off).toEqual(['2026-11-04', '2026-11-07', '2026-11-08', '2026-11-14', '2026-11-15', '2026-11-21', '2026-11-22', '2026-11-28', '2026-11-29']);
     expect(weeks[0].map((d) => d.off)).toEqual([false, false, true, false, false, true, true]);
   });
 

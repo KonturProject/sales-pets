@@ -165,8 +165,8 @@ describe('buildFacts', () => {
 
   test('сытость — от плана группы на день: сумма норм «оплат в день» присутствующих', () => {
     const payments = [pay('2026-11-12', 'СР1', 'Тест 0', 'A-1'), pay('2026-11-12', 'СР1', 'Тест 0', 'A-2')];
-    // 10 опытных по 0.4 — план 4 в день
-    expect(buildFacts(snap({ staff: ten, payments }), '2026-11-12').states.СР1.satiety).toBe(0.5);
+    // 10 опытных по 0.3 — план 3 в день
+    expect(buildFacts(snap({ staff: ten, payments }), '2026-11-12').states.СР1.satiety).toBeCloseTo(2 / 3);
     const config = { norms: { experienced: { payments: 1 } } };
     expect(buildFacts(snap({ staff: ten, payments, config }), '2026-11-12').states.СР1.satiety).toBe(0.2);
   });
@@ -175,7 +175,7 @@ describe('buildFacts', () => {
     const payments = [pay('2026-11-12', 'СР1', 'Тест 0', 'A-1'), pay('2026-11-12', 'СР1', 'Тест 0', 'A-2')];
     for (const bad of [-3, 0.123, 'x', 51]) {
       const config = { norms: { experienced: { payments: bad } } } as unknown as Snapshot['config'];
-      expect(buildFacts(snap({ staff: ten, payments, config }), '2026-11-12').states.СР1.satiety).toBe(0.5);
+      expect(buildFacts(snap({ staff: ten, payments, config }), '2026-11-12').states.СР1.satiety).toBeCloseTo(2 / 3);
     }
   });
 
@@ -199,17 +199,17 @@ describe('buildFacts', () => {
   test('стадия — по проценту плана группы на игру; пороги снимка её меняют', () => {
     const payments = Array.from({ length: 7 }, (_, i) => pay('2026-11-03', 'СР1', 'Тест Иванов', `A-${i}`));
     const staff = [emp('e1', 'Тест Иванов')];
-    // один опытный: 0.4 × 14 рабочих дней = 5.6 оплаты; 7 оплат — 125 %
-    expect(buildFacts(snap({ staff, payments }), '2026-11-03').states.СР1).toMatchObject({ stage: 5, planPercent: 125 });
+    // один опытный: 0.3 × 20 рабочих дней = 6 оплат; 7 оплат — 116 %
+    expect(buildFacts(snap({ staff, payments }), '2026-11-03').states.СР1).toMatchObject({ stage: 5, planPercent: 116 });
     const config = { stageThresholds: [130, 140, 150, 160] };
     expect(buildFacts(snap({ staff, payments, config }), '2026-11-03').states.СР1.stage).toBe(1);
   });
 
   test('люди, добавленные в штат, поднимают план: стадия пересчитывается вниз', () => {
     const payments = Array.from({ length: 7 }, (_, i) => pay('2026-11-03', 'СР1', 'Тест 0', `A-${i}`));
-    // один опытный: 5.6 оплаты на игру, 7 оплат — 125 %; три опытных: 16.8, те же 7 оплат — 41 %
-    expect(buildFacts(snap({ staff: ten.slice(0, 1), payments }), '2026-11-03').states.СР1).toMatchObject({ stage: 5, planPercent: 125 });
-    expect(buildFacts(snap({ staff: ten.slice(0, 3), payments }), '2026-11-03').states.СР1).toMatchObject({ stage: 2, planPercent: 41 });
+    // один опытный: 6 оплат на игру, 7 оплат — 116 %; три опытных: 18, те же 7 оплат — 38 %
+    expect(buildFacts(snap({ staff: ten.slice(0, 1), payments }), '2026-11-03').states.СР1).toMatchObject({ stage: 5, planPercent: 116 });
+    expect(buildFacts(snap({ staff: ten.slice(0, 3), payments }), '2026-11-03').states.СР1).toMatchObject({ stage: 2, planPercent: 38 });
   });
 
   test('без штата плана нет: вылупившийся питомец на стадии 1, процента нет', () => {
@@ -301,7 +301,7 @@ describe('buildFacts', () => {
       const staff = Array.from({ length: 10 }, (_, i) => emp(`e${i}`, `Тест ${i}`));
       const payments = ['2026-11-09', '2026-11-12'].flatMap((d) => [pay(d, 'СР1', 'Тест 0', `${d}-1`), pay(d, 'СР1', 'Тест 0', `${d}-2`)]);
       const s = snap({ staff, payments, configChanges: [{ from: '2026-11-10', config: { norms: { experienced: { payments: 0.1 } } } }] });
-      expect(buildFacts(s, '2026-11-09').states.СР1.satiety).toBe(0.5);
+      expect(buildFacts(s, '2026-11-09').states.СР1.satiety).toBeCloseTo(2 / 3);
       expect(buildFacts(s, '2026-11-12').states.СР1.satiety).toBe(1);
     });
 

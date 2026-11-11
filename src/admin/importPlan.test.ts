@@ -223,8 +223,8 @@ describe('withFunnelImport: зеркало importFunnel и setStaff сервер
     }));
     expect(after.staff.slice(0, 2)).toEqual(before().staff);
     expect(after.staff.slice(2)).toEqual([
-      { id: 'new:1', name: 'Тест Три', shortName: 'Тест Т.', group: 'СР3', hireDate: null, fireDate: null, baseLevel: 'experienced', hiddenFromRating: false, transfers: [] },
-      { id: 'new:2', name: 'Четвёртый', shortName: 'Четвёртый', group: 'СР9', hireDate: null, fireDate: null, baseLevel: 'experienced', hiddenFromRating: false, transfers: [] },
+      { id: 'new:1', name: 'Тест Три', shortName: 'Тест Т.', group: 'СР3', hireDate: null, fireDate: null, baseLevel: 'experienced', hiddenFromRating: false, transfers: [], paymentPlan: null },
+      { id: 'new:2', name: 'Четвёртый', shortName: 'Четвёртый', group: 'СР9', hireDate: null, fireDate: null, baseLevel: 'experienced', hiddenFromRating: false, transfers: [], paymentPlan: null },
     ]);
     expect(after.funnel).toContainEqual({ employeeId: 'new:1', date: '2026-11-11', quality: 2, long: 1 });
     expect(after.funnel).toContainEqual({ employeeId: 'new:2', date: '2026-11-11', quality: 0, long: 0 });
