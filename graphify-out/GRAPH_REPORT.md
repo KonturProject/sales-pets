@@ -1,24 +1,24 @@
-# Graph Report - tamagochi Tver  (2026-11-11)
+# Graph Report - tamagochi Tver  (2026-11-17)
 
 ## Corpus Check
-- 246 files · ~324,929 words
+- 248 files · ~331,449 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 13 file(s) not represented in the graph (top: .css 5, .toml 4, (none) 2)
 
 ## Summary
-- 3324 nodes · 6469 edges · 268 communities (250 shown, 18 thin omitted)
-- Extraction: 93% EXTRACTED · 7% INFERRED · 0% AMBIGUOUS · INFERRED: 475 edges (avg confidence: 0.93)
+- 3369 nodes · 6611 edges · 272 communities (253 shown, 19 thin omitted)
+- Extraction: 92% EXTRACTED · 8% INFERRED · 0% AMBIGUOUS · INFERRED: 499 edges (avg confidence: 0.93)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `98495ccf`
+- Built from commit: `84e6e131`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - settings.json
 - _common.py
-- .wander
+- PetActor
 - check-admin.mjs
 - 2D Maze Game Template
 - drag.test.ts
@@ -44,7 +44,7 @@
 - compilerOptions
 - Открытые ассеты для игр и как их забирать в Claude Code
 - Game feel (juice)
-- Итоги, ручные правки фактов, дробные нормы и выходные — дизайн
+- Тамагочи отделов продаж — дизайн
 - Mathematical / Algorithmic Concepts
 - Creating Platforms
 - General Development Terms
@@ -59,7 +59,7 @@
 - 2D Collision Detection
 - Crisp Pixel Art Look
 - Step 8: Track the Score and Win
-- effects.ts
+- toyTricks.ts
 - Step 4: Paddle and Keyboard Controls
 - Babylon.js
 - check-render.mjs
@@ -120,20 +120,20 @@
 - Start Here
 - make-art.mjs
 - Vector Mathematics for Game Development
-- Gravity
+- changePin
 - Hall
 - CLAUDE.assets.md
 - .claude/CLAUDE.md
 - CREDITS.md
 - A-Frame
 - Three.js
-- PetActor
+- .arc
 - 3D Theory and Fundamentals
 - gas-harness.mjs
-- calendarForm.test.ts
+- holidaysBlock.ts
 - api.ts
 - h
-- vitest
+- data/config.ts
 - GameBase Template Repository
 - facts.ts
 - Hall.ts
@@ -142,57 +142,57 @@
 - check-dist.mjs
 - План и состояние
 - DateStr
-- PetView
+- Выпуск игры: Apps Script, PIN, GitHub Pages
 - package.json
 - Part 1: Basics
 - Тамагочи отделов продаж — план реализации
 - Collision Detection
 - Game kit для Claude Code
-- overridesTab.ts
+- dayEvent.test.ts
 - results.ts
 - RoomView.ts
 - music.py
 - vitest
 - argparse
-- types.ts
+- GroupCode
 - 2D Platform Game Template
 - Game Engine Core Design Principles
 - Game Development Basics
 - Game Promotion
 - render_sprites.py
 - Snapshot
-- results.test.ts
-- importPreview.ts
-- PowerSaver
+- results.ts
+- vitest
+- schedule.ts
 - Programming and Technical Terms
-- ruNum
+- PowerSaver
 - Game Design Terms
 - ТВ: живые комнаты — мяч, укус, итоги дня, подарки РГ
-- Сейчас делаем
-- schedule.ts
+- toys.ts
+- build.ts
 - GameBase Template Repository
 - Step 1: Create the Canvas and Draw on It
 - Other Control Mechanisms
 - petScale
-- configPreview.ts
+- Итоги, ручные правки фактов, дробные нормы и выходные — дизайн
 - Game Engine Skill
 - Art and Visual Terms
 - XMLHttpRequest
-- PetView.ts
+- PetView
 - Протокол обмена ассетами
 - configPreview.ts
 - Platform and Distribution Terms
 - Админка к запуску (фаза В) — спека и план
 - Find Skills
-- resultsTab.ts
-- resultsView.ts
+- Экран ТВ: гладкая картинка — план
+- Питомцы отделов продаж
 - XMLHttpRequest
 - showWork
 - Game feel (juice)
 - 2D Platform Game Template
 - ТВ: живая прогулка — реже, дольше, с играми
 - Mathematical / Algorithmic Concepts
-- rg/main.ts
+- PetActor.ts
 - GLSL Shaders
 - Скиллы и плагины с GitHub
 - General Development Terms
@@ -201,7 +201,7 @@
 - Audio for Web Games
 - Tilemaps
 - Game Genre Terms
-- ApiError
+- Этап 1 — Прототип (цель: сегодня–вторник 27.10)
 - Проект: Питомцы отделов продаж
 - Blender: модели и спрайты
 - Paddle Game Template (2D Breakout)
@@ -210,7 +210,7 @@
 - 2D Collision Detection
 - Crisp Pixel Art Look
 - scripts
-- correctionSaver.test.ts
+- backend.test.mjs
 - Step 8: Track the Score and Win
 - Step 4: Paddle and Keyboard Controls
 - Babylon.js
@@ -221,7 +221,7 @@
 - WebGL API
 - Feedback recipes — depth for `game-feel`
 - Web Application Testing
-- Review Focus
+- Экран ТВ: прогулка и праздник — дизайн (фаза Б)
 - slice-pets.py
 - A-Frame
 - Three.js
@@ -229,7 +229,7 @@
 - Web APIs for Game Development
 - Web Workers API
 - WebRTC API
-- backend.test.mjs
+- Canvas API
 - pickBite
 - Ассеты для игры
 - Win Condition
@@ -238,11 +238,11 @@
 - Step 3: Bounce Off the Walls
 - Step 6: Build the Brick Field
 - 3D Web Games
-- 3D Theory and Fundamentals
+- Store
 - Mathematical / Algorithmic Concepts
 - Bresenham's Line Algorithm -- Raycasting, Line of Sight, and Pathfinding
 - Collision Detection and Response Systems
-- Game Development Techniques
+- Moving Forward
 - WebRTC Data Channels
 - Optimizing Startup Performance
 - asm.js
@@ -266,22 +266,26 @@
 - Moving Sprites with Physics
 - Initialise Phaser
 - Start Here
+- 3D Theory and Fundamentals
 - Vector Mathematics for Game Development
 - Gravity
 - Creating Platforms
 - Keyboard Controls
-- The Main Character Sprite
-- Keyboard Controls
 - The Game Loop
-- Pt
+- Keyboard Controls
+- The Main Character Sprite
+- .run
 - .codex/hooks/filter-test-output.sh
+- Game Development Techniques
+- Этап 2 — Данные, импорт, бэкенд
+- Экран ТВ «Комнаты и зал» — дизайн (фаза А)
 
 ## God Nodes (most connected - your core abstractions)
 1. `GroupCode` - 78 edges
 2. `DateStr` - 77 edges
-3. `PetActor` - 71 edges
+3. `PetActor` - 72 edges
 4. `h()` - 61 edges
-5. `vitest` - 55 edges
+5. `vitest` - 56 edges
 6. `errorText()` - 49 edges
 7. `Hall` - 47 edges
 8. `dayResults()` - 44 edges
@@ -291,8 +295,8 @@
 ## Surprising Connections (you probably didn't know these)
 - `Task 8: Выходные из админки` --references--> `effectsOf()`  [INFERRED]
   docs/superpowers/plans/2026-11-03-admin-results.md → src/admin/effects.ts
-- `Task 1: Чистая логика экрана` --references--> `funnel()`  [INFERRED]
-  docs/superpowers/plans/2026-11-01-tv-screen-phase-a.md → src/admin/importPlan.test.ts
+- `Сейчас делаем` --references--> `StaffOnlyPlan`  [INFERRED]
+  PLAN.md → src/admin/importPlan.ts
 - `Развёртывание (делает человек, один раз)` --references--> `changePin()`  [INFERRED]
   apps-script/README.md → src/admin/pins.ts
 - `Task 12: Бэкенд Apps Script (хранилище + PIN)` --references--> `changePin()`  [INFERRED]
@@ -303,7 +307,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (268 total, 18 thin omitted)
+## Communities (272 total, 19 thin omitted)
 
 ### Community 0 - "settings.json"
 Cohesion: 0.11
@@ -313,9 +317,9 @@ Nodes (18): advisorModel, autoCompactWindow, effortLevel, enabledPlugins, andrej
 Cohesion: 0.18
 Nodes (13): main(), action_fcurves(), armature_actions(), emit(), ensure_object_mode(), import_model(), mesh_objects(), reset_scene() (+5 more)
 
-### Community 2 - ".wander"
-Cohesion: 0.14
-Nodes (10): Review Focus, Task 1: Мяч не застревает, Task 4: Игрушка от РГ в комнате до конца дня, ТВ: живые комнаты — план, Финал (контроллер), BALL_EDGE, Kick, kickBall() (+2 more)
+### Community 2 - "PetActor"
+Cohesion: 0.15
+Nodes (5): Task 2: движение по залу и хореография, ТВ: живые комнаты — план, Walk, div(), PetActor
 
 ### Community 3 - "check-admin.mjs"
 Cohesion: 0.17
@@ -326,8 +330,8 @@ Cohesion: 0.06
 Nodes (33): 2D Maze Game Template, Audio System, Ball Creation and Physics, Boot State, Building Levels, Collision Detection, Complete Update Loop, Core Game Mechanics (+25 more)
 
 ### Community 5 - "drag.test.ts"
-Cohesion: 0.17
-Nodes (12): DragEvent, DragState, dragStep(), IDLE, inZone(), MIN_DRAG, Point, Rect (+4 more)
+Cohesion: 0.15
+Nodes (14): DragEvent, DragResult, DragState, dragStep(), IDLE, inZone(), MIN_DRAG, Point (+6 more)
 
 ### Community 6 - "Part 1: Basics"
 Cohesion: 0.06
@@ -378,8 +382,8 @@ Cohesion: 0.12
 Nodes (16): Audio, Building a 3D Game, Controls, Core Concepts, Creating a Basic 2D Game, Game Engine Skill, Game Loop, Game Templates (+8 more)
 
 ### Community 20 - "h"
-Cohesion: 0.14
-Nodes (33): Task 3: Админка — поле плана, подписи уровней, «Итоги», Проверки, AbsenceForm, buildAbsence(), buildStaffPatch(), BulkEdit, bulkStaffPatches(), Failure (+25 more)
+Cohesion: 0.11
+Nodes (40): Review Focus, Task 2: Бэкенд — период и столбец `paymentPlan`, Task 3: Админка — поле плана, подписи уровней, «Итоги», Task 4: Проверки целиком, Task 5: Данные владельца и выпуск, Проверки, AbsenceForm, buildAbsence() (+32 more)
 
 ### Community 21 - "Art and Visual Terms"
 Cohesion: 0.13
@@ -409,9 +413,9 @@ Nodes (13): Библиотеки 2D, Библиотеки 3D, Звук, шриф
 Cohesion: 0.15
 Nodes (12): 1. Screen shake by decaying "trauma" (smooth, not a random jitter), 2. Hit-stop / freeze frame (sell impact by briefly stopping time), 3. Squash & stretch + overshoot via an eased tween (the "pop"), 4. A feedback bundle scaled by importance (keep juice proportional), Core principle: feedback is layered and exaggerated, Core workflow, Game feel (juice), Patterns (+4 more)
 
-### Community 28 - "Итоги, ручные правки фактов, дробные нормы и выходные — дизайн"
-Cohesion: 0.04
-Nodes (44): Бэкенд: Google Apps Script + Google Sheets, Действия (`POST`, тело JSON, заголовок `text/plain`), Ограничения и договорённости, Развёртывание (делает человек, один раз), Тесты и мок, Что публично, 1. Бэкенд: Google Apps Script (вы, ≈ 20 минут, один раз), 2. Сайт: GitHub Pages (Claude) (+36 more)
+### Community 28 - "Тамагочи отделов продаж — дизайн"
+Cohesion: 0.17
+Nodes (11): 1. Зачем, 2. Площадка и стек (мои решения, не согласованы), 3. Роли и доступ, 4. Правила игры (решения заказчика), 5. Интерфейс и стиль, 6. Данные, 7. Оставлено сборщику, 7а. Решения после проверки сборщиком (мои, отмечены как мои) (+3 more)
 
 ### Community 29 - "Mathematical / Algorithmic Concepts"
 Cohesion: 0.17
@@ -446,8 +450,8 @@ Cohesion: 0.22
 Nodes (8): Blender: модели и спрайты, Безопасность, Главное правило экономии, Не делай в Blender с нуля то, что можно взять, Перед словом «готово» (частые ошибки — проверять всегда), Порядок работы с MCP (сервер mcp-for-blender), Стандарт готовой модели (проверяет check_asset.py), Стандарт спрайтов (делает render_sprites.py)
 
 ### Community 37 - "Paddle Game Template (2D Breakout)"
-Cohesion: 0.22
-Nodes (8): Complete Code for Step 5, Complete Final Game Code, Implementing Game Over and Paddle Collision, Paddle Game Template (2D Breakout), Quick Reference: All Functions, Quick Reference: All Game Variables, Step 5: Game Over, Storing the Interval Reference
+Cohesion: 0.15
+Nodes (12): Adding the mousemove Event Listener, Complete Code for Step 5, Complete Event Listener Setup (Keyboard + Mouse), Complete Final Game Code, Implementing Game Over and Paddle Collision, Paddle Game Template (2D Breakout), Quick Reference: All Functions, Quick Reference: All Game Variables (+4 more)
 
 ### Community 38 - "Step 2: Move the Ball"
 Cohesion: 0.22
@@ -469,9 +473,9 @@ Nodes (9): Best Practices, Crisp Pixel Art Look, How It Works, Known Limitations
 Cohesion: 0.25
 Nodes (8): Adding the Win Condition, Calling drawScore() in the Game Loop, Canvas Text Methods Reference, Complete collisionDetection() with Score and Win, Incrementing the Score, Initializing the Score, Step 8: Track the Score and Win, The drawScore() Function
 
-### Community 43 - "effects.ts"
-Cohesion: 0.39
-Nodes (7): GroupChange, describeDay(), Effects, partsOf(), CorrectionView, Outcome, outcomeLines()
+### Community 43 - "toyTricks.ts"
+Cohesion: 0.13
+Nodes (32): Сейчас делаем, BALL_EDGE, Kick, toyHeight(), bubbles(), call(), CEIL, clamp() (+24 more)
 
 ### Community 44 - "Step 4: Paddle and Keyboard Controls"
 Cohesion: 0.25
@@ -486,8 +490,8 @@ Cohesion: 0.16
 Nodes (15): loadBackend(), demo, browserPath, check(), checkStates(), EXPECTED, failures, { port } (+7 more)
 
 ### Community 47 - "importPreview.ts"
-Cohesion: 0.17
-Nodes (19): Cell, paintList(), remove(), cellText, correctionHead(), CorrectionLike, correctionLine(), editorCaption() (+11 more)
+Cohesion: 0.09
+Nodes (53): Task 7: Разбор при загрузке воронки и оплат, createPreviews(), add(), correct(), render(), Cell, correctionItems(), correctionViews() (+45 more)
 
 ### Community 48 - "Mathematical / Algorithmic Concepts"
 Cohesion: 0.25
@@ -523,11 +527,11 @@ Nodes (33): 2D Maze Game Template, Audio System, Ball Creation and Physics, Boot
 
 ### Community 57 - "RoomView"
 Cohesion: 0.15
-Nodes (8): FunnelTotal, TickerItem, el(), img(), RoomView, squash(), toyTurn(), ToyKind
+Nodes (6): el(), img(), RoomView, toyTurn(), ToyKind, Trick
 
 ### Community 58 - "resultsFlow.ts"
-Cohesion: 0.10
-Nodes (31): PendingHolder, PendingWrite, REJECTED, wasRejected(), CorrectionItem, BUSY_TEXT, createResultsFlow(), check() (+23 more)
+Cohesion: 0.06
+Nodes (45): createCorrectionSaver(), PendingHolder, PendingWrite, randomRef(), REJECTED, item(), lateAnswer(), network() (+37 more)
 
 ### Community 59 - "Game Development Algorithms"
 Cohesion: 0.29
@@ -590,8 +594,8 @@ Cohesion: 0.25
 Nodes (8): Core Concepts, Design Principles, Framework Support, Practical Tips, Related APIs, Supported Devices, WebXR, What WebXR Is
 
 ### Community 74 - "GLSL Shaders"
-Cohesion: 0.29
-Nodes (7): Fragment Shader, GLSL Shaders, Key Concepts, Practical Tips, The Shader Pipeline, Using Shaders in HTML and Three.js, What Shaders Are
+Cohesion: 0.17
+Nodes (12): Vertex Shader, Fragment Shader, GLSL Shaders, Key Concepts, Practical Tips, The Shader Pipeline, Using Shaders in HTML and Three.js, Vertex Shader (+4 more)
 
 ### Community 75 - "Mathematical / Algorithmic Concepts"
 Cohesion: 0.33
@@ -709,25 +713,25 @@ Nodes (6): ACCENT, egg(), EGGS, PETS, rng(), svg()
 Cohesion: 0.50
 Nodes (4): Practical Game Development Applications, Pseudocode -- Vector2D Class, Vector Mathematics for Game Development, What It Is
 
-### Community 104 - "Gravity"
-Cohesion: 0.67
-Nodes (3): Collision Detection Between Hero and Platforms, Gravity, Setting Global Gravity
+### Community 104 - "changePin"
+Cohesion: 0.25
+Nodes (9): Бэкенд: Google Apps Script + Google Sheets, Действия (`POST`, тело JSON, заголовок `text/plain`), Ограничения и договорённости, Развёртывание (делает человек, один раз), Тесты и мок, Что публично, 8. Допущения (мои, на проверку), 4. Разбор при загрузке (+1 more)
 
 ### Community 105 - "Hall"
-Cohesion: 0.24
+Cohesion: 0.25
 Nodes (5): clamp(), far(), Hall, side(), sleep()
 
 ### Community 113 - "A-Frame"
-Cohesion: 0.29
-Nodes (7): A-Frame, Animation, Camera and Lighting, Creating Entities with JavaScript, Practical Tips, Primitives and Entities, Setup
+Cohesion: 0.18
+Nodes (11): A-Frame, Animation, Camera and Lighting, Creating Entities with JavaScript, Frameworks, Key Features, PlayCanvas, Practical Tips (+3 more)
 
 ### Community 114 - "Three.js"
-Cohesion: 0.18
-Nodes (11): Animation Loop, Core Components, Frameworks, Geometry, Material, and Mesh, Key Features, Lighting, PlayCanvas, Practical Tips (+3 more)
+Cohesion: 0.29
+Nodes (7): Animation Loop, Core Components, Geometry, Material, and Mesh, Lighting, Practical Tips, Setup, Three.js
 
-### Community 115 - "PetActor"
-Cohesion: 0.12
-Nodes (10): Global Constraints, Review Focus, Task 1: расписание и тексты праздника, Task 2: движение по залу и хореография, Task 3: экран и проверка, Экран ТВ, фаза Б: прогулка и праздник — план, Task 3: «Кусь» на прогулке, Global Constraints (+2 more)
+### Community 115 - ".arc"
+Cohesion: 0.17
+Nodes (7): Global Constraints, Review Focus, Task 1: расписание и тексты праздника, Task 3: экран и проверка, Экран ТВ, фаза Б: прогулка и праздник — план, Global Constraints, Shot
 
 ### Community 116 - "3D Theory and Fundamentals"
 Cohesion: 0.25
@@ -737,21 +741,21 @@ Nodes (7): 3D Theory and Fundamentals, 3D Web Games, Camera, Coordinate System, 
 Cohesion: 0.18
 Nodes (6): CODE_PATH, formatDate(), pad(), TEST_ADMIN_PIN, admin(), seeded()
 
-### Community 118 - "calendarForm.test.ts"
-Cohesion: 0.16
-Nodes (20): calendarChanges(), CalendarDay, calendarPreview(), calendarWeeks(), emp(), fun(), pay(), world() (+12 more)
+### Community 118 - "holidaysBlock.ts"
+Cohesion: 0.12
+Nodes (26): calendarChanges(), calendarPreview(), calendarWeeks(), emp(), fun(), pay(), world(), toggleDay() (+18 more)
 
 ### Community 119 - "api.ts"
-Cohesion: 0.07
-Nodes (27): vitest, emp(), fun(), world(), api, ApiErrorCode, backendUrl(), createApi() (+19 more)
+Cohesion: 0.09
+Nodes (24): Главный цикл и экраны, Events, Главный цикл и экраны, Events, api, ApiErrorCode, backendUrl(), createApi() (+16 more)
 
 ### Community 120 - "h"
-Cohesion: 0.10
-Nodes (38): Attr, Child, errorText(), h(), newVersionSlot(), TabItem, tabs(), select() (+30 more)
+Cohesion: 0.08
+Nodes (43): Attr, Child, errorText(), h(), newVersionSlot(), TabItem, tabs(), select() (+35 more)
 
-### Community 121 - "vitest"
-Cohesion: 0.16
-Nodes (17): ConfigState, ConfigChange, SnapshotConfig, applyValid(), cache, cloneConfig(), INT_RANGES, isDateStr() (+9 more)
+### Community 121 - "data/config.ts"
+Cohesion: 0.08
+Nodes (36): Папки, Папки, Global Constraints, Review Focus, Task 1: Сервер v4 — дробные нормы, выходные, правки фактов, Task 6: Вкладка «Итоги», правка и список правок, Task 8: Выходные из админки, Task 9: Документы и граф (+28 more)
 
 ### Community 123 - "GameBase Template Repository"
 Cohesion: 0.09
@@ -759,15 +763,15 @@ Nodes (22): Build Targets, Debug Features, Entity Lifecycle, Game Loop Architect
 
 ### Community 124 - "facts.ts"
 Cohesion: 0.14
-Nodes (29): Task 4: Правки фактов в расчёте (`buildFacts`, рейтинги, причина болезни), 2. Ручные правки фактов, bump(), cache, collect(), Collected, compute(), effectiveCache (+21 more)
+Nodes (27): Task 3: Штат и статусы по датам, Task 4: Правки фактов в расчёте (`buildFacts`, рейтинги, причина болезни), bump(), cache, collect(), Collected, effectiveCache, effectiveFacts (+19 more)
 
 ### Community 125 - "Hall.ts"
-Cohesion: 0.13
-Nodes (38): Task 3: Путь с постоянной скоростью и геометрия игр, Task 4: `Hall` — срок, брожение и четыре игры, COLORS, SPOTS, Walk, ballSpot(), ballWatch(), CHASE_LAPS (+30 more)
+Cohesion: 0.11
+Nodes (44): Task 18: Деплой и документация, Этап 4 — Выпуск, Review Focus, Task 3: Путь с постоянной скоростью и геометрия игр, Task 4: `Hall` — срок, брожение и четыре игры, Task 5: Замер, длина прогулки, проверки, Task 6: Документы, COLORS (+36 more)
 
 ### Community 126 - "TvScreen.ts"
-Cohesion: 0.08
-Nodes (45): Task 1: Чистая логика экрана, Task 2: Расписание — прогулка раз в ~5 минут, Решения сборщика, 3. Вкладка «Итоги», StaffForm, TodayTask, THEME, Scored (+37 more)
+Cohesion: 0.13
+Nodes (27): Task 1: Чистая логика экрана, funnel(), facts(), dayRoomMs(), daySteps(), enqueueDay(), staleDay(), dayLine() (+19 more)
 
 ### Community 127 - "audit-publish.mjs"
 Cohesion: 0.11
@@ -778,16 +782,16 @@ Cohesion: 0.12
 Nodes (8): browserPath, failures, GROUP_CODES, MIME, root, withBackend, withoutBackend, work
 
 ### Community 129 - "План и состояние"
-Cohesion: 0.12
-Nodes (14): post(), Global Constraints, Review Focus, Task 2: Арт болванок, Task 3: Комнаты, питомцы, доски, камера, Task 4: Две мелочи админки к первому дню, Task 5: Проверки и выпуск, Экран ТВ «Комнаты и зал», фаза А — план (+6 more)
+Cohesion: 0.18
+Nodes (10): post(), Global Constraints, Review Focus, Task 2: Арт болванок, Task 3: Комнаты, питомцы, доски, камера, Task 4: Две мелочи админки к первому дню, Task 5: Проверки и выпуск, Экран ТВ «Комнаты и зал», фаза А — план (+2 more)
 
 ### Community 130 - "DateStr"
-Cohesion: 0.10
-Nodes (29): Соглашения, Соглашения, FunnelPlan, newId(), PaymentsPlan, paymentsSummary(), planFunnelImport(), shortNameOf() (+21 more)
+Cohesion: 0.15
+Nodes (22): CalendarDay, FunnelPlan, newId(), PaymentsPlan, shortNameOf(), StaffOnlyPlan, opts, person() (+14 more)
 
-### Community 131 - "PetView"
-Cohesion: 0.19
-Nodes (9): Зачем, Не цели, Ограничения, Цели, Экран ТВ: прогулка и праздник — дизайн (фаза Б), Не цели, el(), img() (+1 more)
+### Community 131 - "Выпуск игры: Apps Script, PIN, GitHub Pages"
+Cohesion: 0.22
+Nodes (9): 1. Бэкенд: Google Apps Script (вы, ≈ 20 минут, один раз), 2. Сайт: GitHub Pages (Claude), 3. PIN групп (вы), 4. Данные (вы, в админке), 5. Если что-то не так, 6. Откат, 7. Продление до 30.11 и личные планы (выпущено 15.11), Выпуск игры: Apps Script, PIN, GitHub Pages (+1 more)
 
 ### Community 132 - "package.json"
 Cohesion: 0.14
@@ -798,8 +802,8 @@ Cohesion: 0.06
 Nodes (30): Axis Separation, Basic Entity Template, Cell Overflow, Collision Edge Cases and Solutions, Collision Philosophy, Complete Entity with Collisions, Converting to Pixel Coordinates, Coordinate System Diagram (+22 more)
 
 ### Community 134 - "Тамагочи отделов продаж — план реализации"
-Cohesion: 0.12
-Nodes (16): Global Constraints, Review Focus, Task 10: Парсер файла оплат, Task 11: Парсер воронки, Task 12: Бэкенд Apps Script (хранилище + PIN), Task 13: Клиент данных (api + store), Task 14: Экран на живых данных + рейтинги, Task 15: Админка — вход, оплаты, импорт (+8 more)
+Cohesion: 0.22
+Nodes (8): Global Constraints, Review Focus, Task 15: Админка — вход, оплаты, импорт, Task 16: Админка — штат, отсутствия, нормы, ручные правки, Task 17: Страница РГ, Покрытие спеки (самопроверка), Тамагочи отделов продаж — план реализации, Этап 3 — Админка и РГ
 
 ### Community 135 - "Collision Detection"
 Cohesion: 0.13
@@ -809,37 +813,37 @@ Nodes (15): AABB vs. AABB, Axis-Aligned Bounding Boxes (AABB), Bounding Spheres,
 Cohesion: 0.20
 Nodes (9): Game kit для Claude Code, Важно про claude-mem, Важно про graphify, Как работать каждый день, Установка (5 минут), Что внутри, Что ставит setup.sh, Block (+1 more)
 
-### Community 137 - "overridesTab.ts"
-Cohesion: 0.20
-Nodes (11): AdminCtx, overrideDelta(), OverrideKind, parseAmount(), splitDelta(), KIND_TITLE, KINDS, overridesTab() (+3 more)
+### Community 137 - "dayEvent.test.ts"
+Cohesion: 0.14
+Nodes (16): overrideDelta(), OverrideKind, parseAmount(), splitDelta(), KIND_TITLE, KINDS, GroupLine, PetState (+8 more)
 
 ### Community 138 - "results.ts"
-Cohesion: 0.12
-Nodes (46): Папки, Папки, Task 5: «Итоги» — чистая логика, Task 7: Разбор при загрузке воронки и оплат, Task 5: Событие «итоги дня», Готово, Отложено после обзора (мелочи), effectsOf() (+38 more)
+Cohesion: 0.17
+Nodes (27): Task 5: Событие «итоги дня», Готово, Дальше, Известные баги, Контракты движка к данным, Отложено после обзора (мелочи), План и состояние, evaluated() (+19 more)
 
 ### Community 139 - "RoomView.ts"
 Cohesion: 0.09
-Nodes (26): DECOR, EMOTE, GIFT, PLANTS, PLUS, SPARK, ease(), HEARTS (+18 more)
+Nodes (22): RoomTheme, MOOD_LABEL, DECOR, EMOTE, GIFT, PLANTS, PLUS, SPARK (+14 more)
 
 ### Community 140 - "music.py"
 Cohesion: 0.33
 Nodes (13): add(), arp(), env(), hz(), layer(), main(), music(), note() (+5 more)
 
 ### Community 141 - "vitest"
-Cohesion: 0.06
-Nodes (46): Global Constraints, Review Focus, Task 2: Бэкенд — период и столбец `paymentPlan`, Task 4: Проверки целиком, Task 5: Данные владельца и выпуск, Игра на весь ноябрь — план реализации, Бэкенд, Зачем (+38 more)
+Cohesion: 0.07
+Nodes (48): Бэкенд, Зачем, Игра на весь ноябрь: продление, личный план оплат, новички 2+2 недели, Порядок выпуска, Правила, Что не меняется, Что пересчитается задним числом (так задумано), Что получится (живые данные на 11.11, оплаты загружены по 10.11) (+40 more)
 
 ### Community 142 - "argparse"
 Cohesion: 0.29
 Nodes (4): is_server_ready(), main(), is_server_ready(), main()
 
-### Community 143 - "types.ts"
-Cohesion: 0.10
-Nodes (29): Task 2: Календарь и конфиг, Task 3: Штат и статусы по датам, Task 4: Нормы и оценка дня, Task 5: Симуляция питомца, Task 6: Рейтинги, Task 7: Демо-данные и сценарий, Task 8: Ассеты-заглушки, Task 9: Экран с питомцами (рендер) (+21 more)
+### Community 143 - "GroupCode"
+Cohesion: 0.12
+Nodes (27): Task 9: Экран с питомцами (рендер), ART, GROUP_KEY, THEME, buildDemo(), groupFacts(), HEADCOUNT, LETTERS (+19 more)
 
 ### Community 144 - "2D Platform Game Template"
-Cohesion: 0.25
-Nodes (7): 2D Platform Game Template, Adding a Jump Sound Effect, Implementing the Jump Mechanic, Jumps, Loading the Hero Image, Spawning the Hero, The Main Character Sprite
+Cohesion: 0.18
+Nodes (10): 2D Platform Game Template, Adding a Jump Sound Effect, Collision Detection Between Hero and Platforms, Gravity, Implementing the Jump Mechanic, Jumps, Loading and Displaying the Background, Setting Global Gravity (+2 more)
 
 ### Community 145 - "Game Engine Core Design Principles"
 Cohesion: 0.07
@@ -858,28 +862,28 @@ Cohesion: 0.22
 Nodes (9): assign_action(), anim_bbox(), load_pixels(), main(), pick_engine(), save_sheet(), setup_camera(), setup_light() (+1 more)
 
 ### Community 149 - "Snapshot"
-Cohesion: 0.26
-Nodes (10): snapshot(), paymentsTab(), save(), provisionalChanges(), provisionalToday(), snapshot, short(), todayLine() (+2 more)
+Cohesion: 0.12
+Nodes (16): AdminCtx, Computed, Live, PreviewSpec, overridesTab(), apply(), paint(), paymentsTab() (+8 more)
 
-### Community 150 - "results.test.ts"
-Cohesion: 0.15
-Nodes (23): Global Constraints, Task 1: Движок — календарь, уровни 14/28, личный план, emp(), fun(), lineOf(), pay(), personOf(), snap() (+15 more)
+### Community 150 - "results.ts"
+Cohesion: 0.12
+Nodes (33): Task 5: «Итоги» — чистая логика, Global Constraints, Global Constraints, Task 1: Движок — календарь, уровни 14/28, личный план, Игра на весь ноябрь — план реализации, absenceOn(), byKey(), cents() (+25 more)
 
-### Community 151 - "importPreview.ts"
-Cohesion: 0.15
-Nodes (6): list(), Live, PreviewSpec, FlowView, INTERRUPTED_TEXT, ResultsFlow
+### Community 151 - "vitest"
+Cohesion: 0.18
+Nodes (7): vitest, tl(), emp(), snap(), withStock(), defaultConfig, pay()
 
-### Community 152 - "PowerSaver"
-Cohesion: 0.15
-Nodes (9): Итог (02.11), Проверка, Что меняем, Экран ТВ: гладкая картинка — план, INPUT_EVENTS, modeFor(), PowerMode, PowerSaver (+1 more)
+### Community 152 - "schedule.ts"
+Cohesion: 0.18
+Nodes (17): Task 1: Красная проверка: питомцы на прогулке не замирают, Task 2: Расписание — прогулка раз в ~5 минут, HOME_MS, CARE_PER_PASS, careTurn(), CYCLE_MS, MIN_WALK_MS, PASS (+9 more)
 
 ### Community 153 - "Programming and Technical Terms"
 Cohesion: 0.07
 Nodes (29): API (Application Programming Interface), Client-Server Architecture, Collision Detection, Delta Time, Draw Call, Frame Rate (FPS -- Frames Per Second), Frustum Culling, Game Engine (+21 more)
 
-### Community 154 - "ruNum"
-Cohesion: 0.11
-Nodes (18): Task 1: Каркас проекта, Global Constraints, Review Focus, Task 3: Номер сборки и самообновление страниц, Task 6: Вкладка «Итоги», правка и список правок, Task 8: Выходные из админки, Task 9: Документы и граф, Выпуск 1 (делает контроллер) (+10 more)
+### Community 154 - "PowerSaver"
+Cohesion: 0.27
+Nodes (4): INPUT_EVENTS, modeFor(), PowerSaver, TICK_MS
 
 ### Community 155 - "Game Design Terms"
 Cohesion: 0.07
@@ -889,33 +893,33 @@ Nodes (28): Aggro, AoE (Area of Effect), Balancing, Buff / Debuff, Cooldown, Dif
 Cohesion: 0.20
 Nodes (9): Анти-цели (провал, даже если «работает»), Зачем, Ограничения, Оставлено исполнителю, Порядок работ (от простого к сложному), Проверка, Решения Claude (владелец разрешил решать самому), ТВ: живые комнаты — мяч, укус, итоги дня, подарки РГ (+1 more)
 
-### Community 157 - "Сейчас делаем"
-Cohesion: 0.21
-Nodes (8): Главный цикл и экраны, Главный цикл и экраны, Task 2: Аптечка от РГ лечит красным плюсом, Сейчас делаем, StaffOnlyPlan, stageSprite(), homeLead(), Tv
+### Community 157 - "toys.ts"
+Cohesion: 0.13
+Nodes (14): Review Focus, Task 1: Мяч не застревает, Task 2: Аптечка от РГ лечит красным плюсом, Task 4: Игрушка от РГ в комнате до конца дня, Финал (контроллер), PowerMode, kickBall(), TOY_H (+6 more)
 
-### Community 158 - "schedule.ts"
-Cohesion: 0.24
-Nodes (10): HOME_MS, CARE_PER_PASS, CYCLE_MS, MIN_WALK_MS, PASS, PASS_MS, PASSES_PER_WALK, SLIDE_MS (+2 more)
+### Community 158 - "build.ts"
+Cohesion: 0.39
+Nodes (6): decideReload(), fetchBuild(), LastReload, readLastReload(), reloadForBuild(), watchBuild()
 
 ### Community 159 - "GameBase Template Repository"
 Cohesion: 0.09
 Nodes (22): Build Targets, Debug Features, Entity Lifecycle, Game Loop Architecture, GameBase Template Repository, Getting Started, Haxe, Heaps (Heaps.io) (+14 more)
 
 ### Community 160 - "Step 1: Create the Canvas and Draw on It"
-Cohesion: 0.10
-Nodes (23): Complete Code for Step 1, Drawing a Circle, Drawing a Filled Rectangle, Drawing a Stroked Rectangle (Outline Only), Getting the Canvas Reference and 2D Context, HTML Structure, Key Methods Reference, Step 1: Create the Canvas and Draw on It (+15 more)
+Cohesion: 0.15
+Nodes (17): Complete Code for Step 1, Drawing a Circle, Drawing a Filled Rectangle, Drawing a Stroked Rectangle (Outline Only), Getting the Canvas Reference and 2D Context, HTML Structure, Key Methods Reference, Step 1: Create the Canvas and Draw on It (+9 more)
 
 ### Community 161 - "Other Control Mechanisms"
 Cohesion: 0.10
 Nodes (19): Best Practices, Best Practices, Best Practices, Code Examples, Code Examples, Code Examples, Desktop with Gamepad, Desktop with Mouse and Keyboard (+11 more)
 
 ### Community 162 - "petScale"
-Cohesion: 0.12
-Nodes (14): Архитектура игры «Питомцы отделов продаж», Ассеты, Стек, Архитектура игры «Питомцы отделов продаж», Ассеты, Стек, Зачем, Не цели (фаза Б и позже) (+6 more)
-
-### Community 163 - "configPreview.ts"
 Cohesion: 0.15
-Nodes (25): STEPS, Task 1: Сервер v4 — дробные нормы, выходные, правки фактов, 5. Выходные, applyPatch(), byFrom(), compare(), configPreview, COUNTS (+17 more)
+Nodes (11): Архитектура игры «Питомцы отделов продаж», Ассеты, Соглашения, Стек, Архитектура игры «Питомцы отделов продаж», Ассеты, Соглашения, Стек (+3 more)
+
+### Community 163 - "Итоги, ручные правки фактов, дробные нормы и выходные — дизайн"
+Cohesion: 0.17
+Nodes (11): 1. Дробные нормы, 2. Ручные правки фактов, 3. Вкладка «Итоги», Анти-цели (провал, даже если «работает»), Зачем, Итоги, ручные правки фактов, дробные нормы и выходные — дизайн, Мои решения (владелец разрешил решать самому), Не цели (+3 more)
 
 ### Community 164 - "Game Engine Skill"
 Cohesion: 0.12
@@ -929,17 +933,17 @@ Nodes (15): Anti-Aliasing, Art and Visual Terms, Asset, Keyframe Animation, Mesh
 Cohesion: 0.29
 Nodes (7): Code Example, Key Methods, Key Properties, Note on Fetch API, What It Is, Why It Matters for Games, XMLHttpRequest
 
-### Community 167 - "PetView.ts"
-Cohesion: 0.27
-Nodes (6): ART, GROUP_KEY, RoomTheme, Mood, MAX_STAGE, MOOD_LABEL
+### Community 167 - "PetView"
+Cohesion: 0.39
+Nodes (4): Не цели, el(), img(), PetView
 
 ### Community 168 - "Протокол обмена ассетами"
 Cohesion: 0.29
 Nodes (6): Выполнение, Задание, Интеграция и смена интерфейса, Протокол обмена ассетами, Результат, Состояния
 
 ### Community 169 - "configPreview.ts"
-Cohesion: 0.16
-Nodes (26): Task 2: Клиент — дробные нормы, календарь из настроек, показ чисел, ConfigForm, configFormOf(), configPatch(), hundredths(), LEVEL_TITLE, LEVELS, NORM_FIELD_TITLE (+18 more)
+Cohesion: 0.09
+Nodes (48): STEPS, Task 2: Клиент — дробные нормы, календарь из настроек, показ чисел, 5. Выходные, ConfigForm, configFormOf(), configPatch(), hundredths(), LEVEL_TITLE (+40 more)
 
 ### Community 170 - "Platform and Distribution Terms"
 Cohesion: 0.13
@@ -953,29 +957,29 @@ Nodes (5): Global Constraints, Review Focus, Task 1: чистая логика, 
 Cohesion: 0.14
 Nodes (13): Common Skill Categories, Find Skills, How to Help Users Find Skills, Step 1: Understand What They Need, Step 2: Check the Leaderboard First, Step 3: Search for Skills, Step 4: Verify Quality Before Recommending, Step 5: Present Options to the User (+5 more)
 
-### Community 174 - "resultsTab.ts"
-Cohesion: 0.28
-Nodes (15): add(), correct(), reload(), render(), correctionItems(), resultsTab(), correct(), paint() (+7 more)
+### Community 174 - "Экран ТВ: гладкая картинка — план"
+Cohesion: 0.40
+Nodes (4): Итог (02.11), Проверка, Что меняем, Экран ТВ: гладкая картинка — план
 
-### Community 175 - "resultsView.ts"
-Cohesion: 0.19
-Nodes (13): EmployeeLine, Kind, KIND_TITLE, NEW_EMPLOYEE_PREFIX, ABSENT_FUNNEL_NOTE, LEVEL_TITLE, nowLines(), KINDS (+5 more)
+### Community 175 - "Питомцы отделов продаж"
+Cohesion: 0.25
+Nodes (5): Выпуск, Команды, Питомцы отделов продаж, Страницы, Устройство
 
 ### Community 178 - "XMLHttpRequest"
-Cohesion: 0.18
-Nodes (11): Code Example, Events, Key Methods, Key Properties, Note on Fetch API, What It Is, Why It Matters for Games, XMLHttpRequest (+3 more)
+Cohesion: 0.29
+Nodes (7): Code Example, Key Methods, Key Properties, Note on Fetch API, What It Is, Why It Matters for Games, XMLHttpRequest
 
 ### Community 179 - "showWork"
-Cohesion: 0.30
-Nodes (14): centerOf(), rectOf(), reducedMotion(), showLogin(), showWork(), bind(), carry(), flashHint() (+6 more)
+Cohesion: 0.24
+Nodes (16): Task 5: Симуляция питомца, centerOf(), itemButton(), rectOf(), reducedMotion(), showLogin(), showWork(), bind() (+8 more)
 
 ### Community 180 - "Game feel (juice)"
 Cohesion: 0.15
 Nodes (12): 1. Screen shake by decaying "trauma" (smooth, not a random jitter), 2. Hit-stop / freeze frame (sell impact by briefly stopping time), 3. Squash & stretch + overshoot via an eased tween (the "pop"), 4. A feedback bundle scaled by importance (keep juice proportional), Core principle: feedback is layered and exaggerated, Core workflow, Game feel (juice), Patterns (+4 more)
 
 ### Community 181 - "2D Platform Game Template"
-Cohesion: 0.17
-Nodes (11): 2D Platform Game Template, Adding a Jump Sound Effect, Full Game Source Reference, Implementing the Jump Mechanic, Jumps, Key Concepts Summary, Loading and Displaying the Background, Moving Forward (+3 more)
+Cohesion: 0.25
+Nodes (7): 2D Platform Game Template, Adding a Jump Sound Effect, Implementing the Jump Mechanic, Jumps, Loading the Hero Image, Spawning the Hero, The Main Character Sprite
 
 ### Community 182 - "ТВ: живая прогулка — реже, дольше, с играми"
 Cohesion: 0.29
@@ -985,13 +989,13 @@ Nodes (6): Зачем, Не цели, Ограничения, Решено мн�
 Cohesion: 0.17
 Nodes (12): Cross Product (3D), Dot Product, Magnitude (Length), Mathematical / Algorithmic Concepts, Normalization, Perpendicular Vector (2D), Projection, Reflection (+4 more)
 
-### Community 184 - "rg/main.ts"
-Cohesion: 0.23
-Nodes (6): DragResult, itemButton(), store, updateSlot, createSpender(), Item
+### Community 184 - "PetActor.ts"
+Cohesion: 0.15
+Nodes (12): ease(), HEARTS, HUG, Kind, LEAN, MOOD_EMOTE, Move, NOD (+4 more)
 
 ### Community 185 - "GLSL Shaders"
-Cohesion: 0.18
-Nodes (11): Fragment Shader, GLSL Shaders, Key Concepts, Practical Tips, The Shader Pipeline, Using Shaders in HTML and Three.js, Vertex Shader, What Shaders Are (+3 more)
+Cohesion: 0.29
+Nodes (7): Fragment Shader, GLSL Shaders, Key Concepts, Practical Tips, The Shader Pipeline, Using Shaders in HTML and Three.js, What Shaders Are
 
 ### Community 186 - "Скиллы и плагины с GitHub"
 Cohesion: 0.50
@@ -1002,8 +1006,8 @@ Cohesion: 0.18
 Nodes (11): AAA (Triple-A), Alpha, Beta, Build, Crunch, General Development Terms, Gold / Gone Gold, Indie (+3 more)
 
 ### Community 188 - "layout.ts"
-Cohesion: 0.27
-Nodes (9): BOARDS, CAMERA, DOCK_H, HOUSE, HUD_H, ROOM, roomRect, STAGE (+1 more)
+Cohesion: 0.26
+Nodes (10): BOARDS, CAMERA, DOCK_H, HOUSE, HUD_H, ROOM, roomCamera(), roomRect (+2 more)
 
 ### Community 189 - "Collision Detection"
 Cohesion: 0.20
@@ -1021,9 +1025,9 @@ Nodes (10): How It Works, Layers, Logic Grid, Performance Optimization, Renderin
 Cohesion: 0.20
 Nodes (10): Battle Royale, FPS (First-Person Shooter), Game Genre Terms, Metroidvania, MMORPG (Massively Multiplayer Online RPG), MOBA (Multiplayer Online Battle Arena), RPG (Role-Playing Game), RTS (Real-Time Strategy) (+2 more)
 
-### Community 193 - "ApiError"
-Cohesion: 0.27
-Nodes (7): fakeServer(), flaky(), createSession(), Post, setup(), ApiError, request()
+### Community 193 - "Этап 1 — Прототип (цель: сегодня–вторник 27.10)"
+Cohesion: 0.22
+Nodes (9): Task 1: Каркас проекта, Task 2: Календарь и конфиг, Task 4: Нормы и оценка дня, Task 6: Рейтинги, Task 7: Демо-данные и сценарий, Task 8: Ассеты-заглушки, Этап 1 — Прототип (цель: сегодня–вторник 27.10), Task 3: Номер сборки и самообновление страниц (+1 more)
 
 ### Community 194 - "Проект: Питомцы отделов продаж"
 Cohesion: 0.22
@@ -1034,8 +1038,8 @@ Cohesion: 0.22
 Nodes (8): Blender: модели и спрайты, Безопасность, Главное правило экономии, Не делай в Blender с нуля то, что можно взять, Перед словом «готово» (частые ошибки — проверять всегда), Порядок работы с MCP (сервер mcp-for-blender), Стандарт готовой модели (проверяет check_asset.py), Стандарт спрайтов (делает render_sprites.py)
 
 ### Community 196 - "Paddle Game Template (2D Breakout)"
-Cohesion: 0.15
-Nodes (12): Adding the mousemove Event Listener, Complete Code for Step 5, Complete Event Listener Setup (Keyboard + Mouse), Complete Final Game Code, Implementing Game Over and Paddle Collision, Paddle Game Template (2D Breakout), Quick Reference: All Functions, Quick Reference: All Game Variables (+4 more)
+Cohesion: 0.22
+Nodes (8): Complete Code for Step 5, Complete Final Game Code, Implementing Game Over and Paddle Collision, Paddle Game Template (2D Breakout), Quick Reference: All Functions, Quick Reference: All Game Variables, Step 5: Game Over, Storing the Interval Reference
 
 ### Community 197 - "Step 2: Move the Ball"
 Cohesion: 0.22
@@ -1057,9 +1061,9 @@ Nodes (9): Best Practices, Crisp Pixel Art Look, How It Works, Known Limitations
 Cohesion: 0.22
 Nodes (9): scripts, audit:publish, build, check:admin, check:dist, check:render, dev, mock-backend (+1 more)
 
-### Community 202 - "correctionSaver.test.ts"
-Cohesion: 0.33
-Nodes (6): createCorrectionSaver(), randomRef(), item(), lateAnswer(), network(), refs()
+### Community 202 - "backend.test.mjs"
+Cohesion: 0.36
+Nodes (6): admin(), GROUP_CODES, STAFF, withGroups(), withIds(), withStaff()
 
 ### Community 203 - "Step 8: Track the Score and Win"
 Cohesion: 0.25
@@ -1101,9 +1105,9 @@ Nodes (7): 1. The trauma model (why shake feels good), 2. Easing cheat sheet —
 Cohesion: 0.25
 Nodes (7): Best Practices, Common Pitfall, Decision Tree: Choosing Your Approach, Example: Using with_server.py, Reconnaissance-Then-Action Pattern, Reference Files, Web Application Testing
 
-### Community 213 - "Review Focus"
-Cohesion: 0.25
-Nodes (7): Review Focus, Task 1: Красная проверка: питомцы на прогулке не замирают, Task 5: Замер, длина прогулки, проверки, Task 6: Документы, ТВ: живая прогулка — план, gamesFor(), walkStartMs()
+### Community 213 - "Экран ТВ: прогулка и праздник — дизайн (фаза Б)"
+Cohesion: 0.29
+Nodes (6): Зачем, Не цели, Ограничения, Решения сборщика, Цели, Экран ТВ: прогулка и праздник — дизайн (фаза Б)
 
 ### Community 215 - "A-Frame"
 Cohesion: 0.29
@@ -1118,8 +1122,8 @@ Cohesion: 0.29
 Nodes (6): Game Development Algorithms, Physics Engine Fundamentals, Practical Game Development Applications, Pseudocode -- Complete Physics Step, Quick Reference Table, What It Is
 
 ### Community 218 - "Web APIs for Game Development"
-Cohesion: 0.29
-Nodes (6): Code Example, CSS (Cascading Style Sheets), Key Properties for Games, Web APIs for Game Development, What It Is, Why It Matters for Games
+Cohesion: 0.40
+Nodes (5): Code Example, CSS (Cascading Style Sheets), Key Properties for Games, What It Is, Why It Matters for Games
 
 ### Community 219 - "Web Workers API"
 Cohesion: 0.29
@@ -1129,13 +1133,13 @@ Nodes (7): Code Example, Key Interfaces, Limitations, Web Workers API, What It I
 Cohesion: 0.29
 Nodes (7): Code Example, Connection Lifecycle, Key Events, Key Interfaces, WebRTC API, What It Is, Why It Matters for Games
 
-### Community 221 - "backend.test.mjs"
-Cohesion: 0.36
-Nodes (6): admin(), GROUP_CODES, STAFF, withGroups(), withIds(), withStaff()
+### Community 221 - "Canvas API"
+Cohesion: 0.33
+Nodes (6): Canvas API, Code Example, Key Interfaces, Key Methods (CanvasRenderingContext2D), What It Is, Why It Matters for Games
 
 ### Community 222 - "pickBite"
-Cohesion: 0.43
-Nodes (4): Bite, Biter, pick(), pickBite()
+Cohesion: 0.31
+Nodes (5): Task 3: «Кусь» на прогулке, Bite, Biter, pick(), pickBite()
 
 ### Community 223 - "Ассеты для игры"
 Cohesion: 0.33
@@ -1165,10 +1169,6 @@ Nodes (6): Brick Configuration Variables, Calling drawBricks() in the Game Loop,
 Cohesion: 0.33
 Nodes (5): 3D Web Games, Frameworks, Key Features, PlayCanvas, Practical Tips
 
-### Community 230 - "3D Theory and Fundamentals"
-Cohesion: 0.33
-Nodes (6): 3D Theory and Fundamentals, Camera, Coordinate System, Practical Tips, The Rendering Pipeline, Vertices, Edges, Faces, and Meshes
-
 ### Community 231 - "Mathematical / Algorithmic Concepts"
 Cohesion: 0.33
 Nodes (6): AABB vs AABB Overlap Test, Bounding Shapes, Circle vs Circle Overlap Test, Mathematical / Algorithmic Concepts, Separating Axis Theorem (SAT), Sweep and Prune (Broad Phase)
@@ -1181,9 +1181,9 @@ Nodes (6): Bresenham's Line Algorithm -- Raycasting, Line of Sight, and Pathfind
 Cohesion: 0.33
 Nodes (6): Collision Detection and Response Systems, Minimum Penetration Vector (for AABBs), Practical Game Development Applications, Pseudocode -- Collision Detection and Resolution, Spatial Partitioning Strategies, What It Is
 
-### Community 234 - "Game Development Techniques"
-Cohesion: 0.33
-Nodes (5): Controls: Gamepad API, Game Development Techniques, How It Works, What It Is, When to Use It
+### Community 234 - "Moving Forward"
+Cohesion: 0.50
+Nodes (4): Full Game Source Reference, Key Concepts Summary, Moving Forward, Suggested Improvements
 
 ### Community 235 - "WebRTC Data Channels"
 Cohesion: 0.33
@@ -1258,8 +1258,8 @@ Cohesion: 0.40
 Nodes (5): Code Example, IndexedDB API, Key Interfaces, What It Is, Why It Matters for Games
 
 ### Community 253 - "JavaScript"
-Cohesion: 0.40
-Nodes (5): Code Example, JavaScript, Key Language Features for Games, What It Is, Why It Matters for Games
+Cohesion: 0.29
+Nodes (6): Code Example, JavaScript, Key Language Features for Games, Web APIs for Game Development, What It Is, Why It Matters for Games
 
 ### Community 254 - "SVG (Scalable Vector Graphics)"
 Cohesion: 0.40
@@ -1277,6 +1277,10 @@ Nodes (4): Creating the Game Instance, HTML Entry Point, Initialise Phaser, The 
 Cohesion: 0.50
 Nodes (4): Level Data Format, Project Structure, Start Here, What You Will Build
 
+### Community 258 - "3D Theory and Fundamentals"
+Cohesion: 0.33
+Nodes (6): 3D Theory and Fundamentals, Camera, Coordinate System, Practical Tips, The Rendering Pipeline, Vertices, Edges, Faces, and Meshes
+
 ### Community 259 - "Vector Mathematics for Game Development"
 Cohesion: 0.50
 Nodes (4): Practical Game Development Applications, Pseudocode -- Vector2D Class, Vector Mathematics for Game Development, What It Is
@@ -1293,37 +1297,49 @@ Nodes (3): Creating Platforms, Loading Platform Assets, Spawning Platforms from 
 Cohesion: 0.67
 Nodes (3): Keyboard Controls, Reading Input in Update, Setting Up Input Keys
 
-### Community 263 - "The Main Character Sprite"
+### Community 263 - "The Game Loop"
 Cohesion: 0.67
-Nodes (3): Loading the Hero Image, Spawning the Hero, The Main Character Sprite
+Nodes (3): Loading and Displaying the Background, The Game Loop, Understanding the Frame Cycle
 
 ### Community 264 - "Keyboard Controls"
 Cohesion: 0.67
 Nodes (3): Keyboard Controls, Reading Input in Update, Setting Up Input Keys
 
-### Community 265 - "The Game Loop"
+### Community 265 - "The Main Character Sprite"
 Cohesion: 0.67
-Nodes (3): Loading and Displaying the Background, The Game Loop, Understanding the Frame Cycle
+Nodes (3): Loading the Hero Image, Spawning the Hero, The Main Character Sprite
+
+### Community 269 - "Game Development Techniques"
+Cohesion: 0.33
+Nodes (5): Controls: Gamepad API, Game Development Techniques, How It Works, What It Is, When to Use It
+
+### Community 270 - "Этап 2 — Данные, импорт, бэкенд"
+Cohesion: 0.33
+Nodes (6): Task 10: Парсер файла оплат, Task 11: Парсер воронки, Task 12: Бэкенд Apps Script (хранилище + PIN), Task 13: Клиент данных (api + store), Task 14: Экран на живых данных + рейтинги, Этап 2 — Данные, импорт, бэкенд
+
+### Community 271 - "Экран ТВ «Комнаты и зал» — дизайн (фаза А)"
+Cohesion: 0.33
+Nodes (5): Зачем, Не цели (фаза Б и позже), Ограничения, Решения сборщика (мои), Экран ТВ «Комнаты и зал» — дизайн (фаза А)
 
 ## Knowledge Gaps
 - **3 isolated node(s):** `uvx`, `mcp-for-blender`, `DISABLE_TELEMETRY`
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1898 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **18 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1906 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **19 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `fill()` connect `Step 1: Create the Canvas and Draw on It` to `Game kit для Claude Code`, `facts.ts`, `Canvas API`, `importPreview.ts`?**
-  _High betweenness centrality (0.066) - this node is a cross-community bridge._
+- **Why does `vitest` connect `vitest` to `DateStr`, `package.json`, `drag.test.ts`, `dayEvent.test.ts`, `results.ts`, `vitest`, `GroupCode`, `h`, `Snapshot`, `results.ts`, `schedule.ts`, `PowerSaver`, `toys.ts`, `build.ts`, `configPreview.ts`, `toyTricks.ts`, `check-render.mjs`, `importPreview.ts`, `resultsFlow.ts`, `layout.ts`, `backend.test.mjs`, `pickBite`, `gas-harness.mjs`, `holidaysBlock.ts`, `api.ts`, `h`, `data/config.ts`, `facts.ts`, `Hall.ts`, `TvScreen.ts`?**
+  _High betweenness centrality (0.068) - this node is a cross-community bridge._
 - **Are the 3 inferred relationships involving `GroupCode` (e.g. with `Папки` and `Папки`) actually correct?**
   _`GroupCode` has 3 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `uvx`, `mcp-for-blender`, `DISABLE_TELEMETRY` to the rest of the system?**
   _3 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `settings.json` be split into smaller, more focused modules?**
   _Cohesion score 0.10526315789473684 - nodes in this community are weakly interconnected._
-- **Why does `vitest` connect `api.ts` to `DateStr`, `.wander`, `package.json`, `drag.test.ts`, `overridesTab.ts`, `results.ts`, `vitest`, `types.ts`, `h`, `Snapshot`, `results.test.ts`, `PowerSaver`, `ruNum`, `schedule.ts`, `configPreview.ts`, `PetView.ts`, `configPreview.ts`, `check-render.mjs`, `importPreview.ts`, `rg/main.ts`, `resultsFlow.ts`, `layout.ts`, `ApiError`, `correctionSaver.test.ts`, `backend.test.mjs`, `pickBite`, `gas-harness.mjs`, `calendarForm.test.ts`, `h`, `vitest`, `facts.ts`, `Hall.ts`, `TvScreen.ts`?**
-  _High betweenness centrality (0.061) - this node is a cross-community bridge._
+- **Why does `fill()` connect `Step 1: Create the Canvas and Draw on It` to `Game kit для Claude Code`, `configPreview.ts`, `Canvas API`, `facts.ts`, `Canvas API`?**
+  _High betweenness centrality (0.059) - this node is a cross-community bridge._
 - **Are the 5 inferred relationships involving `DateStr` (e.g. with `Папки` and `Соглашения`) actually correct?**
   _`DateStr` has 5 INFERRED edges - model-reasoned connections that need verification._
-- **Should `.wander` be split into smaller, more focused modules?**
-  _Cohesion score 0.13768115942028986 - nodes in this community are weakly interconnected._
+- **Should `2D Maze Game Template` be split into smaller, more focused modules?**
+  _Cohesion score 0.058823529411764705 - nodes in this community are weakly interconnected._

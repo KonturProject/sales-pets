@@ -109,9 +109,9 @@
     "semantic_hash": ""
   },
   "src/art/manifest.ts": {
-    "mtime": 1793903118.8302124,
-    "seen": 1793905238.0810661,
-    "ast_hash": "4b0ab4a4df962f6512e65aad60ffbbba",
+    "mtime": 1794934691.6593742,
+    "seen": 1794936067.2951381,
+    "ast_hash": "e17c5aa0846fbb0ba26b1e986da29c66",
     "semantic_hash": ""
   },
   "src/demo/demoFacts.test.ts": {
@@ -217,9 +217,9 @@
     "semantic_hash": ""
   },
   "src/main.ts": {
-    "mtime": 1793938726.872533,
-    "seen": 1793939665.204512,
-    "ast_hash": "269a66cb979de23effd35b93b775cc39",
+    "mtime": 1794935088.8512173,
+    "seen": 1794936067.295226,
+    "ast_hash": "207867c2f21bd9fce91e2844d1fa4cfb",
     "semantic_hash": ""
   },
   "src/vite-env.d.ts": {
@@ -229,9 +229,9 @@
     "semantic_hash": ""
   },
   "tools/check-render.mjs": {
-    "mtime": 1794425461.9647746,
-    "seen": 1794425895.2926328,
-    "ast_hash": "c06e0652aec4ceab3ac162c13a4e99a8",
+    "mtime": 1794936560.3746192,
+    "seen": 1794938855.445386,
+    "ast_hash": "3e5d5760f1e95588086292291eed3145",
     "semantic_hash": ""
   },
   "tools/make-art.mjs": {
@@ -289,9 +289,9 @@
     "semantic_hash": ""
   },
   ".claude/skills/game-architecture/SKILL.md": {
-    "mtime": 1794427290.4752855,
-    "seen": 1794427493.8490777,
-    "ast_hash": "c14d4fbb3de38baca553253499ab0ded",
+    "mtime": 1794936048.2832537,
+    "seen": 1794936067.2953043,
+    "ast_hash": "5e3d2e4db3ea6e4632007c40bd429fff",
     "semantic_hash": ""
   },
   ".claude/skills/game-assets/SKILL.md": {
@@ -427,15 +427,15 @@
     "semantic_hash": ""
   },
   "CREDITS.md": {
-    "mtime": 1793901593.8290963,
-    "seen": 1793905238.0812218,
-    "ast_hash": "82f9c2e444940fe6e0eaa90af65fb498",
+    "mtime": 1794936048.2752879,
+    "seen": 1794936067.2953331,
+    "ast_hash": "3143766532947f166f93c23a613d6185",
     "semantic_hash": ""
   },
   "PLAN.md": {
-    "mtime": 1794086169.967019,
-    "seen": 1794086632.6845136,
-    "ast_hash": "5a369f6fe008f675a96f8049786f28e9",
+    "mtime": 1794938413.1875248,
+    "seen": 1794938855.4454672,
+    "ast_hash": "1986e1e3f2ad68e480b1d899cc9169f5",
     "semantic_hash": ""
   },
   "README.assets.md": {
@@ -1069,9 +1069,9 @@
     "semantic_hash": ""
   },
   "docs/deploy.md": {
-    "mtime": 1794427472.0899725,
-    "seen": 1794427493.8491163,
-    "ast_hash": "16539c2e6e5380b3e189da3fc227fdc8",
+    "mtime": 1794936048.2822673,
+    "seen": 1794936067.2953413,
+    "ast_hash": "bf4fabea89953feab7f066020ef87bdd",
     "semantic_hash": ""
   },
   "docs/game-kit-setup.md": {
@@ -1093,15 +1093,15 @@
     "semantic_hash": ""
   },
   "src/game/tv/PetActor.ts": {
-    "mtime": 1794080509.4179945,
-    "seen": 1794081205.0625653,
-    "ast_hash": "06d029d7bc43b971a722a98821207f39",
+    "mtime": 1794935098.135708,
+    "seen": 1794936067.295181,
+    "ast_hash": "bfd2e51ea7ed32e8d5c0d8db5d906454",
     "semantic_hash": ""
   },
   "src/game/tv/RoomView.ts": {
-    "mtime": 1793936374.5520158,
-    "seen": 1793936648.563128,
-    "ast_hash": "904477c9e468da7320d2b64090cf26d8",
+    "mtime": 1794938274.6120872,
+    "seen": 1794938855.4453225,
+    "ast_hash": "bcf03d620a75f00c7809a5a7b47b5712",
     "semantic_hash": ""
   },
   "src/game/tv/TvScreen.ts": {
@@ -1273,182 +1273,182 @@
     "semantic_hash": ""
   },
   "public/assets/pets/sr1-1.png": {
-    "mtime": 1793683514.1868541,
-    "seen": 1793720402.1774344,
+    "mtime": 1794934149.1223915,
+    "seen": 1794936067.2954,
     "ast_hash": "cc9b149889c3a76c7b9954b2cc1f0ad1",
     "semantic_hash": ""
   },
   "public/assets/pets/sr1-2.png": {
-    "mtime": 1793683514.2225156,
-    "seen": 1793720402.1774352,
+    "mtime": 1794934149.1622584,
+    "seen": 1794936067.2954009,
     "ast_hash": "d16ff45284d2f15585e72d04d3ea16d4",
     "semantic_hash": ""
   },
   "public/assets/pets/sr1-3.png": {
-    "mtime": 1793683514.2533846,
-    "seen": 1793720402.177436,
+    "mtime": 1794934149.1956525,
+    "seen": 1794936067.295402,
     "ast_hash": "d99bbaee460dfa913fc72fbb682eda94",
     "semantic_hash": ""
   },
   "public/assets/pets/sr1-4.png": {
-    "mtime": 1793683514.2802958,
-    "seen": 1793720402.1774368,
+    "mtime": 1794934149.224556,
+    "seen": 1794936067.2954032,
     "ast_hash": "e2b7efc50d115aa0edd7441f856ab3e3",
     "semantic_hash": ""
   },
   "public/assets/pets/sr1-5.png": {
-    "mtime": 1793683514.3062148,
-    "seen": 1793720402.177438,
+    "mtime": 1794934149.2520597,
+    "seen": 1794936067.2954042,
     "ast_hash": "38dfb8834ae384705cc4e7d17692ed77",
     "semantic_hash": ""
   },
   "public/assets/pets/sr2-1.png": {
-    "mtime": 1793683514.8052504,
-    "seen": 1793720402.1774414,
+    "mtime": 1794934149.7484658,
+    "seen": 1794936067.2954078,
     "ast_hash": "247b87c80e66dc85a3476ae8975e1699",
     "semantic_hash": ""
   },
   "public/assets/pets/sr2-2.png": {
-    "mtime": 1793683514.850764,
-    "seen": 1793720402.1774423,
+    "mtime": 1794934149.794011,
+    "seen": 1794936067.295409,
     "ast_hash": "f2d723477703a51b778b0dcc40d5f986",
     "semantic_hash": ""
   },
   "public/assets/pets/sr2-3.png": {
-    "mtime": 1793683514.8947306,
-    "seen": 1793720402.1774433,
+    "mtime": 1794934149.8378644,
+    "seen": 1794936067.29541,
     "ast_hash": "9dad1a97e2441c5e8dcf7107b1780c90",
     "semantic_hash": ""
   },
   "public/assets/pets/sr2-4.png": {
-    "mtime": 1793683514.9332724,
-    "seen": 1793720402.1774445,
+    "mtime": 1794934149.875738,
+    "seen": 1794936067.295411,
     "ast_hash": "f9def27b96242d157cbfe445305e04c0",
     "semantic_hash": ""
   },
   "public/assets/pets/sr2-5.png": {
-    "mtime": 1793683514.9694283,
-    "seen": 1793720402.1774454,
+    "mtime": 1794934149.913626,
+    "seen": 1794936067.2954123,
     "ast_hash": "c5e1944bd2270d631db34c0b665bb839",
     "semantic_hash": ""
   },
   "public/assets/pets/sr3-1.png": {
-    "mtime": 1793683515.4992964,
-    "seen": 1793720402.1774485,
-    "ast_hash": "6a8d6d5a845ec9fa9fb5cf98c107c63a",
+    "mtime": 1794934150.4399107,
+    "seen": 1794936067.2954156,
+    "ast_hash": "317e0dc0c9351759d3ee5a399a0f5df2",
     "semantic_hash": ""
   },
   "public/assets/pets/sr3-2.png": {
-    "mtime": 1793683515.5251863,
-    "seen": 1793720402.1774492,
-    "ast_hash": "639e36e58ba7b667ed55142d2f9de4ac",
+    "mtime": 1794934150.468805,
+    "seen": 1794936067.2954166,
+    "ast_hash": "84da0c7a57389c55ce671b371af2996d",
     "semantic_hash": ""
   },
   "public/assets/pets/sr3-3.png": {
-    "mtime": 1793683515.5481434,
-    "seen": 1793720402.1774502,
-    "ast_hash": "77665a019ba27810e89dcb8f962ce764",
+    "mtime": 1794934150.4917352,
+    "seen": 1794936067.2954175,
+    "ast_hash": "4e373e95ad3041345a5675c6496bfcd2",
     "semantic_hash": ""
   },
   "public/assets/pets/sr3-4.png": {
-    "mtime": 1793683515.5666864,
-    "seen": 1793720402.1774514,
-    "ast_hash": "79388de7b26342374c1720ca2afbb2e8",
+    "mtime": 1794934150.5126653,
+    "seen": 1794936067.2954187,
+    "ast_hash": "ae982a3140587b5e481b2357ff503ab2",
     "semantic_hash": ""
   },
   "public/assets/pets/sr3-5.png": {
-    "mtime": 1793683515.5900006,
-    "seen": 1793720402.177452,
-    "ast_hash": "50f5925bb8e2a8df0743410c928d5df1",
+    "mtime": 1794934150.5361314,
+    "seen": 1794936067.2954195,
+    "ast_hash": "49c6fd20e7d0f9067daf006927643a42",
     "semantic_hash": ""
   },
   "public/assets/pets/sr5-1.png": {
-    "mtime": 1793683516.1337807,
-    "seen": 1793720402.1774552,
+    "mtime": 1794934151.0724916,
+    "seen": 1794936067.2954228,
     "ast_hash": "a1c387d55696b5474c2b1f2174d87383",
     "semantic_hash": ""
   },
   "public/assets/pets/sr5-2.png": {
-    "mtime": 1793683516.1719956,
-    "seen": 1793720402.1774561,
+    "mtime": 1794934151.1107094,
+    "seen": 1794936067.2954235,
     "ast_hash": "32109547f4d5d2233f178a7834ffd4a4",
     "semantic_hash": ""
   },
   "public/assets/pets/sr5-3.png": {
-    "mtime": 1793683516.2138293,
-    "seen": 1793720402.1774573,
+    "mtime": 1794934151.1490693,
+    "seen": 1794936067.2954247,
     "ast_hash": "d627c3b3b3a2337d00a16a890bbb9c7e",
     "semantic_hash": ""
   },
   "public/assets/pets/sr5-4.png": {
-    "mtime": 1793683516.2506304,
-    "seen": 1793720402.1774583,
+    "mtime": 1794934151.1839921,
+    "seen": 1794936067.295426,
     "ast_hash": "d289ac64b3f8a2c75d2990ac8e401825",
     "semantic_hash": ""
   },
   "public/assets/pets/sr5-5.png": {
-    "mtime": 1793683516.2848787,
-    "seen": 1793720402.1774592,
+    "mtime": 1794934151.2158506,
+    "seen": 1794936067.2954268,
     "ast_hash": "024cca3b92529a5c5e7343328934e410",
     "semantic_hash": ""
   },
   "public/assets/pets/sr6-1.png": {
-    "mtime": 1793683516.831662,
-    "seen": 1793720402.1774626,
+    "mtime": 1794934151.7342582,
+    "seen": 1794936067.2954307,
     "ast_hash": "af614113370e6756eff5f2361f4e66f8",
     "semantic_hash": ""
   },
   "public/assets/pets/sr6-2.png": {
-    "mtime": 1793683516.876063,
-    "seen": 1793720402.1774633,
+    "mtime": 1794934151.7794237,
+    "seen": 1794936067.2954316,
     "ast_hash": "88d2e8da7c245ca4a8e278c049ef96e0",
     "semantic_hash": ""
   },
   "public/assets/pets/sr6-3.png": {
-    "mtime": 1793683516.9145658,
-    "seen": 1793720402.1774642,
+    "mtime": 1794934151.8153083,
+    "seen": 1794936067.2954328,
     "ast_hash": "828123dbcd3e470430a223c1678feaae",
     "semantic_hash": ""
   },
   "public/assets/pets/sr6-4.png": {
-    "mtime": 1793683516.9474277,
-    "seen": 1793720402.1774654,
+    "mtime": 1794934151.848214,
+    "seen": 1794936067.2954338,
     "ast_hash": "3b1726cf412216d315d3c61c1bd507e1",
     "semantic_hash": ""
   },
   "public/assets/pets/sr6-5.png": {
-    "mtime": 1793683516.9789176,
-    "seen": 1793720402.1774664,
+    "mtime": 1794934151.8811028,
+    "seen": 1794936067.295435,
     "ast_hash": "500bc2906aeca1a8679780e031d7ddfa",
     "semantic_hash": ""
   },
   "public/assets/pets/sr9-1.png": {
-    "mtime": 1793683517.5219612,
-    "seen": 1793720402.1774697,
+    "mtime": 1794934152.3948178,
+    "seen": 1794936067.2954385,
     "ast_hash": "ec3c883b82467006ea5fc3cb52ec6ba0",
     "semantic_hash": ""
   },
   "public/assets/pets/sr9-2.png": {
-    "mtime": 1793683517.5615194,
-    "seen": 1793720402.1774707,
+    "mtime": 1794934152.4316933,
+    "seen": 1794936067.2954397,
     "ast_hash": "e1aebef09d8e400b281a7875cd090b22",
     "semantic_hash": ""
   },
   "public/assets/pets/sr9-3.png": {
-    "mtime": 1793683517.5926485,
-    "seen": 1793720402.1774714,
+    "mtime": 1794934152.4615257,
+    "seen": 1794936067.2954407,
     "ast_hash": "8afa1dae61487354a77d86c51da8dd0f",
     "semantic_hash": ""
   },
   "public/assets/pets/sr9-4.png": {
-    "mtime": 1793683517.6206386,
-    "seen": 1793720402.1774724,
+    "mtime": 1794934152.4884353,
+    "seen": 1794936067.2954416,
     "ast_hash": "838f45ec4f024ec118ac6216dc9f6240",
     "semantic_hash": ""
   },
   "public/assets/pets/sr9-5.png": {
-    "mtime": 1793683517.6491015,
-    "seen": 1793720402.1774733,
+    "mtime": 1794934152.5163438,
+    "seen": 1794936067.2954426,
     "ast_hash": "78b4bb9644c26d980c1770ebf2b4cd96",
     "semantic_hash": ""
   },
@@ -1723,15 +1723,15 @@
     "semantic_hash": ""
   },
   "src/game/tv/toys.test.ts": {
-    "mtime": 1793902941.9980392,
-    "seen": 1793905238.081131,
-    "ast_hash": "5384ba13417da53c74e9b286097ab591",
+    "mtime": 1794934647.8740532,
+    "seen": 1794936067.2952108,
+    "ast_hash": "fd6551cc026378864ad46a933d30be41",
     "semantic_hash": ""
   },
   "src/game/tv/toys.ts": {
-    "mtime": 1793902931.3573632,
-    "seen": 1793905238.0811322,
-    "ast_hash": "1e4356cbf138c03bf7f6cd0184da7e6f",
+    "mtime": 1794938263.7626998,
+    "seen": 1794938855.4453506,
+    "ast_hash": "ba06aedd43267a0eb835c1a455a3b300",
     "semantic_hash": ""
   },
   "src/game/tv/dayEvent.test.ts": {
@@ -1966,6 +1966,78 @@
     "mtime": 1794427361.4210489,
     "seen": 1794427493.8491383,
     "ast_hash": "e9712e67b5041b1a408b8b83270de6a2",
+    "semantic_hash": ""
+  },
+  "src/game/tv/toyTricks.test.ts": {
+    "mtime": 1794938236.5135484,
+    "seen": 1794938855.4453466,
+    "ast_hash": "119a345cc2ea2990f2e9743253357618",
+    "semantic_hash": ""
+  },
+  "src/game/tv/toyTricks.ts": {
+    "mtime": 1794938263.7616966,
+    "seen": 1794938855.445348,
+    "ast_hash": "49290b4229f20cb87e01e56f0f109698",
+    "semantic_hash": ""
+  },
+  "public/assets/toys/balloon.png": {
+    "mtime": 1794934170.1807432,
+    "seen": 1794936067.2954495,
+    "ast_hash": "1a6444214d399565d51c5df449f97539",
+    "semantic_hash": ""
+  },
+  "public/assets/toys/bouncer.png": {
+    "mtime": 1794934170.342173,
+    "seen": 1794936067.2954524,
+    "ast_hash": "4ced5825a73fd2b748bbb692d0964b86",
+    "semantic_hash": ""
+  },
+  "public/assets/toys/bubbles.png": {
+    "mtime": 1794934170.273479,
+    "seen": 1794936067.2954535,
+    "ast_hash": "7fabef551260f184ce40817ab11aec93",
+    "semantic_hash": ""
+  },
+  "public/assets/toys/car.png": {
+    "mtime": 1794934170.2505162,
+    "seen": 1794936067.2954547,
+    "ast_hash": "539ac911770c3917b63bc9e5390ae3b2",
+    "semantic_hash": ""
+  },
+  "public/assets/toys/drum.png": {
+    "mtime": 1794934170.2993882,
+    "seen": 1794936067.2954571,
+    "ast_hash": "2e32ba463bd7233c02b0c5de89c4bd42",
+    "semantic_hash": ""
+  },
+  "public/assets/toys/dumbbell.png": {
+    "mtime": 1794934170.38211,
+    "seen": 1794936067.2954593,
+    "ast_hash": "3b45816ca8136f24ad3c408f324227af",
+    "semantic_hash": ""
+  },
+  "public/assets/toys/phone.png": {
+    "mtime": 1794934170.3212705,
+    "seen": 1794936067.295462,
+    "ast_hash": "7632a1530dd53216bfc0a34b8eaf5f88",
+    "semantic_hash": ""
+  },
+  "public/assets/toys/plane.png": {
+    "mtime": 1794934170.227563,
+    "seen": 1794936067.2954628,
+    "ast_hash": "4921c6a8c78e129879bfe79ac310eb5f",
+    "semantic_hash": ""
+  },
+  "public/assets/toys/rocket.png": {
+    "mtime": 1794934170.3651965,
+    "seen": 1794936067.295464,
+    "ast_hash": "d9aea9be081f1a273f9786831f7c27aa",
+    "semantic_hash": ""
+  },
+  "public/assets/toys/yoyo.png": {
+    "mtime": 1794934170.2146666,
+    "seen": 1794936067.2954662,
+    "ast_hash": "a69f8e636696fcf336fba0136d3893da",
     "semantic_hash": ""
   }
 }
