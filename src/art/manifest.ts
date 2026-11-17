@@ -19,13 +19,23 @@ export const ART = {
   flies: 'assets/flies.svg',
   medkit: 'assets/medkit.svg',
   toy: 'assets/toy.svg',
-  /** игрушки РГ в комнате ТВ (Codex `image_gen`, PNG ≤ 256 px) */
+  /** игрушки РГ в комнате ТВ (первые пять — Codex `image_gen`, остальные — ChatGPT листом 5 × 2; PNG ≤ 256 px) */
   toys: {
     bear: 'assets/toys/bear.png',
     duck: 'assets/toys/duck.png',
     top: 'assets/toys/top.png',
     cube: 'assets/toys/cube.png',
     hedgehog: 'assets/toys/hedgehog.png',
+    balloon: 'assets/toys/balloon.png',
+    yoyo: 'assets/toys/yoyo.png',
+    plane: 'assets/toys/plane.png',
+    car: 'assets/toys/car.png',
+    bubbles: 'assets/toys/bubbles.png',
+    drum: 'assets/toys/drum.png',
+    phone: 'assets/toys/phone.png',
+    bouncer: 'assets/toys/bouncer.png',
+    rocket: 'assets/toys/rocket.png',
+    dumbbell: 'assets/toys/dumbbell.png',
   },
   grave: 'assets/grave.svg',
   /** три фазы яйца: целое, трещина, большая трещина */

@@ -1,6 +1,6 @@
 // Проверка экрана с питомцами: поднимает vite и мок-бэкенд, открывает системный Chrome/Edge и сверяет DOM.
 // Демо (?demo=1) и живой экран на мок-бэкенде (?backend=): 6 групп, фаза/настроение, кучки, счётчики,
-// итоги дня при загрузке воронки (плашка, прежние числа до очереди, верные в конце, без повтора),
+// итоги дня при загрузке воронки (плашка, прежние числа до очереди, верные в конце, без повтора), трюки новых игрушек,
 // панель рейтингов (места, ФИО, отпускник вне рейтинга), «Нет связи с сервером» при недоступном бэкенде,
 // консоль и картинки. Запуск: npm run check:render
 import { existsSync } from 'node:fs';
@@ -255,6 +255,92 @@ try {
     check(homeNow.every((p) => p.y <= 940 && p.s === 1), `живость прогулки: за 1,5 с до конца кадра не все дома ${JSON.stringify(homeNow)}`);
     check(lpErrors.length === 0, `живость прогулки: ошибки страницы ${lpErrors.join('; ')}`);
     await lp.close();
+  }
+
+  // --- игрушки-трюки (часы Playwright): в демо `?toy=` (игрушки вылупившимся по порядку групп) каждая новая игрушка сыграна;
+  // питомца увели посреди трюка — игрушка сразу на месте, мелочей нет; между трюками ни нитки, ни пузырей, игрушка на полу
+  // своей комнаты, мяч скрыт, картинка загрузилась, узлов комнат не прибавилось
+  {
+    const { TOYS } = await server.ssrLoadModule('/src/game/tv/toys.ts');
+    const playOf = Object.fromEntries(TOYS.map((t) => [t.kind, t.play]));
+    const LOADS = [['balloon', 'yoyo', 'plane', 'car'], ['bubbles', 'drum', 'phone', 'bouncer'], ['rocket', 'dumbbell', 'balloon', 'yoyo']];
+    let cutChecked = false;
+    for (const list of LOADS) {
+      const tp = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+      const tErrors = [];
+      tp.on('pageerror', (e) => tErrors.push(e.message));
+      tp.on('console', (m) => { if (m.type() === 'error') tErrors.push(m.text()); });
+      await tp.addInitScript(() => {
+        window.__played = {};
+        new MutationObserver((ms) => ms.forEach(({ target: r }) => { if (r.dataset.trick) window.__played[r.dataset.group] = r.dataset.trick; }))
+          .observe(document, { subtree: true, attributes: true, attributeFilter: ['data-trick'] });
+      });
+      await tp.clock.install();
+      await tp.goto(`${base}?demo=1&toy=${list.join(',')}`, { waitUntil: 'networkidle' });
+      // питомец, начавший трюк, запоминается: его уводят посреди трюка, как прогулка (`hold`)
+      await tp.evaluate(async () => {
+        const m = await import('/src/game/tv/PetActor.ts');
+        const trick = m.PetActor.prototype.trick;
+        window.__actors = {};
+        m.PetActor.prototype.trick = function (...a) { window.__actors[this.group] = this; return trick.apply(this, a); };
+      });
+      const rooms = await tp.$$eval('.tv-room[data-toy]', (els) => els.map((e) => [e.dataset.group, e.dataset.toy]));
+      check(JSON.stringify(rooms.map(([, k]) => k)) === JSON.stringify(list), `трюки ${list}: игрушки в комнатах ${JSON.stringify(rooms)}`);
+      const playedAll = () => tp.evaluate((want) => want.every(([g, play]) => window.__played[g] === play), rooms.map(([g, k]) => [g, playOf[k]]));
+      for (let ms = 0; ms < 90_000 && !cutChecked; ms += 250) {
+        await tp.clock.runFor(250);
+        const cut = await tp.evaluate(() => {
+          const r = [...document.querySelectorAll('.tv-room[data-trick]')].find((x) => x.querySelector('.toy-fx, .toy-string'));
+          const a = r && window.__actors[r.dataset.group];
+          if (!a) return null;
+          const was = r.dataset.trick;
+          a.hold();
+          const out = { was, trick: r.dataset.trick ?? null, fx: r.querySelectorAll('.toy-fx, .toy-string').length, anims: r.querySelector('.toy').getAnimations({ subtree: true }).length };
+          a.release();
+          return out;
+        });
+        if (!cut) continue;
+        cutChecked = true;
+        check(cut.trick === null && cut.fx === 0 && cut.anims === 0, `трюк прерван (${cut.was}): осталось ${JSON.stringify(cut)}`);
+      }
+      // перехваченный трюк не в счёт: каждая комната начинает свой заново (а что после доигрывается — проверка ниже)
+      await tp.evaluate(() => { window.__played = {}; });
+      let ok = false;
+      for (let ms = 0; ms < 90_000 && !(ok = await playedAll()); ms += 1_000) await tp.clock.runFor(1_000);
+      check(ok, `трюки ${list}: за 90 с сыграны не все ${JSON.stringify(await tp.evaluate(() => window.__played))}`);
+      const state = () => tp.evaluate(() => Object.fromEntries([...document.querySelectorAll('.tv-room[data-toy]')].map((r) => {
+        const toy = r.querySelector('.toy');
+        const pic = toy.querySelector('img');
+        const x = Number(toy.style.transform.match(/translate\(([-\d.]+)px/)?.[1]) + toy.offsetWidth / 2;
+        return [r.dataset.group, {
+          toy: r.dataset.toy, trick: r.dataset.trick ?? null,
+          fx: r.querySelectorAll('.toy-fx, .toy-string').length, anims: toy.getAnimations({ subtree: true }).length,
+          inside: x >= toy.offsetWidth / 2 && x <= r.offsetWidth - toy.offsetWidth / 2,
+          ball: getComputedStyle(r.querySelector('.ball')).visibility,
+          img: pic.src.endsWith(`assets/toys/${r.dataset.toy}.png`) && pic.complete && pic.naturalWidth > 0,
+          nodes: r.querySelectorAll('*:not(.ticker *)').length,
+        }];
+      })));
+      // каждая комната — в свою паузу между трюками: питомцы играют по очереди, все четыре сразу без трюка бывают редко
+      const between = async () => {
+        const got = {};
+        for (let ms = 0; ms < 20_000; ms += 250) {
+          for (const [g, r] of Object.entries(await state())) if (!r.trick && !got[g]) got[g] = r;
+          if (Object.keys(got).length === rooms.length) break;
+          await tp.clock.runFor(250);
+        }
+        return got;
+      };
+      const first = await between();
+      const bad = Object.entries(first).filter(([, r]) => r.fx || r.anims || !r.inside || r.ball !== 'hidden' || !r.img);
+      check(Object.keys(first).length === rooms.length && bad.length === 0, `трюки ${list}: между трюками ${JSON.stringify(bad)} (комнат без трюка ${Object.keys(first)})`);
+      await tp.clock.runFor(20_000);
+      const later = await between();
+      check(rooms.every(([g]) => later[g]?.nodes === first[g]?.nodes), `трюки ${list}: узлов в комнатах было ${rooms.map(([g]) => first[g]?.nodes)}, стало ${rooms.map(([g]) => later[g]?.nodes)}`);
+      check(tErrors.length === 0, `трюки ${list}: ошибки страницы ${tErrors.join('; ')}`);
+      await tp.close();
+    }
+    check(cutChecked, 'трюки: не удалось прервать трюк с ниткой или мелочами (питомец не начал такой трюк за 90 с)');
   }
 
   // мусор в ?asOf= не должен вешать вкладку: рисуется дата по умолчанию

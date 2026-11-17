@@ -5,7 +5,8 @@ import { MOOD_LABEL } from '@/game/PetView';
 import { DECOR, GIFT, PLUS, SPARK } from './art';
 import { HOUSE, type RoomRect } from './layout';
 import { tickerItems, type FunnelTotal, type TickerItem } from './metrics';
-import { TOYS, type ToyKind, type ToyPlay } from './toys';
+import type { ToyFx, ToyKey, Trick } from './toyTricks';
+import { TOYS, toyHeight, type ToyKind, type ToyPlay } from './toys';
 
 /** Длина анимации руки в `tv.css`; следующая рука в той же комнате ждёт, пока предыдущая уйдёт. */
 export const HAND_MS = 1800;
@@ -18,6 +19,8 @@ const TOSS_MS = 700;
 
 /** Игрушка дня: сторона рамки картинки, px комнаты (как `.toy` в `tv.css`). */
 const TOY = 56;
+/** Пол под игрушкой — низ рамки `.toy` (`tv.css`), px от верха комнаты. */
+const TOY_FLOOR = 410;
 /** Подскок: [мс полёта, высота px]. */
 type Hop = readonly [number, number];
 /** Падение игрушки после руки: с высоты (над комнатой) до касания пола за `TOY_LAND_MS`, потом два отскока. */
@@ -101,6 +104,9 @@ export class RoomView {
   /** до этого момента игрушка ещё в руке или падает: питомец её не трогает */
   private landAt = 0;
   private spinTimer: ReturnType<typeof setTimeout> | undefined;
+  /** трюк новой игрушки: нитка йо-йо и мелочи вокруг (пузыри, нотки, дымок, «дзынь!»), снимаются вместе с ним */
+  private trickFx: HTMLElement[] = [];
+  private trickTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   private readonly species: HTMLElement;
   private readonly mood: HTMLElement;
@@ -209,6 +215,7 @@ export class RoomView {
       return;
     }
     this.el.dataset.toy = kind;
+    this.toyEl.style.setProperty('--toy-h', `${toyHeight(kind)}px`);
     // новая картинка: без поворота и разворота прежней игрушки; рамка встаёт на место мяча без перехода
     this.toyRot = toyTurn(kind, this.ball.rot);
     const pic = img('', ART.toys[kind]);
@@ -233,6 +240,100 @@ export class RoomView {
         { duration: 240, delay: HAND_MS + TOY_LAND_MS - 240, fill: 'backwards', easing: 'ease-in' },
       ));
     }
+  }
+
+  /** Высота рамки игрушки дня, px: от неё считается середина игрушки (нитка йо-йо, лапа). */
+  get toyH(): number {
+    return this.toyKind ? toyHeight(this.toyKind) : TOY;
+  }
+
+  /**
+   * Трюк новой игрушки (`toyTricks.ts`): тело и тень идут по ключевым кадрам `t.keys`, а рамка сразу встаёт в `endX`
+   * (туда же молча переезжает спрятанный мяч), чтобы оборванный трюк оставил игрушку там, где ей лежать. Нитка йо-йо и
+   * мелочи вокруг живут в комнате до конца трюка; пока он идёт, у комнаты `data-trick`. `false` — не играем: reduced
+   * motion, игрушка ещё падает или в комнате другая игрушка.
+   */
+  playTrick(t: Trick): boolean {
+    if (this.reduced || !this.toyBody.animate || !this.toyKind || performance.now() < this.landAt) return false;
+    if (TOYS.find((x) => x.kind === this.toyKind)!.play !== t.play) return false;
+    this.stopToy();
+    const pic = this.toyBody.firstElementChild as HTMLElement;
+    if (t.face) {
+      // разворот сразу, без перехода `scale` из `tv.css`: иначе машинка ~0,2 с едет носом назад или мигает через ноль
+      pic.style.transition = 'none';
+      pic.style.scale = t.face < 0 ? '-1 1' : '';
+      void pic.offsetWidth;
+      pic.style.transition = '';
+    }
+    const end = t.endX;
+    if (end !== this.toyX) {
+      this.toyX = end;
+      this.ball.x = end;
+      this.shown = `translate(${end - BALL / 2}px, 0) rotate(${this.ball.rot}deg)`;
+      this.ballEl.style.transform = this.shown;
+      this.toyEl.style.transition = 'none';
+      this.toyEl.style.transform = `translate(${end - TOY / 2}px, 0)`;
+      void this.toyEl.offsetWidth; // новое место без перехода: переход вернётся уже после него
+      this.toyEl.style.transition = '';
+    }
+    const at = (k: ToyKey) => ({ offset: k.t, easing: k.ease ?? 'ease-in-out' });
+    const turn = (k: ToyKey) => `${k.rot ?? 0}deg`;
+    this.toyAnims = [
+      this.toyBody.animate(t.keys.map((k) => ({
+        ...at(k), translate: `${k.x - end}px ${-k.up}px`, scale: `${k.sx ?? 1} ${k.sy ?? 1}`, ...(t.spin ? {} : { rotate: turn(k) }),
+      })), t.ms),
+      this.toyShadow.animate(t.keys.map((k) => ({
+        ...at(k), translate: `${k.x - end}px 0`, scale: String(1 - Math.min(k.up, 300) / 450), opacity: String(Math.max(0, 1 - k.up / 360)),
+      })), t.ms),
+    ];
+    if (t.spin) this.toyAnims.push(pic.animate(t.keys.map((k) => ({ ...at(k), rotate: turn(k) })), t.ms));
+    if (t.string) this.trickFx.push(this.yoyoString(t));
+    for (const f of t.fx) this.trickFx.push(this.trickBit(f, t.ms));
+    this.el.dataset.trick = t.play;
+    const last = Math.max(t.ms, ...t.fx.map((f) => f.t * t.ms + f.ms));
+    this.trickTimer = setTimeout(() => this.stopToy(), last + 50);
+    return true;
+  }
+
+  /** Питомца увели посреди трюка: игрушка сразу на своём месте, мелочи убраны. Без трюка — ничего (падение не трогаем). */
+  stopTrick(): void {
+    if (this.el.dataset.trick) this.stopToy();
+  }
+
+  /** Нитка йо-йо от лапы до середины игрушки: длина идёт за игрушкой по тем же кадрам, видна, пока йо-йо в руке. */
+  private yoyoString(t: Trick): HTMLElement {
+    const s = t.string!;
+    const line = el('i', 'toy-string');
+    line.style.left = `${s.x - 1}px`;
+    line.style.top = `${TOY_FLOOR - s.up}px`;
+    const mid = this.toyH / 2;
+    line.animate(t.keys.map((k) => ({
+      offset: k.t, easing: k.ease ?? 'ease-in-out', height: `${Math.max(0, s.up - k.up - mid)}px`,
+    })), t.ms);
+    const seen = (offset: number, opacity: string) => ({ offset, opacity });
+    line.animate([seen(0, '0'), seen(s.from, '0'), seen(Math.min(1, s.from + 0.02), '1'), seen(s.to, '1'), seen(Math.min(1, s.to + 0.02), '0'), seen(1, '0')], t.ms);
+    this.el.append(line);
+    return line;
+  }
+
+  /** Пузырь (всплывает, качаясь, и лопается), нотка, клуб дымка или «дзынь!» у игрушки; живёт `f.ms` с задержкой `f.t`. */
+  private trickBit(f: ToyFx, trickMs: number): HTMLElement {
+    const text = f.kind === 'note' ? (f.dx > 0 ? '♪' : '♫') : f.kind === 'ring' ? 'дзынь!' : undefined;
+    const node = el('i', `toy-fx ${f.kind}`, text);
+    node.style.left = `${f.x}px`;
+    node.style.top = `${TOY_FLOOR - f.up}px`;
+    if (f.kind === 'bubble') node.style.setProperty('--b', `${12 + (Math.abs(f.dx) % 9)}px`);
+    const go = (p: number, o: Keyframe = {}, sway = 0): Keyframe => ({ translate: `${Math.round(f.dx * p + sway)}px ${-Math.round(f.rise * p)}px`, ...o });
+    const frames: Keyframe[] = f.kind === 'bubble'
+      ? [go(0, { scale: '.3', opacity: '0' }), go(0.12, { offset: 0.12, scale: '1', opacity: '.9' }), go(0.5, { offset: 0.5 }, 8),
+        go(1, { offset: 0.9, scale: '1', opacity: '.9' }), go(1, { scale: '1.6', opacity: '0' })]
+      : f.kind === 'smoke' ? [go(0, { scale: '.5', opacity: '0' }), go(0.1, { offset: 0.1, scale: '.6', opacity: '.85' }), go(1, { scale: '2', opacity: '0' })]
+      : f.kind === 'ring' ? [go(0, { scale: '0', opacity: '1' }), go(0.3, { offset: 0.25, scale: '1.15', opacity: '1' }),
+        go(0.7, { offset: 0.7, scale: '1', opacity: '1' }), go(1, { scale: '1', opacity: '0' })]
+      : [go(0, { opacity: '0', rotate: '-10deg' }), go(0.2, { offset: 0.2, opacity: '1' }), go(1, { opacity: '0', rotate: '12deg' })];
+    node.animate(frames, { duration: f.ms, delay: f.t * trickMs, fill: 'both', easing: 'ease-out' });
+    this.el.append(node);
+    return node;
   }
 
   /** Юла крутится на месте (класс `spin`, `SPIN_MS`); при reduced motion стоит. */
@@ -431,9 +532,14 @@ export class RoomView {
     return this.toyBody.animate(frames, { duration: 1000, easing: ROLL });
   }
 
+  /** Снять анимации игрушки и трюк целиком (мелочи, таймер, `data-trick`). */
   private stopToy(): void {
     this.toyAnims.forEach((a) => a.cancel());
     this.toyAnims = [];
+    this.trickFx.forEach((n) => n.remove());
+    this.trickFx = [];
+    clearTimeout(this.trickTimer);
+    delete this.el.dataset.trick;
   }
 
   /** Рука с предметом над питомцем (R20): на состояние не влияет и убирается сама. `x` — в координатах комнаты. */

@@ -15,14 +15,19 @@ const pet = (o: Partial<PetState> = {}): PetState => ({
 });
 
 describe('TOYS и toyKindFor', () => {
-  it('пять игрушек в порядке спеки, у каждой своя игра', () => {
-    expect(TOYS.map((t) => `${t.kind}/${t.play}`)).toEqual(['bear/hug', 'duck/bounce', 'top/spin', 'cube/roll', 'hedgehog/roll']);
+  it('пятнадцать игрушек: пять прежних, за ними десять новых, у каждой своя игра', () => {
+    expect(TOYS.map((t) => `${t.kind}/${t.play}`)).toEqual([
+      'bear/hug', 'duck/bounce', 'top/spin', 'cube/roll', 'hedgehog/roll',
+      'balloon/float', 'yoyo/yoyo', 'plane/glide', 'car/drive', 'bubbles/bubbles',
+      'drum/drum', 'phone/call', 'bouncer/hop', 'rocket/launch', 'dumbbell/lift',
+    ]);
   });
 
-  it('игрушка по id расхода: id % 5', () => {
-    expect(toyKindFor(7)).toBe('top');
-    expect(toyKindFor(5)).toBe('bear');
-    expect(toyKindFor(14)).toBe('hedgehog');
+  it('игрушка по id расхода: id % 15', () => {
+    expect(toyKindFor(2)).toBe('top');
+    expect(toyKindFor(15)).toBe('bear');
+    expect(toyKindFor(7)).toBe('plane');
+    expect(toyKindFor(29)).toBe('dumbbell');
   });
 });
 
@@ -32,8 +37,8 @@ describe('toyOfDay', () => {
   });
 
   it('последняя по id строка useToy группы за сегодня, даже если в массиве она не последняя', () => {
-    const rows = [row(11), row(21), row(16)];
-    expect(toyOfDay(rows, 'СР1', TODAY)).toEqual({ id: 21, kind: 'duck' });
+    const rows = [row(11), row(31), row(16)];
+    expect(toyOfDay(rows, 'СР1', TODAY)).toEqual({ id: 31, kind: 'duck' });
   });
 
   it('другие группы, другие даты и аптечки не считаются', () => {

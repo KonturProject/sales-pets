@@ -13,7 +13,7 @@ import { PowerSaver } from '@/game/PowerSaver';
 import { dayPlanner, type DayEventPlan } from '@/game/tv/dayEvent';
 import { freshLine } from '@/game/tv/metrics';
 import { mountTv, type Tv } from '@/game/tv/TvScreen';
-import { toyOfDay } from '@/game/tv/toys';
+import { TOYS, toyOfDay, type ToyKind } from '@/game/tv/toys';
 import { newUses } from '@/game/uses';
 
 /** Дата витрины по умолчанию: середина игры, видны все состояния. */
@@ -29,6 +29,16 @@ function demoStates(asOf: DateStr): Record<GroupCode, PetState> {
   return Object.fromEntries(
     GROUPS.map((g) => [g, simulate(groupFacts(demo, g, asOf), asOf, defaultConfig)]),
   ) as Record<GroupCode, PetState>;
+}
+
+/** Демо `?toy=balloon,yoyo,…`: игрушки дня вылупившимся по порядку групп (неизвестные виды пропускаются). */
+function demoToys(states: Record<GroupCode, PetState>): Record<GroupCode, ReturnType<typeof toyOfDay>> {
+  const kinds = (params.get('toy') ?? '').split(',').filter((k): k is ToyKind => TOYS.some((t) => t.kind === k));
+  const hatched = GROUPS.filter((g) => states[g].alive && states[g].phase === 'pet');
+  return Object.fromEntries(GROUPS.map((g) => {
+    const kind = kinds[hatched.indexOf(g)];
+    return [g, hatched.includes(g) && kind ? { id: 0, kind } : null];
+  })) as Record<GroupCode, ReturnType<typeof toyOfDay>>;
 }
 
 /**
@@ -134,7 +144,8 @@ function startLive(): void {
 if (params.has('demo')) {
   const asOf = parseDate(params.get('asOf'), DEMO_AS_OF);
   const states = demoStates(asOf);
-  const tv = mountTv(root, { states: () => states, asOf: () => asOf, cfg: () => defaultConfig });
+  const toys = demoToys(states);
+  const tv = mountTv(root, { states: () => states, asOf: () => asOf, cfg: () => defaultConfig, toys: () => toys });
   const power = new PowerSaver(document.documentElement);
   power.onTick(tv.setPower);
   power.start();

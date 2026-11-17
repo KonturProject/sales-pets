@@ -6,6 +6,7 @@ import { EMOTE, PLUS, type Emote } from './art';
 import { kickBall } from './ball';
 import { headingAt, pathLength, pointAt, type Pt } from './hallGames';
 import { HUG_MS, SPIN_MS, type RoomView } from './RoomView';
+import { TRICKS, isTrick, type TrickPlay } from './toyTricks';
 import type { ToyPlay } from './toys';
 
 type Kind = 'egg' | 'pet' | 'grave';
@@ -26,7 +27,17 @@ const HEAL_MS = 2000;
 const HEAL_STILL_MS = 1000;
 
 /** На каком расстоянии от мяча или игрушки (центр к центру) питомец встаёт играть: игрушки крупнее мяча. */
-const REACH: Record<ToyPlay | 'ball', number> = { ball: 58, roll: 64, bounce: 64, spin: 70, hug: 56 };
+const REACH: Record<ToyPlay | 'ball', number> = {
+  ball: 58, roll: 64, bounce: 64, spin: 70, hug: 56,
+  float: 60, yoyo: 60, lift: 60, glide: 60, hop: 58, drive: 66, bubbles: 64, drum: 64, call: 62, launch: 70,
+};
+/** Метки трюка для `.bob` (поворот по ходу взгляда — через `.flip`): кивок, наклон к игрушке, потянулся вверх. */
+const NOD: Keyframe[] = [{ rotate: '0deg', scale: '1 1' }, { rotate: '7deg', scale: '1.05 .94', offset: 0.45, easing: 'ease-in' }, { rotate: '0deg', scale: '1 1' }];
+const LEAN: Keyframe[] = [{ rotate: '0deg' }, { rotate: '12deg', offset: 0.4, easing: 'ease-in' }, { rotate: '0deg' }];
+const STRETCH: Keyframe[] = [
+  { scale: '1 1', translate: '0 0' }, { scale: '1.1 .88', translate: '0 0', offset: 0.25 },
+  { scale: '.9 1.12', translate: '0 -6px', offset: 0.6, easing: 'ease-out' }, { scale: '1 1', translate: '0 0' },
+];
 /** Питомец крупнее стольких px (сторона картинки) встаёт к игрушке дальше в той же пропорции: иначе ноги на игрушке. */
 const REACH_SIZE = 120;
 /** Прыжок от радости (только картинка): присел, взлетел, приземлился со сплющиванием; мс. */
@@ -388,6 +399,7 @@ export class PetActor {
 
   private halt(): void {
     this.gen++;
+    this.room.stopTrick(); // увели посреди трюка: игрушка сразу на своём месте
     this.el.classList.remove('walking', 'sneak');
     this.acts.forEach((a) => a.cancel());
     this.acts = [];
@@ -404,7 +416,8 @@ export class PetActor {
 
   /**
    * Бродит по комнате: иногда подходит к мячу (или игрушке дня) и играет, иногда просто идёт в случайную точку.
-   * Мяч и катящиеся игрушки пинает (уточка от пинка скачет), юлу закручивает, мишку обнимает.
+   * Мяч и катящиеся игрушки пинает (уточка от пинка скачет), юлу закручивает, мишку обнимает, с новыми игрушками
+   * играет их трюк (`toyTricks.ts`).
    */
   private async wander(my: number): Promise<void> {
     const r = this.room.rect;
@@ -420,6 +433,8 @@ export class PetActor {
         if (still) this.face(dir);
         if (still && (play === 'hug' || play === 'spin')) {
           if (!(await (play === 'hug' ? this.hug(my) : this.spin(my)))) return;
+        } else if (still && isTrick(play)) {
+          if (!(await this.trick(play, dir, my))) return;
         } else if (still) {
           const kick = kickBall(ball.x, this.x - r.x, r.w, Math.random);
           ball.rot += kick.rot;
@@ -467,6 +482,40 @@ export class PetActor {
     if (!(await this.pause(SPIN_MS / 2 - 140, my))) return false;
     if (this.state === 'ok' && Math.random() < 0.5) this.emote('joy', 1300);
     return true;
+  }
+
+  /**
+   * Трюк новой игрушки: путь игрушки играет комната (`RoomView.playTrick`), питомец по меткам кивает, тянется, прыгает,
+   * говорит и идёт за улетевшей игрушкой. Комната трюк сняла (новая игрушка) — метки дальше не идут. При reduced motion
+   * игрушка стоит, а питомец радуется (у телефона — «Алло!»). `false`, если питомца перехватили.
+   */
+  private async trick(play: TrickPlay, dir: 1 | -1, my: number): Promise<boolean> {
+    const r = this.room.rect;
+    const t = TRICKS[play]({
+      toyX: this.room.ball.x, petX: this.x - r.x, dir, side: this.side, reach: REACH[play] * this.far(),
+      roomW: r.w, petEdge: EDGE, toyH: this.room.toyH, rnd: Math.random,
+    });
+    if (!this.room.playTrick(t)) {
+      if (play === 'call') this.say('Алло!');
+      else this.emote('joy', 1300);
+      return this.pause(1300, my);
+    }
+    const t0 = performance.now();
+    let walk: Promise<boolean> = Promise.resolve(true);
+    for (const c of t.cues) {
+      if (!(await this.pause(Math.max(0, t0 + c.t * t.ms - performance.now()), my))) return false;
+      if (this.room.el.dataset.trick !== play) break;
+      if (c.do === 'nod') this.act(NOD, 280);
+      else if (c.do === 'lean') this.act(LEAN, 320, { easing: 'ease-out' });
+      else if (c.do === 'stretch') this.act(STRETCH, 420);
+      else if (c.do === 'jump') this.jump(c.h);
+      else if (c.do === 'joy' || c.do === 'alert') this.emote(c.do, 1300);
+      else if (c.do === 'say') this.say(c.text);
+      else if (c.do === 'face') this.face(c.dir);
+      else if (c.do === 'walk') walk = this.walkTo(r.x + c.x, my);
+    }
+    if (!(await walk)) return false;
+    return this.pause(Math.max(0, t0 + t.ms - performance.now()), my);
   }
 
   /** Прыжок на месте высотой `h` px (только картинка `.bob` и тень, координаты не меняются). */

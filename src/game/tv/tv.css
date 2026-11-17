@@ -125,7 +125,24 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 }
 /* игрушка дня вместо мяча (RoomView.setToy): рамка TOY×TOY на полу, где мяч; тело — прыжки и сплющивание от низа,
    картинка — качение вокруг центра; юла крутится классом spin */
-.toy { position: absolute; left: 0; top: 354px; width: 56px; height: 56px; z-index: 3; transition: transform 1s cubic-bezier(.2, .7, .3, 1); }
+.toy {
+  position: absolute; left: 0; top: calc(410px - var(--toy-h, 56px)); width: 56px; height: var(--toy-h, 56px); z-index: 3;
+  transition: transform 1s cubic-bezier(.2, .7, .3, 1);
+}
+/* трюки новых игрушек (RoomView.playTrick): нитка йо-йо растёт вниз от лапы; мелочи — серединой в своей точке */
+.toy-string { position: absolute; width: 2px; height: 0; z-index: 3; background: rgba(70, 50, 40, .75); border-radius: 1px; pointer-events: none; }
+.toy-fx { position: absolute; z-index: 4; pointer-events: none; font-style: normal; transform: translate(-50%, -50%); white-space: nowrap; }
+.toy-fx.bubble {
+  width: var(--b, 16px); height: var(--b, 16px); border-radius: 50%;
+  background: radial-gradient(circle at 32% 30%, rgba(255, 255, 255, .95) 0 14%, rgba(190, 230, 255, .35) 34%, rgba(255, 170, 230, .28) 70%, rgba(255, 255, 255, .6) 100%);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .75);
+}
+.toy-fx.note { font: 700 26px/1 system-ui, sans-serif; color: var(--accent, #c0392b); text-shadow: 0 1px 0 #fff; }
+.toy-fx.smoke { width: 30px; height: 22px; border-radius: 50%; background: rgba(235, 235, 235, .9); box-shadow: 0 0 6px rgba(200, 200, 200, .8); }
+.toy-fx.ring {
+  font: 800 17px/1 system-ui, sans-serif; color: #d63a2f; background: #fff;
+  padding: 4px 8px; border-radius: 12px; box-shadow: 0 2px 0 rgba(0, 0, 0, .18);
+}
 .tv-room:not([data-toy]) .toy { display: none; }
 .tv-room[data-toy] .ball { visibility: hidden; }
 .toy-shadow { position: absolute; left: 7px; right: 7px; bottom: -5px; height: 11px; border-radius: 50%; background: rgba(60, 40, 20, .22); }
