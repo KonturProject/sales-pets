@@ -109,9 +109,9 @@
     "semantic_hash": ""
   },
   "src/art/manifest.ts": {
-    "mtime": 1794934691.6593742,
-    "seen": 1794936067.2951381,
-    "ast_hash": "e17c5aa0846fbb0ba26b1e986da29c66",
+    "mtime": 1795026512.5190203,
+    "seen": 1795028608.2866566,
+    "ast_hash": "249e6b28386254bbceb6b9f586ae42f6",
     "semantic_hash": ""
   },
   "src/demo/demoFacts.test.ts": {
@@ -157,15 +157,15 @@
     "semantic_hash": ""
   },
   "src/engine/pet.test.ts": {
-    "mtime": 1793724414.0248258,
-    "seen": 1793817656.938153,
-    "ast_hash": "be94727e4cf15b345e391e187880a33f",
+    "mtime": 1795025631.153988,
+    "seen": 1795028608.286683,
+    "ast_hash": "ffb3cbe2a5881263cb6fe4f41619df54",
     "semantic_hash": ""
   },
   "src/engine/pet.ts": {
-    "mtime": 1793724467.7960093,
-    "seen": 1793817656.938154,
-    "ast_hash": "bf5ece20c699bc20af90ee856a9b66e6",
+    "mtime": 1795025619.9490588,
+    "seen": 1795028608.2866843,
+    "ast_hash": "76de71569b4e88b338acbd177908880c",
     "semantic_hash": ""
   },
   "src/engine/ranking.test.ts": {
@@ -217,9 +217,9 @@
     "semantic_hash": ""
   },
   "src/main.ts": {
-    "mtime": 1794935088.8512173,
-    "seen": 1794936067.295226,
-    "ast_hash": "207867c2f21bd9fce91e2844d1fa4cfb",
+    "mtime": 1795026743.786881,
+    "seen": 1795028608.2867641,
+    "ast_hash": "8def3830824ab0897d8e6739c33c87ec",
     "semantic_hash": ""
   },
   "src/vite-env.d.ts": {
@@ -229,9 +229,9 @@
     "semantic_hash": ""
   },
   "tools/check-render.mjs": {
-    "mtime": 1794936560.3746192,
-    "seen": 1794938855.445386,
-    "ast_hash": "3e5d5760f1e95588086292291eed3145",
+    "mtime": 1795027348.3063312,
+    "seen": 1795028608.2867885,
+    "ast_hash": "d67fabc7eebb3ed3cca55e3678ebd07e",
     "semantic_hash": ""
   },
   "tools/make-art.mjs": {
@@ -289,9 +289,9 @@
     "semantic_hash": ""
   },
   ".claude/skills/game-architecture/SKILL.md": {
-    "mtime": 1794936048.2832537,
-    "seen": 1794936067.2953043,
-    "ast_hash": "5e3d2e4db3ea6e4632007c40bd429fff",
+    "mtime": 1795027872.2057014,
+    "seen": 1795028608.2868416,
+    "ast_hash": "65724964ad90ed559b396248c5709b41",
     "semantic_hash": ""
   },
   ".claude/skills/game-assets/SKILL.md": {
@@ -427,15 +427,15 @@
     "semantic_hash": ""
   },
   "CREDITS.md": {
-    "mtime": 1794936048.2752879,
-    "seen": 1794936067.2953331,
-    "ast_hash": "3143766532947f166f93c23a613d6185",
+    "mtime": 1795026525.0794268,
+    "seen": 1795028608.2868695,
+    "ast_hash": "0d1f59a9befa7b38c341c0b0b7e7ae0f",
     "semantic_hash": ""
   },
   "PLAN.md": {
-    "mtime": 1794938413.1875248,
-    "seen": 1794938855.4454672,
-    "ast_hash": "1986e1e3f2ad68e480b1d899cc9169f5",
+    "mtime": 1795027885.327512,
+    "seen": 1795028608.2868707,
+    "ast_hash": "3c83159e65557e5908228c887148ffff",
     "semantic_hash": ""
   },
   "README.assets.md": {
@@ -685,9 +685,9 @@
     "semantic_hash": ""
   },
   "apps-script/test/backend.test.mjs": {
-    "mtime": 1794427290.5211318,
-    "seen": 1794427493.8488472,
-    "ast_hash": "2b319f81740fdbeac4f5bf5a154e695e",
+    "mtime": 1795025768.1052117,
+    "seen": 1795028608.2865841,
+    "ast_hash": "820ddaf0056a1659973699b12818fb50",
     "semantic_hash": ""
   },
   "apps-script/test/gas-harness.mjs": {
@@ -757,9 +757,9 @@
     "semantic_hash": ""
   },
   "apps-script/README.md": {
-    "mtime": 1794427326.4020722,
-    "seen": 1794427493.8491142,
-    "ast_hash": "a60bf8026df968d2b31feff653f7de75",
+    "mtime": 1795025807.3486872,
+    "seen": 1795028608.2868757,
+    "ast_hash": "f0b0d864cae9069e4157d8078e2051b5",
     "semantic_hash": ""
   },
   "src/data/api.test.ts": {
@@ -775,15 +775,15 @@
     "semantic_hash": ""
   },
   "src/data/facts.test.ts": {
-    "mtime": 1794427291.1088085,
-    "seen": 1794427493.848928,
-    "ast_hash": "49168656fbc2d23ed6f9921a189fee1b",
+    "mtime": 1795025712.037241,
+    "seen": 1795028608.286666,
+    "ast_hash": "66a601f0e1a30e27282147df00d50d5b",
     "semantic_hash": ""
   },
   "src/data/facts.ts": {
-    "mtime": 1793725295.1016195,
-    "seen": 1793817656.9381378,
-    "ast_hash": "3fb8d4606b639f79ce4a291a33956264",
+    "mtime": 1795025728.4231386,
+    "seen": 1795028608.2866676,
+    "ast_hash": "9e0e16583d8dbafc1de72c305d401d5f",
     "semantic_hash": ""
   },
   "src/data/store.test.ts": {
@@ -883,9 +883,9 @@
     "semantic_hash": ""
   },
   "tools/check-admin.mjs": {
-    "mtime": 1794427471.6076782,
-    "seen": 1794427493.8490186,
-    "ast_hash": "c6927d6356137544e6b003f6f7faa4f4",
+    "mtime": 1795026542.7809813,
+    "seen": 1795028608.2867851,
+    "ast_hash": "7fdb5e97c10d06d13657d838371554be",
     "semantic_hash": ""
   },
   "admin.html": {
@@ -961,39 +961,39 @@
     "semantic_hash": ""
   },
   "src/admin/overridePlan.test.ts": {
-    "mtime": 1793724495.9540577,
-    "seen": 1793817656.9380996,
-    "ast_hash": "8ee1be97e776fd36782029dbad6490e4",
+    "mtime": 1795025660.5422716,
+    "seen": 1795028608.2866273,
+    "ast_hash": "fcb0f7a75659974196f1c5d4e24c1265",
     "semantic_hash": ""
   },
   "src/admin/overridePlan.ts": {
-    "mtime": 1793039964.9741368,
-    "seen": 1793040489.9416726,
-    "ast_hash": "3aacb4b7ac19194652ce40641f195c62",
+    "mtime": 1795025660.6265068,
+    "seen": 1795028608.2866287,
+    "ast_hash": "2851417011527c000a1ce29d8c0ec0ba",
     "semantic_hash": ""
   },
   "src/admin/overridesTab.ts": {
-    "mtime": 1793040121.531246,
-    "seen": 1793040489.9416735,
-    "ast_hash": "d9ec21ed2740eebb06b844c0d5297831",
+    "mtime": 1795025669.4423552,
+    "seen": 1795028608.2866294,
+    "ast_hash": "6679653caa0bc4b57eed0c334316b423",
     "semantic_hash": ""
   },
   "src/rg/main.ts": {
-    "mtime": 1793722683.0149705,
-    "seen": 1793722965.2681417,
-    "ast_hash": "e32ca79f2c5b53ece794f482eaf05b8d",
+    "mtime": 1795026542.715592,
+    "seen": 1795028608.2867677,
+    "ast_hash": "e5788eef1a0a353f070ccaaa9f9509f9",
     "semantic_hash": ""
   },
   "src/rg/spend.test.ts": {
-    "mtime": 1793041041.0844862,
-    "seen": 1793041196.066102,
-    "ast_hash": "dfa8c2d64b12fe0b18e725bf522d1447",
+    "mtime": 1795025838.5189245,
+    "seen": 1795028608.286771,
+    "ast_hash": "bb5f78b2f0920b6c3196cfd592263d83",
     "semantic_hash": ""
   },
   "src/rg/spend.ts": {
-    "mtime": 1793041041.082494,
-    "seen": 1793041196.066103,
-    "ast_hash": "0727b8cfaaa7328c9f9256ccc372378b",
+    "mtime": 1795025853.3566203,
+    "seen": 1795028608.286772,
+    "ast_hash": "85245f6c8e9834091862f8ea144e2e77",
     "semantic_hash": ""
   },
   "rg.html": {
@@ -1069,9 +1069,9 @@
     "semantic_hash": ""
   },
   "docs/deploy.md": {
-    "mtime": 1794936048.2822673,
-    "seen": 1794936067.2953413,
-    "ast_hash": "bf4fabea89953feab7f066020ef87bdd",
+    "mtime": 1795027863.3632166,
+    "seen": 1795028608.2868779,
+    "ast_hash": "9f48335a26eefdf233ad64afee2075d8",
     "semantic_hash": ""
   },
   "docs/game-kit-setup.md": {
@@ -1093,27 +1093,27 @@
     "semantic_hash": ""
   },
   "src/game/tv/PetActor.ts": {
-    "mtime": 1794935098.135708,
-    "seen": 1794936067.295181,
-    "ast_hash": "bfd2e51ea7ed32e8d5c0d8db5d906454",
+    "mtime": 1795027464.5689678,
+    "seen": 1795028608.286717,
+    "ast_hash": "b5ceb38accd3a22ee86e22bd1fa4f551",
     "semantic_hash": ""
   },
   "src/game/tv/RoomView.ts": {
-    "mtime": 1794938274.6120872,
-    "seen": 1794938855.4453225,
-    "ast_hash": "bcf03d620a75f00c7809a5a7b47b5712",
+    "mtime": 1795027401.332834,
+    "seen": 1795028608.286718,
+    "ast_hash": "f95d0384841a6014f52180a8b2521cc8",
     "semantic_hash": ""
   },
   "src/game/tv/TvScreen.ts": {
-    "mtime": 1794425744.4031208,
-    "seen": 1794425895.292573,
-    "ast_hash": "e0b9c46408895d0673acbb96336eda75",
+    "mtime": 1795026743.5212414,
+    "seen": 1795028608.286719,
+    "ast_hash": "a9beaf125dd4ff2356803fe0eeb24747",
     "semantic_hash": ""
   },
   "src/game/tv/art.ts": {
-    "mtime": 1793906787.8511078,
-    "seen": 1793936268.116287,
-    "ast_hash": "40b2a4a33cfef8fda161ed616a38fcae",
+    "mtime": 1795027386.2330856,
+    "seen": 1795028608.28672,
+    "ast_hash": "ba7e84b8272fafd6a2d074b8bf941480",
     "semantic_hash": ""
   },
   "src/game/tv/layout.ts": {
@@ -2038,6 +2038,222 @@
     "mtime": 1794934170.2146666,
     "seen": 1794936067.2954662,
     "ast_hash": "a69f8e636696fcf336fba0136d3893da",
+    "semantic_hash": ""
+  },
+  "src/engine/shop.test.ts": {
+    "mtime": 1795025497.8069763,
+    "seen": 1795028608.2866883,
+    "ast_hash": "b29bd6cb0393bc20f0bada9a5e330711",
+    "semantic_hash": ""
+  },
+  "src/engine/shop.ts": {
+    "mtime": 1795025619.8700783,
+    "seen": 1795028608.2866895,
+    "ast_hash": "355cda638d12cd21440c73b9f6471aaf",
+    "semantic_hash": ""
+  },
+  "src/game/tv/calls.test.ts": {
+    "mtime": 1795026675.2774818,
+    "seen": 1795028608.2867262,
+    "ast_hash": "0dbaf09a4e80b48512a9b96771dfbdb6",
+    "semantic_hash": ""
+  },
+  "src/game/tv/calls.ts": {
+    "mtime": 1795026687.3673258,
+    "seen": 1795028608.2867274,
+    "ast_hash": "44dcb49ecc83a2c34b192b93d8a26dbc",
+    "semantic_hash": ""
+  },
+  "src/game/tv/furniture.test.ts": {
+    "mtime": 1795026441.4372492,
+    "seen": 1795028608.286731,
+    "ast_hash": "2d3c56c4290218b505152ecade745ee3",
+    "semantic_hash": ""
+  },
+  "src/game/tv/furniture.ts": {
+    "mtime": 1795026495.2799792,
+    "seen": 1795028608.286732,
+    "ast_hash": "4d7f4aa783f7fdf165ad3deb1bbff127",
+    "semantic_hash": ""
+  },
+  "src/rg/shop.test.ts": {
+    "mtime": 1795025901.08094,
+    "seen": 1795028608.2867687,
+    "ast_hash": "fa78940ed62b1dbf3c3b478369d547be",
+    "semantic_hash": ""
+  },
+  "src/rg/shop.ts": {
+    "mtime": 1795025910.7798202,
+    "seen": 1795028608.2867696,
+    "ast_hash": "75c4859de0ef91af3c5638baa9ba22f9",
+    "semantic_hash": ""
+  },
+  "tools/slice-sheet.py": {
+    "mtime": 1795026124.1472578,
+    "seen": 1795028608.286795,
+    "ast_hash": "43fcad3d82f33bd92823080f06225f9b",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-11-18-rg-shop.md": {
+    "mtime": 1795025351.928085,
+    "seen": 1795028608.286891,
+    "ast_hash": "bc1be673b585a4284ea8c812e1603ccf",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-11-18-rg-shop-design.md": {
+    "mtime": 1795025351.983126,
+    "seen": 1795028608.2869003,
+    "ast_hash": "bf66630f8f24228d6093e41e44145906",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/chair-beanbag.png": {
+    "mtime": 1795026130.557927,
+    "seen": 1795028608.286934,
+    "ast_hash": "e4e692e7e4c2745fb1f6bb3c1d313beb",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/chair-fitball.png": {
+    "mtime": 1795026130.6156068,
+    "seen": 1795028608.286935,
+    "ast_hash": "ea21e48d38a209c90d8cd3805a62cf57",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/chair-office.png": {
+    "mtime": 1795026130.1704495,
+    "seen": 1795028608.2869358,
+    "ast_hash": "64a879e8f89aef5e21044405fd0500b6",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/corner-cactus.png": {
+    "mtime": 1795026130.6512845,
+    "seen": 1795028608.2869368,
+    "ast_hash": "82286d366b9b5888ab1648b7a4d23b6f",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/corner-coffee.png": {
+    "mtime": 1795026130.7140222,
+    "seen": 1795028608.286938,
+    "ast_hash": "a6fcc7ff3ed2dc61f2981b67402fcf22",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/corner-cooler.png": {
+    "mtime": 1795026130.6786315,
+    "seen": 1795028608.286939,
+    "ast_hash": "20742a791ad06fd9f429a38addd2e102",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/corner-ficus.png": {
+    "mtime": 1795026130.6337361,
+    "seen": 1795028608.2869399,
+    "ast_hash": "80df39fb5b57ac4505397aa37e644618",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/desk-gaming.png": {
+    "mtime": 1795026129.890943,
+    "seen": 1795028608.2869406,
+    "ast_hash": "8ce6c1edc20564071243c507812b0463",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/desk-office.png": {
+    "mtime": 1795026129.8424554,
+    "seen": 1795028608.2869418,
+    "ast_hash": "a10935daacdd81f5dc6463f9d5b9705e",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/desk-wood.png": {
+    "mtime": 1795026129.866853,
+    "seen": 1795028608.2869425,
+    "ast_hash": "5768a4dd2cd822295073bc9510ef0770",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/pc-crt.png": {
+    "mtime": 1795026129.9538586,
+    "seen": 1795028608.2869434,
+    "ast_hash": "457f1a34c314831fe054b40095a7d4e4",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/pc-dual.png": {
+    "mtime": 1795026130.0582175,
+    "seen": 1795028608.2869446,
+    "ast_hash": "7172592db9f04eccb1553159724fd14b",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/pc-laptop.png": {
+    "mtime": 1795026130.0088036,
+    "seen": 1795028608.2869453,
+    "ast_hash": "d5a9286f58c102cc45c3d07a1eb93902",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/phone-office.png": {
+    "mtime": 1795026130.1373217,
+    "seen": 1795028608.2869463,
+    "ast_hash": "a3a62d22f924220ea2d226170a894503",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/phone-rotary.png": {
+    "mtime": 1795026130.0942423,
+    "seen": 1795028608.2869473,
+    "ast_hash": "4c762d247b705dc405ab422c30021e7c",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/rug-paw.png": {
+    "mtime": 1795026130.7461882,
+    "seen": 1795028608.2869484,
+    "ast_hash": "9a6af280cf1adbb91bb1d4a1c8603401",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/rug-round.png": {
+    "mtime": 1795026130.7231462,
+    "seen": 1795028608.2869494,
+    "ast_hash": "97def688790723f38e028cb98a93aa62",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/rug-striped.png": {
+    "mtime": 1795026130.7352228,
+    "seen": 1795028608.2869503,
+    "ast_hash": "c74bcd431e8ef31f0707a46c0ced2aa0",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/wall-chart.png": {
+    "mtime": 1795026484.802033,
+    "seen": 1795028608.286951,
+    "ast_hash": "bdffcbdf355cad2d78b94c6372a3cc30",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/wall-clock.png": {
+    "mtime": 1795026484.686913,
+    "seen": 1795028608.2869523,
+    "ast_hash": "0ad9cfb56ee1c7b31c3153d17a91cb95",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/wall-diploma.png": {
+    "mtime": 1795026484.8663363,
+    "seen": 1795028608.286953,
+    "ast_hash": "262285a4e7d734549794c66524d567eb",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/wall-poster.png": {
+    "mtime": 1795026484.7427258,
+    "seen": 1795028608.286954,
+    "ast_hash": "ade242a733a6a6e1f6e9a7bb5a37d923",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/wall-trophies.png": {
+    "mtime": 1795026484.8892593,
+    "seen": 1795028608.2869546,
+    "ast_hash": "310f679922868273eea1c14a42ed7986",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/window-flowers.png": {
+    "mtime": 1795026484.9081962,
+    "seen": 1795028608.2869558,
+    "ast_hash": "64f420b5c7ca847506b8e0e532ec1343",
+    "semantic_hash": ""
+  },
+  "public/assets/furniture/window-garland.png": {
+    "mtime": 1795026484.8952396,
+    "seen": 1795028608.2869565,
+    "ast_hash": "56aa550ba9b6e6d6b0077e7f01399246",
     "semantic_hash": ""
   }
 }
