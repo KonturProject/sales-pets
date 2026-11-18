@@ -2,6 +2,7 @@ import { workingDaysBetween } from '@/engine/calendar';
 import { evaluateDay, groupPlan, type FunnelDay } from '@/engine/evaluate';
 import { simulate, type PetState } from '@/engine/pet';
 import { uniqueInvoices, type PaymentRow, type RankData } from '@/engine/ranking';
+import { shopState, type ShopState } from '@/engine/shop';
 import { groupOn, normalizeName } from '@/engine/staff';
 import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
 import type { Snapshot } from './api';
@@ -11,6 +12,8 @@ export { normalizeName };
 
 export interface Facts {
   states: Record<GroupCode, PetState>;
+  /** магазин РГ: монеты, траты, мебель по местам, отпуск (`shop.ts`) — единственный источник для ТВ и страницы РГ */
+  shop: Record<GroupCode, ShopState>;
   rank: RankData;
   /** Авторы оплат, которых нет в штате: оплата засчитана группе, в рейтинг не попала. */
   unmatchedAuthors: string[];
@@ -164,19 +167,22 @@ function compute(s: Snapshot, asOf: DateStr): Facts {
   // правки одного дня движок применяет по порядку, а порядок — это id
   const byId = [...s.overrides].sort((a, b) => a.id - b.id);
 
-  const states = Object.fromEntries(
-    GROUPS.map((group) => {
-      const results = Object.fromEntries(
-        evalDays.map((date) => [date, evaluateDay(group, date, s.staff, s.absences, funnel, timeline.at(date))]),
-      );
-      const overrides = byId.filter((o) => o.group === group).map(({ date, kind, delta }) => ({ date, kind, delta }));
-      const plan = groupPlan(group, asOf, s.staff, s.absences, timeline.at, cfg);
-      return [group, simulate({ group, paymentsByDay: eff.paymentsByDay[group], results, overrides, plan }, asOf, cfg, timeline.at)];
-    }),
-  ) as Record<GroupCode, PetState>;
+  const states = {} as Record<GroupCode, PetState>;
+  const shop = {} as Record<GroupCode, ShopState>;
+  for (const group of GROUPS) {
+    const results = Object.fromEntries(
+      evalDays.map((date) => [date, evaluateDay(group, date, s.staff, s.absences, funnel, timeline.at(date))]),
+    );
+    const overrides = byId.filter((o) => o.group === group).map(({ date, kind, delta }) => ({ date, kind, delta }));
+    const plan = groupPlan(group, asOf, s.staff, s.absences, timeline.at, cfg);
+    const paymentsByDay = eff.paymentsByDay[group];
+    states[group] = simulate({ group, paymentsByDay, results, overrides, plan }, asOf, cfg, timeline.at);
+    shop[group] = shopState({ paymentsByDay, gameCents: plan.gameCents, startDate: cfg.startDate, asOf, overrides });
+  }
 
   return {
     states,
+    shop,
     rank: {
       staff: s.staff, absences: s.absences, payments: eff.rankPayments, funnel, cfg, cfgOn: timeline.at,
       paymentCorrections: eff.paymentCorrections,

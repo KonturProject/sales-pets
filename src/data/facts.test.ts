@@ -522,3 +522,37 @@ describe('ручные правки фактов (corrections)', () => {
     });
   });
 });
+
+describe('магазин групп (facts.shop)', () => {
+  const staff = [emp('e1', 'Тест Иванов')]; // один опытный: 6 оплат на игру
+  const pays = (date: DateStr, n: number, from = 0) => Array.from({ length: n }, (_, i) => pay(date, 'СР1', 'Тест Иванов', `${date}-${from + i}`));
+
+  test('монеты равны проценту плана, пока питомец не погибал; без плана — 0', () => {
+    const s = snap({ staff, payments: [...pays('2026-11-02', 1), ...pays('2026-11-03', 2), ...pays('2026-11-05', 1), ...pays('2026-11-06', 3)] });
+    for (const asOf of ['2026-11-02', '2026-11-03', '2026-11-05', '2026-11-06', '2026-11-09'] as DateStr[]) {
+      const f = buildFacts(s, asOf);
+      expect(f.shop.СР1.coins, asOf).toBe(f.states.СР1.planPercent);
+      expect(f.shop.СР2.coins, asOf).toBe(0);
+    }
+  });
+
+  test('гибель питомца не обнуляет монеты и мебель', () => {
+    const s = snap({
+      staff,
+      payments: [...pays('2026-11-02', 7), ...pays('2026-11-12', 1)],
+      overrides: [ov(1, '2026-11-02', 'СР1', 'buy', 1)],
+    });
+    const f = buildFacts(s, '2026-11-12');
+    expect(f.states.СР1.generation).toBeGreaterThan(0); // погиб без оплат и вылупился заново
+    expect(f.states.СР1.planPercent).toBeLessThan(f.shop.СР1.coins);
+    expect(f.shop.СР1).toMatchObject({ coins: 133, owned: { desk: 'desk-office' }, spent: 8 });
+  });
+
+  test('правка оплат админа меняет монеты', () => {
+    const base = { staff, payments: pays('2026-11-03', 3) };
+    const before = buildFacts(snap(base), '2026-11-05').shop.СР1.coins;
+    const corrections: SnapshotCorrection[] = [{ id: 1, date: '2026-11-03', employeeId: 'e1', kind: 'payments', delta: 2, base: 3 }];
+    expect(before).toBe(50);
+    expect(buildFacts(snap({ ...base, corrections }), '2026-11-05').shop.СР1.coins).toBe(83);
+  });
+});
