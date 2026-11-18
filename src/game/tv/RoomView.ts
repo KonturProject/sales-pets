@@ -132,6 +132,10 @@ export class RoomView {
   private screens: HTMLElement[] = [];
   /** последний магазин группы из `setFurniture` (`null` — магазина нет) */
   shop: ShopState | null = null;
+  /** звонок клиента: «дзынь!» над телефоном и облачко «Клиент» (снимаются в `stopCall`) */
+  private ringEl: HTMLElement | null = null;
+  private clientEl: HTMLElement | null = null;
+  private clientTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(readonly group: GroupCode, index: number, readonly rect: RoomRect) {
     const theme = THEME[group];
@@ -244,6 +248,53 @@ export class RoomView {
     return spotX(place, this.shop?.owned ?? {});
   }
 
+  /**
+   * Звонит телефон: у комнаты `data-call`, телефон дрожит, над ним «дзынь!» (при reduced motion — только `data-call`).
+   * Трубку снимают первой репликой клиента (`clientSay`), весь звонок убирает `stopCall`.
+   */
+  ring(): void {
+    const phone = this.furnitureEl('phone');
+    if (!phone) return;
+    this.el.dataset.call = '1';
+    if (this.reduced) return;
+    phone.classList.add('ringing');
+    this.ringEl?.remove();
+    this.ringEl = el('i', 'toy-fx ring call-ring', 'дзынь!');
+    this.ringEl.style.left = `${phone.offsetLeft + phone.offsetWidth / 2}px`;
+    this.ringEl.style.top = `${phone.offsetTop - 16}px`;
+    this.el.append(this.ringEl);
+  }
+
+  /** Реплика клиента в облачке «Клиент» над столом на `ms`; первая снимает трубку (дрожь и «дзынь!» гаснут). */
+  clientSay(text: string, ms: number): void {
+    this.hangRing();
+    this.clientEl?.remove();
+    const bubble = el('div', 'client-say');
+    bubble.append(el('b', '', 'Клиент'), el('span', '', text));
+    this.el.append(bubble);
+    this.clientEl = bubble;
+    clearTimeout(this.clientTimer);
+    this.clientTimer = setTimeout(() => {
+      bubble.remove();
+      if (this.clientEl === bubble) this.clientEl = null;
+    }, ms);
+  }
+
+  /** Звонок окончен или прерван: ни облачка, ни дрожи, ни `data-call`. */
+  stopCall(): void {
+    this.hangRing();
+    clearTimeout(this.clientTimer);
+    this.clientEl?.remove();
+    this.clientEl = null;
+    delete this.el.dataset.call;
+  }
+
+  private hangRing(): void {
+    this.furnitureEl('phone')?.classList.remove('ringing');
+    this.ringEl?.remove();
+    this.ringEl = null;
+  }
+
   /** Во что играет питомец: мяч или игра игрушки дня; `null` — игрушка ещё в руке или падает. */
   get play(): ToyPlay | 'ball' | null {
     if (!this.toyKind) return 'ball';
@@ -261,6 +312,7 @@ export class RoomView {
     if (kind === this.toyKind && !drop) return;
     const ballShown = !this.toyKind;
     this.stopToy();
+    this.stopCall(); // новая игрушка дня обрывает и звонок (питомец увидит это по `data-call`)
     this.toyEl.classList.remove('spin');
     this.toyKind = kind;
     this.landAt = 0;

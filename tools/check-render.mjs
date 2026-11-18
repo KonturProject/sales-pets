@@ -389,6 +389,79 @@ try {
     await fp.close();
   }
 
+  // --- звонки (часы Playwright): в демо `?shop=` стол и телефон у всех групп; звонят только живые вылупившиеся со
+  // стадии 2, не больные (`canCall`) — у них за 10 мин хотя бы один звонок с облачком «Клиент», у остальных ни одного;
+  // звонок, прерванный `hold()`, сразу убирает облачко, дрожь и `data-call`; между звонками следов нет, узлов не прибавилось
+  {
+    const CALL_SHOP = 'СР1:1,7;СР2:2,8;СР3:3,7;СР5:1,8;СР6:2,7;СР9:3,8';
+    const cp = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+    const cErrors = [];
+    cp.on('pageerror', (e) => cErrors.push(e.message));
+    cp.on('console', (m) => { if (m.type() === 'error') cErrors.push(m.text()); });
+    await cp.addInitScript(() => {
+      window.__rang = {};
+      window.__said = {};
+      new MutationObserver((ms) => ms.forEach((m) => {
+        if (m.type === 'attributes' && m.target.dataset.call) window.__rang[m.target.dataset.group] = true;
+        if ([...m.addedNodes].some((n) => n.classList?.contains('client-say'))) window.__said[m.target.closest('.tv-room').dataset.group] = true;
+      })).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-call'] });
+    });
+    await cp.clock.install();
+    await cp.goto(`${base}?demo=1&shop=${encodeURIComponent(CALL_SHOP)}`, { waitUntil: 'networkidle' });
+    // питомец, взявший трубку, запоминается: его уводят посреди разговора, как прогулка (`hold`)
+    await cp.evaluate(async () => {
+      const m = await import('/src/game/tv/PetActor.ts');
+      const answer = m.PetActor.prototype.answerCall;
+      window.__actors = {};
+      m.PetActor.prototype.answerCall = function (...a) { window.__actors[this.group] = this; return answer.apply(this, a); };
+    });
+    const rooms = await cp.$$eval('.tv-room', (els) => els.map((r) => ({
+      group: r.dataset.group,
+      can: r.dataset.alive === 'true' && r.dataset.phase === 'pet' && Number(r.dataset.stage) >= 2 && r.dataset.mood !== 'sick',
+      sick: r.dataset.mood === 'sick',
+    })));
+    check(rooms.some((r) => r.can) && rooms.some((r) => r.sick), `звонки: в демо нет нужных комнат ${JSON.stringify(rooms)}`);
+    let cut = null;
+    for (let ms = 0; ms < 600_000; ms += 500) {
+      await cp.clock.runFor(500);
+      cut ??= await cp.evaluate(() => {
+        const r = [...document.querySelectorAll('.tv-room[data-call]')].find((x) => x.querySelector('.client-say'));
+        const a = r && window.__actors[r.dataset.group];
+        if (!a) return null;
+        a.hold();
+        const out = { group: r.dataset.group, call: r.dataset.call ?? null, left: r.querySelectorAll('.client-say, .call-ring, .ringing').length };
+        a.release();
+        return out;
+      });
+      if (cut && await cp.evaluate((want) => want.every((g) => window.__said[g]), rooms.filter((r) => r.can).map((r) => r.group))) break;
+    }
+    const got = await cp.evaluate(() => ({ rang: window.__rang, said: window.__said }));
+    check(cut && cut.call === null && cut.left === 0, `звонок прерван: осталось ${JSON.stringify(cut)}`);
+    for (const r of rooms) {
+      if (r.can) check(got.rang[r.group] && got.said[r.group], `звонки ${r.group}: за 10 мин нет звонка с облачком клиента ${JSON.stringify(got)}`);
+      else check(!got.rang[r.group], `звонки ${r.group}: звонок у питомца, которому звонить нельзя`);
+    }
+    // между звонками: ни облачков, ни дрожи; число узлов комнат то же через 20 с
+    const quiet = async () => {
+      for (let ms = 0; ms < 60_000; ms += 250) {
+        const q = await cp.evaluate(() => (document.querySelector('.tv-room[data-call]') ? null : {
+          left: document.querySelectorAll('.client-say, .call-ring, .ringing').length,
+          nodes: [...document.querySelectorAll('.tv-room')].map((r) => r.querySelectorAll('*:not(.ticker *)').length),
+        }));
+        if (q) return q;
+        await cp.clock.runFor(250);
+      }
+      return null;
+    };
+    const q1 = await quiet();
+    await cp.clock.runFor(20_000);
+    const q2 = await quiet();
+    check(q1?.left === 0 && q2?.left === 0, `звонки: между звонками остались следы ${JSON.stringify([q1, q2])}`);
+    check(JSON.stringify(q1?.nodes) === JSON.stringify(q2?.nodes), `звонки: узлов в комнатах было ${q1?.nodes}, стало ${q2?.nodes}`);
+    check(cErrors.length === 0, `звонки: ошибки страницы ${cErrors.join('; ')}`);
+    await cp.close();
+  }
+
   // мусор в ?asOf= не должен вешать вкладку: рисуется дата по умолчанию
   await page.goto(`${base}?demo=1&asOf=today`, { waitUntil: 'networkidle', timeout: 10_000 });
   check((await read()).length === 6, 'asOf=today: ожидалось 6 групп (откат на дату по умолчанию)');

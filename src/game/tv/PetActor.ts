@@ -1,9 +1,11 @@
 import { ART } from '@/art/manifest';
 import type { Mood, PetState } from '@/engine/pet';
+import type { ShopState } from '@/engine/shop';
 import type { GroupCode } from '@/engine/types';
 import { petScale, stageSprite } from '@/game/PetView';
 import { EMOTE, PLUS, type Emote } from './art';
 import { kickBall } from './ball';
+import { CALLS, canCall, nextCallAt } from './calls';
 import { headingAt, pathLength, pointAt, type Pt } from './hallGames';
 import { HUG_MS, SPIN_MS, type RoomView } from './RoomView';
 import { TRICKS, isTrick, type TrickPlay } from './toyTricks';
@@ -21,6 +23,14 @@ export const SICK = 0.55;
 /** Питомец не подходит к стене комнаты ближе этого. */
 const EDGE = 70;
 const MOOD_EMOTE: Record<Mood, Emote | null> = { ok: 'ok', sad: 'sad', bored: 'bored', sick: 'sick', dead: null };
+
+/** Реплика звонка висит столько, мс; занятие за компьютером длится 3–5 с, кивок раз в `WORK_BEAT`. */
+const LINE_MS = 1800;
+const WORK_BEAT = 650;
+/** Вероятность за цикл прогулки подойти к компьютеру или к кулеру (кофемашине), когда игрушку не выбрали. */
+const CHORE = 0.1;
+/** Сбоку от вещи питомец встаёт на столько своих ширин дальше её края. */
+const BESIDE = 0.35;
 
 /** Сколько живёт красный плюс аптечки, мс. */
 const HEAL_MS = 2000;
@@ -111,6 +121,9 @@ export class PetActor {
   /** новая игрушка: следующий заход в комнате — сразу к ней */
   private eager = false;
   private readonly reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /** последнее состояние (`update`): по нему решают, звонит ли клиент; `callAt` — когда звонок, мс (`Date.now`) */
+  private pet: PetState | null = null;
+  private callAt = nextCallAt(Date.now(), Math.random);
 
   constructor(readonly group: GroupCode, readonly room: RoomView) {
     this.x = room.rect.cx;
@@ -145,6 +158,7 @@ export class PetActor {
     this.el.dataset.mood = s.mood;
     this.state = s.mood;
     this.plan = s.planPercent;
+    this.pet = s;
     if (kind === this.kind) return;
     const hatched = this.kind === 'egg' && kind === 'pet';
     this.kind = kind;
@@ -400,6 +414,8 @@ export class PetActor {
   private halt(): void {
     this.gen++;
     this.room.stopTrick(); // увели посреди трюка: игрушка сразу на своём месте
+    this.room.stopCall(); // и посреди звонка: облачко клиента и дрожь телефона убраны
+    this.room.furnitureEl('pc')?.classList.remove('busy');
     this.el.classList.remove('walking', 'sneak');
     this.acts.forEach((a) => a.cancel());
     this.acts = [];
@@ -424,7 +440,12 @@ export class PetActor {
     const ball = this.room.ball;
     while (my === this.gen) {
       const play = this.room.play; // null — игрушка ещё падает
-      if (play && (this.eager || Math.random() < 0.4)) {
+      const owned: ShopState['owned'] = this.room.shop && !this.room.shop.vacation ? this.room.shop.owned : {};
+      if (Date.now() >= this.callAt && this.pet && canCall(this.pet, this.room.shop)) {
+        // звонок важнее игры: трюк к этому месту уже доигран (цикл последовательный)
+        this.callAt = nextCallAt(Date.now(), Math.random);
+        if (!(await this.answerCall(my))) return;
+      } else if (play && (this.eager || Math.random() < 0.4)) {
         this.eager = false;
         const dir = r.x + ball.x > this.x ? 1 : -1;
         if (!(await this.walkTo(r.x + ball.x - dir * REACH[play] * this.far(), my))) return;
@@ -447,6 +468,12 @@ export class PetActor {
             this.emote('joy', 1300);
           } else if (this.state === 'ok' && Math.random() < 0.5) this.emote('joy', 1300);
         }
+      } else if (owned.pc && Math.random() < CHORE) {
+        if (!(await this.work(my))) return;
+      } else if ((owned.corner === 'corner-cooler' || owned.corner === 'corner-coffee') && Math.random() < CHORE) {
+        if (!(await this.goBeside('corner', my))) return;
+        this.emote('cup', 1600);
+        if (!(await this.pause(1600, my))) return;
       } else if (!(await this.walkTo(r.x + EDGE + Math.random() * (r.w - 2 * EDGE), my))) {
         return;
       }
@@ -454,6 +481,62 @@ export class PetActor {
       const mood = MOOD_EMOTE[this.state];
       if (mood && this.state !== 'ok' && Math.random() < 0.5) this.emote(mood);
     }
+  }
+
+  /**
+   * Звонок клиента: телефон звонит, питомец идёт к столу, встаёт к телефону и разыгрывает случайный диалог (`CALLS`):
+   * клиент — в облачке у стола, питомец — в своём, по `LINE_MS`; в конце радуется. Комната сняла звонок (новая
+   * игрушка дня) — реплики дальше не идут. При reduced motion — только «Алло!» на месте. `false` — питомца перехватили.
+   */
+  private async answerCall(my: number): Promise<boolean> {
+    this.room.ring();
+    if (this.reduced) {
+      this.say('Алло!');
+      const ok = await this.pause(1600, my);
+      if (ok) this.room.stopCall();
+      return ok;
+    }
+    if (!(await this.goBeside('phone', my))) return false;
+    for (const line of CALLS[Math.floor(Math.random() * CALLS.length)]!) {
+      if (!this.room.el.dataset.call) return true;
+      if (line.who === 'client') this.room.clientSay(line.text, LINE_MS);
+      else this.say(line.text, LINE_MS);
+      if (!(await this.pause(LINE_MS, my))) return false;
+    }
+    if (!this.room.el.dataset.call) return true;
+    this.room.stopCall();
+    this.emote('joy', 1300);
+    return true;
+  }
+
+  /** Работает за компьютером: встаёт к нему, 3–5 с кивает в такт, экран мигает (класс `busy`). */
+  private async work(my: number): Promise<boolean> {
+    if (!(await this.goBeside('pc', my))) return false;
+    const pc = this.room.furnitureEl('pc');
+    pc?.classList.add('busy');
+    const end = performance.now() + 3000 + Math.random() * 2000;
+    while (performance.now() < end) {
+      this.act(NOD, 280);
+      if (!(await this.pause(WORK_BEAT, my))) return false;
+    }
+    pc?.classList.remove('busy');
+    return true;
+  }
+
+  /**
+   * Встаёт сбоку от вещи и поворачивается к ней: к телефону и компьютеру — справа от них (стол у левой стены), к углу —
+   * слева. Крупный питомец встаёт дальше (`BESIDE`), чтобы не заслонить вещь целиком. Вещи нет — `true` на месте.
+   */
+  private async goBeside(place: 'phone' | 'pc' | 'corner', my: number): Promise<boolean> {
+    const r = this.room.rect;
+    const at = this.room.spot(place);
+    const node = this.room.furnitureEl(place);
+    if (at === null || !node) return true;
+    const dir = place === 'corner' ? 1 : -1;
+    const x = Math.min(r.w - EDGE, Math.max(EDGE, at - dir * (node.offsetWidth / 2 + this.side * BESIDE)));
+    if (!(await this.walkTo(r.x + x, my))) return false;
+    this.face(dir);
+    return true;
   }
 
   /** Обнимает мишку: тянется к нему и дважды сжимает, над объятиями — сердечки; потом сердечко в облачке. */

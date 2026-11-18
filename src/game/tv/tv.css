@@ -94,7 +94,24 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
   white-space: pre-line; text-align: center; font: 800 13px/1.05 system-ui, sans-serif;
   color: #c8f7cf; text-shadow: 0 0 4px rgba(120, 255, 160, .55);
 }
-[data-power='idle'] .furn * { animation-play-state: paused; }
+/* звонок клиента (RoomView.ring/clientSay): телефон дрожит, над ним «дзынь!», облачко «Клиент» над столом хвостом к
+   телефону; за компьютером (PetActor.work) экран мигает */
+.furn .fi.ringing img { transform-origin: 50% 100%; animation: tv-phone-ring .5s ease-in-out infinite; }
+.call-ring { animation: tv-call-ring .9s ease-in-out infinite; }
+.client-say {
+  position: absolute; left: 18px; top: 146px; max-width: 176px; z-index: 4; padding: 5px 10px 7px; border-radius: 12px;
+  background: #e3efff; box-shadow: 0 2px 0 rgba(0, 0, 0, .15); font-size: 16px; font-weight: 700; line-height: 1.15; color: #24324a;
+}
+.client-say b { display: block; font-size: 12px; color: #4f6f9f; }
+.client-say::after {
+  content: ''; position: absolute; right: 26px; bottom: -9px;
+  border: 9px solid transparent; border-bottom: 0; border-top-color: #e3efff;
+}
+.furn .fi.busy .screen { animation: tv-screen-blink .8s steps(2, jump-none) infinite; }
+@keyframes tv-phone-ring { 0%, 100% { rotate: 0deg; } 20% { rotate: -9deg; } 40% { rotate: 8deg; } 60% { rotate: -6deg; } 80% { rotate: 4deg; } }
+@keyframes tv-call-ring { 0%, 100% { scale: 1; } 50% { scale: 1.15; } }
+@keyframes tv-screen-blink { 50% { filter: brightness(1.7); } }
+[data-power='idle'] .furn *, [data-power='idle'] .call-ring { animation-play-state: paused; }
 
 .sign {
   position: absolute; left: 16px; top: 14px; max-width: 250px; padding: 8px 16px 10px; border-radius: 14px;
@@ -322,6 +339,7 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
   .tv .toy.spin .toy-body::before, .tv .toy.spin .toy-body::after { display: none; }
   .tv .hearts { display: none; }
   .tv .tv-piles .pile.pop, .tv .tv-room .flies.arrive { animation: none; }
+  .tv .furn .fi.busy .screen { animation: none; }
   .tv .burst, .tv .drop, .tv .sweat { display: none; }
 }
 
