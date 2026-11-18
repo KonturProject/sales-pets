@@ -1405,3 +1405,94 @@ describe('мусорные запросы', () => {
     expect(text).not.toContain(PIN);
   });
 });
+
+describe('магазин РГ: покупка и отпуск', () => {
+  const TODAY = '2026-11-12';
+  function withGroups() {
+    const b = loadBackend();
+    const { groupPins } = admin(b, 'setGroupPins');
+    const buy = (group, item, ref, extra = {}) => b.post({ action: 'buy', group, groupPin: groupPins[group], item, ref, ...extra });
+    const vacation = (group, on, ref, extra = {}) => b.post({ action: 'vacation', group, groupPin: groupPins[group], on, ref, ...extra });
+    const use = (group, item, ref) => b.post({ action: 'useItem', group, groupPin: groupPins[group], item, ref });
+    return { b, groupPins, buy, vacation, use };
+  }
+
+  test('buy пишет группе из PIN на сегодня сервера, код вещи — в delta; дата и вид из тела игнорируются, ref в GET не попадает', () => {
+    const { b, buy } = withGroups();
+    const v0 = b.get().version;
+    expect(buy('СР6', 3, 'shop-ref-1', { date: '2026-11-01', kind: 'piles', delta: 9 })).toEqual({ ok: true, version: v0 + 1, id: 1 });
+    expect(buy('СР6', 25, 'shop-ref-2')).toEqual({ ok: true, version: v0 + 2, id: 2 });
+    const snapshot = b.get();
+    expect(snapshot.overrides).toEqual([
+      { id: 1, date: TODAY, group: 'СР6', kind: 'buy', delta: 3 },
+      { id: 2, date: TODAY, group: 'СР6', kind: 'buy', delta: 25 },
+    ]);
+    expect(JSON.stringify(snapshot)).not.toContain('shop-ref');
+  });
+
+  test('buy: код не целое 1..25 или без ref — bad_request, ничего не пишется', () => {
+    const { b, buy } = withGroups();
+    const before = b.get();
+    for (const item of [0, 26, -1, '3', 3.5, null, undefined]) expect(buy('СР1', item, 'r1'), String(item)).toEqual({ ok: false, error: 'bad_request' });
+    for (const ref of ['', undefined, 5, 'x'.repeat(65)]) expect(buy('СР1', 1, ref), String(ref)).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.get()).toEqual(before);
+  });
+
+  test('buy и vacation: PIN другой группы, админ-PIN, без PIN — invalid_pin', () => {
+    const { b, groupPins } = withGroups();
+    const before = b.get();
+    for (const body of [{ action: 'buy', item: 1, ref: 'r1' }, { action: 'vacation', on: true, ref: 'r1' }]) {
+      expect(b.post({ ...body, group: 'СР2', groupPin: groupPins['СР1'] })).toEqual({ ok: false, error: 'invalid_pin' });
+      expect(b.post({ ...body, group: 'СР1', pin: PIN })).toEqual({ ok: false, error: 'invalid_pin' });
+      expect(b.post({ ...body, group: 'СР1' })).toEqual({ ok: false, error: 'invalid_pin' });
+    }
+    expect(b.get()).toEqual(before);
+  });
+
+  test('buy: повтор ref — duplicate, версия не растёт', () => {
+    const { b, buy } = withGroups();
+    const first = buy('СР1', 1, 'same');
+    const v1 = b.get().version;
+    expect(buy('СР1', 1, 'same')).toEqual({ ok: true, version: v1, id: first.id, duplicate: true });
+    expect(b.get().overrides).toHaveLength(1);
+  });
+
+  test('buy: не больше 30 покупок группы в день; на следующий день снова можно', () => {
+    const { b, buy } = withGroups();
+    for (let i = 1; i <= 30; i++) expect(buy('СР1', (i % 25) + 1, `b${i}`).ok, `b${i}`).toBe(true);
+    const before = b.get();
+    expect(buy('СР1', 1, 'b31')).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.get()).toEqual(before);
+    expect(buy('СР2', 1, 'b31').ok).toBe(true);
+    b.advance(24 * 60 * MIN);
+    expect(buy('СР1', 1, 'b31')).toMatchObject({ ok: true });
+  });
+
+  test('vacation: on true → delta 1, false → 0; не boolean — bad_request; не больше 10 в день; повтор ref', () => {
+    const { b, vacation } = withGroups();
+    expect(vacation('СР3', true, 'v1')).toMatchObject({ ok: true, id: 1 });
+    expect(vacation('СР3', false, 'v2')).toMatchObject({ ok: true, id: 2 });
+    expect(b.get().overrides).toEqual([
+      { id: 1, date: TODAY, group: 'СР3', kind: 'vacation', delta: 1 },
+      { id: 2, date: TODAY, group: 'СР3', kind: 'vacation', delta: 0 },
+    ]);
+    for (const on of [1, 0, 'true', null, undefined]) expect(vacation('СР3', on, 'v-bad'), String(on)).toEqual({ ok: false, error: 'bad_request' });
+    expect(vacation('СР3', true, 'v1').duplicate).toBe(true);
+    for (let i = 3; i <= 10; i++) expect(vacation('СР3', i % 2 === 1, `v${i}`).ok, `v${i}`).toBe(true);
+    expect(vacation('СР3', true, 'v11')).toEqual({ ok: false, error: 'bad_request' });
+  });
+
+  test('покупки и отпуск не съедают дневной предел расходов useItem', () => {
+    const { buy, vacation, use } = withGroups();
+    for (let i = 1; i <= 30; i++) buy('СР1', 1, `b${i}`);
+    for (let i = 1; i <= 10; i++) vacation('СР1', true, `v${i}`);
+    for (let i = 1; i <= 20; i++) expect(use('СР1', 'toy', `u${i}`).ok, `u${i}`).toBe(true);
+  });
+
+  test('каталог клиента и сервера одной длины', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { CATALOG } = await import('../../src/engine/shop.ts');
+    const code = readFileSync(new URL('../Code.gs', import.meta.url), 'utf8');
+    expect(Number(code.match(/const SHOP_MAX_CODE = (\d+);/)?.[1])).toBe(CATALOG.length);
+  });
+});

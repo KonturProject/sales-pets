@@ -44,6 +44,10 @@ const OVERRIDE_DELTA_MAX = 20;
 const ITEM_KINDS = { medkit: 'useMedkit', toy: 'useToy' };
 const MAX_USES_PER_DAY = 20;
 const REF_MAX = 64;
+/** Магазин РГ: коды вещей 1..SHOP_MAX_CODE (каталог клиента `src/engine/shop.ts`), пределы записей группы в день. */
+const SHOP_MAX_CODE = 25;
+const MAX_BUYS_PER_DAY = 30;
+const MAX_VACATIONS_PER_DAY = 10;
 /** Период игры (включительно): правки фактов и выходные только внутри него. */
 const GAME_START = '2026-11-02';
 const GAME_END = '2026-11-30';
@@ -852,6 +856,40 @@ function useItemAction_(body, auth) {
   return { ok: true, version: bump_({}), id: id };
 }
 
+/**
+ * Запись магазина РГ (`buy` или `vacation`) группе из проверенного PIN на сегодня сервера. Монеты и процент плана
+ * сервер не проверяет (их считает движок, `shop.ts`); повтор `ref` той же группы ничего не пишет.
+ */
+function appendShopRow_(auth, kind, delta, ref, maxPerDay) {
+  if (typeof ref !== 'string' || ref === '' || ref.length > REF_MAX) fail_();
+  const group = auth.group;
+  const rows = readRows_('Overrides');
+  const same = rows.filter(function (r) {
+    return r[2] === group && r[5] === ref;
+  })[0];
+  if (same) return { ok: true, version: currentVersion_(), id: Number(same[0]), duplicate: true };
+  const date = today_();
+  const today = rows.filter(function (r) {
+    return r[1] === date && r[2] === group && r[3] === kind;
+  }).length;
+  if (today >= maxPerDay) fail_();
+  const id = appendOverride_(rows, date, group, kind, delta, ref);
+  return { ok: true, version: bump_({}), id: id };
+}
+
+/** Покупка РГ: `item` — код вещи каталога, целое 1..SHOP_MAX_CODE. */
+function buyAction_(body, auth) {
+  const item = body.item;
+  if (typeof item !== 'number' || item % 1 !== 0 || item < 1 || item > SHOP_MAX_CODE) fail_();
+  return appendShopRow_(auth, 'buy', item, body.ref, MAX_BUYS_PER_DAY);
+}
+
+/** Отпуск РГ: `on` — true (уехать) или false (вернуться). Порог процента проверяет страница РГ. */
+function vacationAction_(body, auth) {
+  if (typeof body.on !== 'boolean') fail_();
+  return appendShopRow_(auth, 'vacation', body.on ? 1 : 0, body.ref, MAX_VACATIONS_PER_DAY);
+}
+
 function setAbsenceAction_(body) {
   const employeeId = body.employeeId;
   const known = typeof employeeId === 'string' && readStaff_().some(function (e) {
@@ -981,6 +1019,8 @@ const ACTIONS_ = {
   removeConfigChange: { who: 'admin', run: removeConfigChangeAction_ },
   setOverride: { who: 'admin', run: setOverrideAction_ },
   useItem: { who: 'group', run: useItemAction_ },
+  buy: { who: 'group', run: buyAction_ },
+  vacation: { who: 'group', run: vacationAction_ },
   setAbsence: { who: 'admin', run: setAbsenceAction_ },
   removeAbsence: { who: 'admin', run: removeAbsenceAction_ },
   setNonWorking: { who: 'admin', run: setNonWorkingAction_ },
