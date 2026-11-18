@@ -1,6 +1,19 @@
-import type { PetState } from '@/engine/pet';
+import type { Override, PetState } from '@/engine/pet';
+import { itemByCode } from '@/engine/shop';
 
 export type OverrideKind = 'piles' | 'medkits' | 'toys';
+
+const KIND_TITLE: Record<Override['kind'], string> = {
+  piles: 'Кучки', medkits: 'Аптечки', toys: 'Игрушки', useMedkit: 'РГ: аптечка', useToy: 'РГ: игрушка', buy: 'РГ: покупка', vacation: 'РГ: отпуск',
+};
+
+/** Строка списка последних правок: вид и значение (дельта со знаком, у покупки — вещь, у отпуска — уехал/вернулся). */
+export function describeOverride(o: Pick<Override, 'kind' | 'delta'>): { kind: string; value: string } {
+  const value = o.kind === 'buy' ? itemByCode(o.delta)?.name ?? '?'
+    : o.kind === 'vacation' ? (o.delta === 1 ? 'уехал' : 'вернулся')
+    : o.delta > 0 ? `+${o.delta}` : String(o.delta);
+  return { kind: KIND_TITLE[o.kind], value };
+}
 
 /** Предел одной правки на сервере (`OVERRIDE_DELTA_MAX` в Code.gs). */
 const DELTA_MAX = 20;

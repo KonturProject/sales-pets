@@ -1,18 +1,15 @@
-import { serverToday, type Snapshot, type SnapshotOverride } from '@/data/api';
+import { serverToday, type Snapshot } from '@/data/api';
 import { buildFacts } from '@/data/facts';
 import { GROUPS, type GroupCode } from '@/engine/types';
 import type { AdminCtx } from './ctx';
 import { errorText, h, ruDate } from './dom';
-import { overrideDelta, parseAmount, splitDelta, type OverrideKind } from './overridePlan';
+import { describeOverride, overrideDelta, parseAmount, splitDelta, type OverrideKind } from './overridePlan';
 
 const KINDS: { kind: OverrideKind; title: string; give: string; reset: string }[] = [
   { kind: 'piles', title: 'Кучки', give: 'Выдать кучку', reset: 'Сбросить кучки' },
   { kind: 'medkits', title: 'Аптечки', give: 'Выдать аптечку', reset: 'Сбросить аптечки' },
   { kind: 'toys', title: 'Игрушки', give: 'Выдать игрушку', reset: 'Сбросить игрушки' },
 ];
-const KIND_TITLE: Record<SnapshotOverride['kind'], string> = {
-  piles: 'Кучки', medkits: 'Аптечки', toys: 'Игрушки', useMedkit: 'РГ: аптечка', useToy: 'РГ: игрушка',
-};
 const RECENT = 20;
 
 /**
@@ -72,8 +69,8 @@ export async function overridesTab(ctx: AdminCtx): Promise<HTMLElement> {
       { 'data-override': o.id },
       h('td', {}, ruDate(o.date)),
       h('td', {}, o.group),
-      h('td', {}, KIND_TITLE[o.kind]),
-      h('td', {}, o.delta > 0 ? `+${o.delta}` : String(o.delta)),
+      h('td', {}, describeOverride(o).kind),
+      h('td', {}, describeOverride(o).value),
     )));
   }
 

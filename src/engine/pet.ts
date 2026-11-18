@@ -5,8 +5,11 @@ import type { DateStr, GroupCode } from './types';
 
 export interface Override {
   date: DateStr;
-  /** piles/medkits/toys: прибавить delta (может быть < 0); useMedkit/useToy: потратить один предмет */
-  kind: 'piles' | 'medkits' | 'toys' | 'useMedkit' | 'useToy';
+  /**
+   * piles/medkits/toys: прибавить delta (может быть < 0); useMedkit/useToy: потратить один предмет;
+   * buy (delta — код вещи) и vacation (1 — уехать, 0 — вернуться) — магазин РГ (`shop.ts`), питомца не меняют
+   */
+  kind: 'piles' | 'medkits' | 'toys' | 'useMedkit' | 'useToy' | 'buy' | 'vacation';
   delta: number;
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { PetState } from '@/engine/pet';
-import { overrideDelta, parseAmount, splitDelta } from './overridePlan';
+import { describeOverride, overrideDelta, parseAmount, splitDelta } from './overridePlan';
 
 const state = (over: Partial<PetState> = {}): PetState => ({
   alive: true, generation: 0, totalPayments: 12, phase: 'pet', stage: 2, planPercent: 30, medkits: 2, toys: 3, piles: 4, mood: 'ok', satiety: 0.5, noPayDays: 0,
@@ -46,5 +46,20 @@ describe('splitDelta', () => {
   test('больше 20 по модулю делится на части по 20 с остатком, знак сохраняется', () => {
     expect(splitDelta(-45)).toEqual([-20, -20, -5]);
     expect(splitDelta(41)).toEqual([20, 20, 1]);
+  });
+});
+
+describe('строка списка правок', () => {
+  test('правки админа и расходы РГ — вид и дельта со знаком', () => {
+    expect(describeOverride({ kind: 'piles', delta: 2 })).toEqual({ kind: 'Кучки', value: '+2' });
+    expect(describeOverride({ kind: 'toys', delta: -3 })).toEqual({ kind: 'Игрушки', value: '-3' });
+    expect(describeOverride({ kind: 'useToy', delta: 1 })).toEqual({ kind: 'РГ: игрушка', value: '+1' });
+  });
+
+  test('покупка РГ — название вещи, отпуск — уехал или вернулся', () => {
+    expect(describeOverride({ kind: 'buy', delta: 2 })).toEqual({ kind: 'РГ: покупка', value: 'Деревянный стол' });
+    expect(describeOverride({ kind: 'buy', delta: 99 })).toEqual({ kind: 'РГ: покупка', value: '?' });
+    expect(describeOverride({ kind: 'vacation', delta: 1 })).toEqual({ kind: 'РГ: отпуск', value: 'уехал' });
+    expect(describeOverride({ kind: 'vacation', delta: 0 })).toEqual({ kind: 'РГ: отпуск', value: 'вернулся' });
   });
 });

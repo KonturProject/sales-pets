@@ -332,3 +332,12 @@ describe('noPayDays: рабочие дни подряд без оплат (сч�
     expect(noPay({ ...f, overrides: o }, '2026-11-06')).toBe(0);
   });
 });
+
+describe('записи магазина РГ', () => {
+  test('buy и vacation питомца не меняют', () => {
+    const base = { paymentsByDay: { '2026-11-02': 6, '2026-11-03': 2 }, overrides: [ov('2026-11-02', 'toys', 2), ov('2026-11-03', 'useToy')] };
+    const plain = simulate(facts(base), '2026-11-05', cfg);
+    const shop = simulate(facts({ ...base, overrides: [...base.overrides, ov('2026-11-03', 'buy', 1), ov('2026-11-03', 'buy', 4), ov('2026-11-03', 'vacation', 1)] }), '2026-11-05', cfg);
+    expect(shop).toEqual(plain);
+  });
+});
