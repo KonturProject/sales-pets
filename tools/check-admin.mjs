@@ -1681,6 +1681,69 @@ try {
     const seen = `${dump}\n${logs.join('\n')}`;
     for (const group of GROUP_CODES) check(!seen.includes(pinOf(group)), `PIN группы ${group} остался в DOM, адресе, хранилище или консоли после выхода`);
   });
+  await scenario('РГ: магазин — покупка с подтверждением, «Сначала стол», отмена, двойной клик, PIN не остаётся', async ({ mock, newPage, check, urls, logs }) => {
+    const GROUP = 'СР6';
+    const pinOf = (group) => mock.groupPins[group];
+    const post = async (body) => (await fetch(mock.url, {
+      method: 'POST', headers: { 'content-type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body),
+    })).json();
+    const buysOnServer = async () => (await publicSnapshot(mock)).overrides.filter((o) => o.group === GROUP && o.kind === 'buy');
+    // монет на стол и компьютер должно хватать: предварительные оплаты сегодня (после загруженных по THROUGH)
+    const bumped = await post({ action: 'setProvisional', pin: MOCK_ADMIN_PIN, date: '2026-11-12', group: GROUP, count: 40 });
+    check(bumped.ok === true, `предварительные оплаты ${GROUP}: ${bumped.error}`);
+
+    const rg = await newPage();
+    await rg.goto(urls.rg, { waitUntil: 'networkidle' });
+    await rg.selectOption('form[data-login] [data-field="group"]', GROUP);
+    await rg.locator('form[data-login] input[type="password"]').fill(pinOf(GROUP));
+    await rg.click('form[data-login] button[type="submit"]');
+    await rg.waitForSelector('[data-shop] [data-buy="1"]', { timeout: 8_000 }).catch(() => {});
+    const coins = () => rg.$eval('[data-coins]', (e) => Number(e.textContent)).catch(() => NaN);
+    const card = (code) => rg.locator(`[data-buy="${code}"]`);
+    const stateOf = async (code) => card(code).getAttribute('data-state');
+    await rg.waitForFunction(() => Number(document.querySelector('[data-coins]')?.textContent) > 0, null, { timeout: 8_000 }).catch(() => {});
+    const coins0 = await coins();
+    check(coins0 >= 20, `монет у ${GROUP} ${coins0}, ожидалось не меньше 20`);
+    check(await rg.locator('[data-shop] [data-buy]').count() === 25, 'в магазине не 25 вещей');
+    check(await stateOf(4) === 'needDesk' && await card(4).isDisabled() && (await card(4).textContent()).includes('Сначала стол'), 'компьютер без стола не «Сначала стол»');
+
+    const buyPosts = [];
+    rg.on('request', (r) => { if (r.method() === 'POST' && (r.postData() ?? '').includes('"buy"')) buyPosts.push(r.postData()); });
+    // «Отмена» ничего не пишет
+    await card(1).click();
+    check(await rg.locator('[data-shop] [role="dialog"]').isVisible(), 'после клика по вещи нет вопроса о покупке');
+    check((await rg.locator('[data-shop] [role="dialog"]').textContent()).includes('Купить «Офисный стол» за 8 монет?'), 'в вопросе нет вещи и цены');
+    await rg.click('[data-confirm="no"]');
+    await rg.waitForTimeout(300);
+    check(buyPosts.length === 0 && await rg.locator('[data-shop] [role="dialog"]').isHidden(), '«Отмена» отправила покупку или не закрыла вопрос');
+    // двойной клик по «Купить» пишет одну покупку
+    await card(1).click();
+    await rg.dblclick('[data-confirm="yes"]');
+    await rg.waitForFunction((want) => Number(document.querySelector('[data-coins]')?.textContent) === want, coins0 - 8, { timeout: 8_000 }).catch(() => {});
+    check(await coins() === coins0 - 8, `после покупки стола монет ${await coins()}, ожидалось ${coins0 - 8}`);
+    check(buyPosts.length === 1 && (await buysOnServer()).length === 1, `двойной клик: запросов ${buyPosts.length}, строк ${(await buysOnServer()).length}`);
+    check((await buysOnServer())[0]?.delta === 1, 'на сервере записан не офисный стол');
+    await rg.waitForFunction(() => document.querySelector('[data-buy="1"]')?.getAttribute('data-state') === 'owned', null, { timeout: 5_000 }).catch(() => {});
+    check(await stateOf(1) === 'owned' && (await card(1).textContent()).includes('Стоит у вас'), 'стол не «Стоит у вас»');
+    await rg.waitForFunction(() => !document.querySelector('[data-buy="4"]')?.disabled, null, { timeout: 5_000 }).catch(() => {});
+    check(await stateOf(4) === 'buy', 'после стола компьютер не доступен к покупке');
+    // кнопки и подписи сходятся с остатком: дороже остатка — «Не хватает N» и заблокировано
+    const left = await coins();
+    const wrong = await rg.$$eval('[data-buy]', (els, money) => els.filter((b) => {
+      const price = Number(b.querySelector('.shop-price')?.textContent?.match(/\d+/)?.[0]);
+      const st = b.getAttribute('data-state');
+      if (st === 'short') return !b.disabled || !b.textContent.includes(`Не хватает ${price - money}`) || price <= money;
+      if (st === 'buy') return b.disabled || price > money;
+      return !b.disabled;
+    }).map((b) => b.getAttribute('data-buy')), left);
+    check(wrong.length === 0, `карточки не сходятся с остатком ${left}: ${wrong.join(', ')}`);
+
+    await rg.click('button[data-logout]');
+    await rg.waitForSelector('form[data-login]', { timeout: 5_000 }).catch(() => {});
+    const dump = await rg.evaluate(() => JSON.stringify({ html: document.documentElement.outerHTML, href: location.href, local: { ...localStorage }, session: { ...sessionStorage } }));
+    const seen = `${dump}\n${logs.join('\n')}`;
+    check(!seen.includes(pinOf(GROUP)), `PIN группы ${GROUP} остался в DOM, адресе, хранилище или консоли после выхода`);
+  });
   await scenario('итоги: день по умолчанию, раскрытие, правка длинных и отмена', async ({ mock, newPage, check, urls }) => {
     const DAY = '2026-11-11';
     const admin = await newPage();
@@ -2236,4 +2299,4 @@ if (failures.length) {
   console.error(`FAIL (${failures.length}):\n- ${failures.join('\n- ')}`);
   process.exit(1);
 }
-console.log('OK: админка — вход и блокировка, «Итоги» с правкой и отменой, разбор загрузки воронки и оплат с правкой, оплаты → экран, импорт оплат и воронки, штат и отсутствия, нормы, выходные дни и ручные правки → экран, РГ — вход и расход предмета → экран, PIN групп не остаются в DOM, хранилище и консоли');
+console.log('OK: админка — вход и блокировка, «Итоги» с правкой и отменой, разбор загрузки воронки и оплат с правкой, оплаты → экран, импорт оплат и воронки, штат и отсутствия, нормы, выходные дни и ручные правки → экран, РГ — вход и расход предмета → экран, магазин РГ, PIN групп не остаются в DOM, хранилище и консоли');

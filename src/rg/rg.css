@@ -113,3 +113,24 @@ button:disabled { opacity: 0.45; }
 
 /* плашка «Вышла новая версия»: в потоке страницы над предметами, ничего не перекрывает */
 [role='status'].update-banner { margin: 12px 0; padding: 8px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--meter-bg); color: var(--ink); font-weight: 600; text-align: center; }
+
+/* магазин мебели под питомцем: места по порядку комнаты, карточки по две в ряд */
+.shop { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line); }
+.shop h2 { margin: 0 0 4px; font-size: 1.1rem; }
+.shop-coins { margin: 0 0 8px; font-weight: 600; }
+.shop-coins b { font-size: 1.2rem; }
+.shop-hint { font-weight: 400; color: var(--ink-soft); font-size: 0.85rem; }
+.shop-place h3 { margin: 12px 0 6px; font-size: 0.95rem; color: var(--ink-soft); }
+.shop-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.shop-card { display: grid; gap: 2px; justify-items: start; text-align: left; padding: 8px 10px; font-size: 0.85rem; cursor: pointer; }
+.shop-card img { justify-self: center; width: 4rem; height: 3rem; object-fit: contain; }
+.shop-name { font-weight: 600; }
+.shop-price { color: var(--ink-soft); }
+.shop-note { font-size: 0.78rem; font-weight: 700; }
+.shop-card[data-state='buy'] .shop-note { color: var(--accent, #3b7a57); }
+.shop-card[data-state='owned'] { border-color: var(--meter); opacity: 1; }
+.shop-card:disabled { cursor: default; }
+.shop-ask { position: sticky; top: 8px; z-index: 5; margin: 8px 0; padding: 12px; border: 2px solid var(--meter); border-radius: 12px; background: var(--card); box-shadow: 0 4px 16px rgba(0, 0, 0, .15); }
+.shop-ask p { margin: 0 0 10px; font-weight: 600; }
+.shop-ask-buttons { display: flex; gap: 8px; }
+.shop-ask[hidden] { display: none; }

@@ -10,6 +10,11 @@ import { MAX_STAGE, PetView } from '@/game/PetView';
 import { errorText, h, newVersionSlot } from '@/admin/dom';
 import { dragStep, type DragEvent, type DragResult, type DragState, type Point, type Rect } from './drag';
 import { createSpender, type Item } from './spend';
+import { coinsWord, confirmText, purchaseError, shopCards } from './shop';
+import type { ShopItem, ShopState } from '@/engine/shop';
+
+/** Магазин до первого снимка: пусто, всё недоступно. */
+const EMPTY_SHOP: ShopState = { coins: 0, spent: 0, balance: 0, owned: {}, vacation: false, today: 0 };
 
 /** Кнопки заблокированы ещё на это время после расхода: быстрый ответ не должен пропускать второй клик двойного нажатия. */
 const COOLDOWN_MS = 600;
@@ -86,14 +91,62 @@ function showWork(group: GroupCode, groupPin: string): void {
   const toy = itemButton('toy', 'Игрушка', 'Лечит скуку и грусть', ART.toy);
   const items: Record<Item, { button: HTMLButtonElement; stock: HTMLElement }> = { medkit, toy };
   const loading = h('p', {}, 'Загрузка…');
-  const main = h('main', { hidden: true }, h('div', { class: 'arena' }, medkit.button, view.el, toy.button), hint, stageText, alert);
+
+  // Магазин: карточки строятся один раз, `paint` меняет только их состояние (фокус клавиатуры не теряется при опросе).
+  const buyer = createSpender<string>({ send: (key, ref) => api.post('buy', { group, groupPin, item: Number(key.slice(4)), ref }) });
+  const coins = h('b', { 'data-coins': true }, '0');
+  const shopAlert = h('p', { role: 'alert', 'data-shop-alert': true });
+  const askText = h('p', {});
+  const yes = h('button', { type: 'button', 'data-confirm': 'yes', onclick: () => void purchase() }, 'Купить');
+  const no = h('button', { type: 'button', 'data-confirm': 'no', onclick: () => closeAsk() }, 'Отмена');
+  const ask = h('div', { class: 'shop-ask', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Покупка', hidden: true }, askText, h('div', { class: 'shop-ask-buttons' }, yes, no));
+  const cards = new Map<number, { button: HTMLButtonElement; note: HTMLElement }>();
+  const places = shopCards(EMPTY_SHOP).map(({ place, title, cards: list }) => h(
+    'div',
+    { class: 'shop-place', 'data-place': place },
+    h('h3', {}, title),
+    h('div', { class: 'shop-cards' }, ...list.map(({ item }) => {
+      const note = h('span', { class: 'shop-note' });
+      const button = h(
+        'button',
+        { type: 'button', class: 'shop-card', 'data-buy': item.code, onclick: () => askBuy(item) },
+        h('span', { class: 'shop-name' }, item.name),
+        h('span', { class: 'shop-price' }, `${item.price} ${coinsWord(item.price)}`),
+        note,
+      );
+      cards.set(item.code, { button, note });
+      return button;
+    })),
+  ));
+  const shopSection = h(
+    'section',
+    { class: 'shop', 'data-shop': true },
+    h('h2', {}, 'Магазин'),
+    h('p', { class: 'shop-coins' }, 'Монеты: ', coins, h('span', { class: 'shop-hint' }, ' · 1% плана = 1 монета')),
+    ask,
+    shopAlert,
+    ...places,
+  );
+  let shop: ShopState = EMPTY_SHOP;
+  let asking: ShopItem | null = null;
+
+  const main = h('main', { hidden: true }, h('div', { class: 'arena' }, medkit.button, view.el, toy.button), hint, stageText, alert, shopSection);
   let locked = false;
 
   // Состояние считается на «сегодня» сервера (R23), как и в админке.
   function paint(): void {
     const snapshot = store.current();
     if (!snapshot) return;
-    const s = buildFacts(snapshot, serverToday(snapshot)).states[group];
+    const facts = buildFacts(snapshot, serverToday(snapshot));
+    const s = facts.states[group];
+    shop = facts.shop[group];
+    coins.textContent = String(Math.max(0, shop.balance));
+    for (const { item, state, short } of shopCards(shop).flatMap((g) => g.cards)) {
+      const c = cards.get(item.code)!;
+      c.button.dataset.state = state;
+      c.button.disabled = locked || asking !== null || state !== 'buy';
+      c.note.textContent = state === 'owned' ? 'Стоит у вас' : state === 'needDesk' ? 'Сначала стол' : state === 'short' ? `Не хватает ${short}` : 'Купить';
+    }
     view.update(s);
     stageText.textContent = !s.alive ? 'Питомец погиб' : s.phase === 'pet' ? `стадия ${s.stage} из ${MAX_STAGE}` : 'яйцо';
     medkit.stock.textContent = String(s.medkits);
@@ -214,6 +267,45 @@ function showWork(group: GroupCode, groupPin: string): void {
         return;
       }
       alert.textContent = e instanceof ApiError && e.code === 'bad_request' ? 'Сервер не принял расход: возможно, достигнут дневной предел' : errorText(e);
+    }
+    setTimeout(() => {
+      locked = false;
+      paint();
+    }, COOLDOWN_MS);
+  }
+
+  function askBuy(item: ShopItem): void {
+    if (locked) return;
+    asking = item;
+    askText.textContent = confirmText(item, shop);
+    ask.hidden = false;
+    shopAlert.textContent = '';
+    paint();
+    yes.focus();
+  }
+
+  function closeAsk(): void {
+    asking = null;
+    ask.hidden = true;
+    paint();
+  }
+
+  /** «Купить» в вопросе: вопрос закрывается сразу, поэтому второй клик того же двойного нажатия ничего не шлёт. */
+  async function purchase(): Promise<void> {
+    const item = asking;
+    closeAsk();
+    if (!item || locked) return;
+    locked = true;
+    paint();
+    try {
+      await buyer.spend(`buy:${item.code}`);
+      await store.refresh();
+    } catch (e) {
+      if (e instanceof ApiError && (e.code === 'invalid_pin' || e.code === 'locked')) {
+        logout(errorText(e));
+        return;
+      }
+      shopAlert.textContent = e instanceof ApiError && e.code === 'bad_request' ? purchaseError(e.code) : errorText(e);
     }
     setTimeout(() => {
       locked = false;

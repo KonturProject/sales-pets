@@ -67,3 +67,16 @@ describe('createSpender', () => {
     expect(send.mock.calls).toEqual([['toy', 'ref-1'], ['toy', 'ref-2']]);
   });
 });
+
+describe('createSpender: любой строковый ключ', () => {
+  test('покупка после обрыва связи несёт тот же ref, другая вещь — новый', async () => {
+    const send = vi.fn()
+      .mockRejectedValueOnce(new ApiError('network', 'Нет связи'))
+      .mockResolvedValue({ ok: true });
+    const spender = createSpender<string>({ send, newRef: refs() });
+    await expect(spender.spend('buy:3')).rejects.toBeInstanceOf(ApiError);
+    await spender.spend('buy:3');
+    await spender.spend('buy:7');
+    expect(send.mock.calls).toEqual([['buy:3', 'ref-1'], ['buy:3', 'ref-1'], ['buy:7', 'ref-2']]);
+  });
+});
