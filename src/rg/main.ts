@@ -110,6 +110,7 @@ function showWork(group: GroupCode, groupPin: string): void {
       const button = h(
         'button',
         { type: 'button', class: 'shop-card', 'data-buy': item.code, onclick: () => askBuy(item) },
+        h('img', { src: ART.furniture[item.id], alt: '' }),
         h('span', { class: 'shop-name' }, item.name),
         h('span', { class: 'shop-price' }, `${item.price} ${coinsWord(item.price)}`),
         note,

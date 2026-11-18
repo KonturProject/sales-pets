@@ -1,3 +1,4 @@
+import { CATALOG, type ItemId } from '@/engine/shop';
 import type { GroupCode } from '@/engine/types';
 
 /** Ключ группы в именах файлов (латиницей). */
@@ -37,6 +38,8 @@ export const ART = {
     rocket: 'assets/toys/rocket.png',
     dumbbell: 'assets/toys/dumbbell.png',
   },
+  /** мебель магазина РГ: 25 вещей каталога, нарезка `tools/slice-sheet.py` из трёх листов Codex `image_gen`, PNG ≤ 256 px */
+  furniture: Object.fromEntries(CATALOG.map((i) => [i.id, `assets/furniture/${i.id}.png`])) as Record<ItemId, string>,
   grave: 'assets/grave.svg',
   /** три фазы яйца: целое, трещина, большая трещина */
   eggs: byGroup((key) => [0, 1, 2].map((phase) => `assets/eggs/${key}-${phase}.svg`)),

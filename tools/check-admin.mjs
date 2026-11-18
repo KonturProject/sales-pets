@@ -1705,6 +1705,9 @@ try {
     const coins0 = await coins();
     check(coins0 >= 20, `монет у ${GROUP} ${coins0}, ожидалось не меньше 20`);
     check(await rg.locator('[data-shop] [data-buy]').count() === 25, 'в магазине не 25 вещей');
+    await rg.waitForFunction(() => [...document.querySelectorAll('[data-shop] [data-buy] img')].every((i) => i.complete), null, { timeout: 8_000 }).catch(() => {});
+    const noPic = await rg.$$eval('[data-shop] [data-buy]', (els) => els.filter((b) => !(b.querySelector('img')?.naturalWidth > 0)).map((b) => b.dataset.buy));
+    check(noPic.length === 0, `у карточек нет картинки: ${noPic.join(', ')}`);
     check(await stateOf(4) === 'needDesk' && await card(4).isDisabled() && (await card(4).textContent()).includes('Сначала стол'), 'компьютер без стола не «Сначала стол»');
 
     const buyPosts = [];
