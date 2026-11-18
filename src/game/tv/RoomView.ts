@@ -1,8 +1,10 @@
 import { ART, GROUP_KEY, THEME } from '@/art/manifest';
 import type { PetState } from '@/engine/pet';
+import { PLACES, type Place, type ShopState } from '@/engine/shop';
 import type { GroupCode } from '@/engine/types';
 import { MOOD_LABEL } from '@/game/PetView';
 import { DECOR, GIFT, PLUS, SPARK } from './art';
+import { SCREEN, furnitureLayout, spotX } from './furniture';
 import { HOUSE, type RoomRect } from './layout';
 import { tickerItems, type FunnelTotal, type TickerItem } from './metrics';
 import type { ToyFx, ToyKey, Trick } from './toyTricks';
@@ -124,6 +126,12 @@ export class RoomView {
   private shownItem = '';
   private pilesShown = -1;
   private hands = 0;
+  /** мебель магазина: слой над полом и под табличкой; `furnKey` — что стоит сейчас, `screens` — экраны компьютера */
+  private readonly furn: HTMLElement;
+  private furnKey = '';
+  private screens: HTMLElement[] = [];
+  /** последний магазин группы из `setFurniture` (`null` — магазина нет) */
+  shop: ShopState | null = null;
 
   constructor(readonly group: GroupCode, index: number, readonly rect: RoomRect) {
     const theme = THEME[group];
@@ -186,8 +194,54 @@ export class RoomView {
     this.toyShadow = el('i', 'toy-shadow');
     this.toyBody = el('div', 'toy-body');
     this.toyEl.append(this.toyShadow, this.toyBody);
+    this.furn = el('div', 'furn');
 
-    this.el.append(wall, decor, floor, sign, ticker, this.piles, inv, this.ballEl, this.toyEl);
+    this.el.append(wall, decor, floor, this.furn, sign, ticker, this.piles, inv, this.ballEl, this.toyEl);
+  }
+
+  /**
+   * Мебель магазина группы: слой перерисовывается, только когда сменилась мебель; цифры на экране компьютера (оплаты
+   * за сегодня и % плана) — на каждом обновлении. У двух мониторов цифры поровну: слева оплаты, справа процент.
+   */
+  setFurniture(shop: ShopState | null, s: PetState): void {
+    this.shop = shop;
+    const owned = shop?.owned ?? {};
+    const key = PLACES.map((p) => owned[p] ?? '').join();
+    if (key !== this.furnKey) {
+      this.furnKey = key;
+      this.screens = [];
+      this.furn.replaceChildren(...furnitureLayout(owned, THEME[this.group].decor).map(({ id, place, box, z }) => {
+        const node = el('div', 'fi');
+        node.dataset.place = place;
+        node.dataset.item = id;
+        node.style.cssText = `left:${box.x}px;top:${box.y}px;width:${box.w}px;height:${box.h}px;z-index:${z}`;
+        node.append(img('', ART.furniture[id]));
+        for (const sc of SCREEN[id as keyof typeof SCREEN] ?? []) {
+          const screen = el('div', 'screen');
+          // шрифт по ширине экрана: «100%» влезает и в узкий монитор пары
+          const font = Math.min(13, Math.floor((sc.w * box.w) / 3.6));
+          screen.style.cssText = `left:${sc.x * 100}%;top:${sc.y * 100}%;width:${sc.w * 100}%;height:${sc.h * 100}%;font-size:${font}px`;
+          this.screens.push(screen);
+          node.append(screen);
+        }
+        return node;
+      }));
+    }
+    const lines = [`+${shop?.today ?? 0}`, `${s.planPercent ?? 0}%`];
+    this.screens.forEach((screen, i) => {
+      const text = (this.screens.length > 1 ? [lines[i] ?? ''] : lines).join('\n');
+      if (screen.textContent !== text) screen.textContent = text;
+    });
+  }
+
+  /** Вещь на месте `place` (дрожь телефона, мигание экрана) или `null`. */
+  furnitureEl(place: Place): HTMLElement | null {
+    return this.furn.querySelector<HTMLElement>(`[data-place="${place}"]`);
+  }
+
+  /** Где встать питомцу у телефона, компьютера или в углу, px комнаты; `null` — вещи нет. */
+  spot(place: 'phone' | 'pc' | 'corner'): number | null {
+    return spotX(place, this.shop?.owned ?? {});
   }
 
   /** Во что играет питомец: мяч или игра игрушки дня; `null` — игрушка ещё в руке или падает. */

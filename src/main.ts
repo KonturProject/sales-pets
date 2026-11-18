@@ -8,6 +8,7 @@ import { buildDemo, groupFacts } from '@/demo/demoFacts';
 import { moscowToday, parseDate } from '@/engine/calendar';
 import { defaultConfig } from '@/engine/config';
 import { simulate, type PetState } from '@/engine/pet';
+import { itemByCode, type ShopState } from '@/engine/shop';
 import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
 import { PowerSaver } from '@/game/PowerSaver';
 import { dayPlanner, type DayEventPlan } from '@/game/tv/dayEvent';
@@ -39,6 +40,20 @@ function demoToys(states: Record<GroupCode, PetState>): Record<GroupCode, Return
     const kind = kinds[hatched.indexOf(g)];
     return [g, hatched.includes(g) && kind ? { id: 0, kind } : null];
   })) as Record<GroupCode, ReturnType<typeof toyOfDay>>;
+}
+
+/** Демо `?shop=СР3:1,4,7;СР6:2,5`: мебель групп по кодам каталога (неизвестное пропускается), монет нет. */
+function demoShop(): Record<GroupCode, ShopState> {
+  const owned = Object.fromEntries(GROUPS.map((g) => [g, {}])) as Record<GroupCode, ShopState['owned']>;
+  for (const part of (params.get('shop') ?? '').split(';')) {
+    const [group, codes = ''] = part.split(':');
+    if (!GROUPS.includes(group as GroupCode)) continue;
+    for (const code of codes.split(',')) {
+      const item = itemByCode(Number(code));
+      if (item) owned[group as GroupCode][item.place] = item.id;
+    }
+  }
+  return Object.fromEntries(GROUPS.map((g) => [g, { coins: 0, spent: 0, balance: 0, owned: owned[g], vacation: false, today: 0 }])) as Record<GroupCode, ShopState>;
 }
 
 /**
@@ -117,6 +132,7 @@ function startLive(): void {
         rank: () => facts().rank,
         asOf,
         cfg: () => facts().rank.cfg,
+        shop: () => facts().shop,
         toys: () => {
           const { overrides } = store.current()!;
           const today = asOf();
@@ -145,7 +161,8 @@ if (params.has('demo')) {
   const asOf = parseDate(params.get('asOf'), DEMO_AS_OF);
   const states = demoStates(asOf);
   const toys = demoToys(states);
-  const tv = mountTv(root, { states: () => states, asOf: () => asOf, cfg: () => defaultConfig, toys: () => toys });
+  const shop = demoShop();
+  const tv = mountTv(root, { states: () => states, asOf: () => asOf, cfg: () => defaultConfig, toys: () => toys, shop: () => shop });
   const power = new PowerSaver(document.documentElement);
   power.onTick(tv.setPower);
   power.start();

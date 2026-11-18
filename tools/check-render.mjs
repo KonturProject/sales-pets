@@ -343,6 +343,52 @@ try {
     check(cutChecked, 'трюки: не удалось прервать трюк с ниткой или мелочами (питомец не начал такой трюк за 90 с)');
   }
 
+  // --- мебель магазина (демо `?shop=`): в шести комнатах разные наборы, все 25 вещей хотя бы раз; картинки загружены, рамки
+  // вещей не заходят на табличку, табло, ящики и кучки; на экранах компьютеров % плана; за 20 с узлов не прибавилось
+  {
+    const SHOP = 'СР1:1,4,7,9,12,16,19,22,24;СР2:2,5,8,10,13,17,20,23,25;СР3:3,6,7,11,14,18,21,22,24;'
+      + 'СР5:1,5,8,9,15,16,19,23,25;СР6:2,6,7,10,12,17,20,22;СР9:3,4,8,11,13,18,21,23,24';
+    const fp = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+    const fErrors = [];
+    fp.on('pageerror', (e) => fErrors.push(e.message));
+    fp.on('console', (m) => { if (m.type() === 'error') fErrors.push(m.text()); });
+    await fp.clock.install();
+    await fp.goto(`${base}?demo=1&shop=${encodeURIComponent(SHOP)}`, { waitUntil: 'networkidle' });
+    await fp.waitForFunction(() => [...document.querySelectorAll('.furn img')].every((i) => i.complete), null, { timeout: 10_000 }).catch(() => {});
+    const look = () => fp.evaluate(() => {
+      const cross = (a, b) => a.width > 0 && b.width > 0 && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      return [...document.querySelectorAll('.tv-room')].map((r) => {
+        const items = [...r.querySelectorAll('.furn .fi')];
+        const ui = ['.sign', '.ticker', '.inv', '.tv-piles'].map((s) => [s, r.querySelector(s).getBoundingClientRect()]);
+        const room = r.getBoundingClientRect();
+        return {
+          group: r.dataset.group,
+          ids: items.map((i) => i.dataset.item),
+          broken: items.filter((i) => !(i.querySelector('img').naturalWidth > 0)).map((i) => i.dataset.item),
+          overlap: items.flatMap((i) => ui.filter(([, b]) => cross(i.getBoundingClientRect(), b)).map(([s]) => `${i.dataset.item}×${s}`)),
+          outside: items.filter((i) => { const b = i.getBoundingClientRect(); return b.left < room.left - 1 || b.right > room.right + 1 || b.top < room.top - 1 || b.bottom > room.bottom + 1; }).map((i) => i.dataset.item),
+          screens: items.filter((i) => i.dataset.place === 'pc').map((i) => i.querySelector('.screen') && i.textContent.includes('%')
+            && [...i.querySelectorAll('.screen')].every((s) => s.scrollWidth <= s.clientWidth && s.scrollHeight <= s.clientHeight)),
+          nodes: r.querySelectorAll('*:not(.ticker *)').length,
+        };
+      });
+    });
+    const first = await look();
+    const ids = new Set(first.flatMap((r) => r.ids));
+    check(ids.size === 25, `мебель: в комнатах ${ids.size} разных вещей из 25 (${first.map((r) => `${r.group}: ${r.ids}`).join('; ')})`);
+    for (const r of first) {
+      check(r.broken.length === 0, `мебель ${r.group}: не загрузились ${r.broken}`);
+      check(r.overlap.length === 0, `мебель ${r.group}: вещи на интерфейсе комнаты ${r.overlap}`);
+      check(r.outside.length === 0, `мебель ${r.group}: вещи вне комнаты ${r.outside}`);
+      check(r.screens.length === 1 && r.screens.every(Boolean), `мебель ${r.group}: на экране компьютера нет % плана (${JSON.stringify(r.screens)})`);
+    }
+    await fp.clock.runFor(20_000);
+    const later = await look();
+    check(later.every((r, i) => r.nodes === first[i].nodes), `мебель: узлов в комнатах было ${first.map((r) => r.nodes)}, стало ${later.map((r) => r.nodes)}`);
+    check(fErrors.length === 0, `мебель: ошибки страницы ${fErrors.join('; ')}`);
+    await fp.close();
+  }
+
   // мусор в ?asOf= не должен вешать вкладку: рисуется дата по умолчанию
   await page.goto(`${base}?demo=1&asOf=today`, { waitUntil: 'networkidle', timeout: 10_000 });
   check((await read()).length === 6, 'asOf=today: ожидалось 6 групп (откат на дату по умолчанию)');

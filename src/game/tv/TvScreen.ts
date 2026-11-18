@@ -2,6 +2,7 @@ import './tv.css';
 import type { Config } from '@/engine/config';
 import type { PetState } from '@/engine/pet';
 import type { RankData } from '@/engine/ranking';
+import type { ShopState } from '@/engine/shop';
 import { THEME } from '@/art/manifest';
 import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
 import type { PowerMode } from '@/game/PowerSaver';
@@ -28,6 +29,8 @@ export interface TvOptions {
   fresh?: () => string;
   /** игрушка дня групп (последний расход игрушки РГ за сегодня); без неё (демо) в комнатах мячи */
   toys?: () => Record<GroupCode, { id: number; kind: ToyKind } | null>;
+  /** магазин групп (мебель в комнатах, цифры на экране компьютера); без него (демо без `?shop=`) комнаты пустые */
+  shop?: () => Record<GroupCode, ShopState>;
 }
 
 export interface Tv {
@@ -554,11 +557,13 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     const asOf = o.asOf();
     totals = o.rank ? funnelOf(o.rank(), asOf) : undefined;
     const toys = o.toys?.();
+    const shop = o.shop?.();
     moments = [...moments, ...growthMoments(states, next)].slice(-MAX_MOMENTS);
     states = next;
     rooms.forEach((r, i) => {
       paint(i);
       r.setToy(toyForRoom(toys?.[r.group] ?? null, next[r.group]), false); // после перезагрузки игрушка уже лежит
+      r.setFurniture(shop?.[r.group] ?? null, next[r.group]);
     });
     ranking?.update();
     syncDock();
