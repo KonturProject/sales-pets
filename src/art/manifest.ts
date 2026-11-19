@@ -44,6 +44,8 @@ export const ART = {
   /** три фазы яйца: целое, трещина, большая трещина */
   eggs: byGroup((key) => [0, 1, 2].map((phase) => `assets/eggs/${key}-${phase}.svg`)),
   pets: byGroup((key) => [1, 2, 3, 4, 5].map((stage) => `assets/pets/${key}-${stage}.png`)),
+  /** питомец группы в отпуске (пляж): Codex `image_gen` по `<key>-5.png`, высота как у `<key>-5.png` */
+  beach: byGroup((key) => `assets/pets/${key}-beach.png`),
 };
 
 /** Оформление комнаты группы на экране ТВ (макет rooms-and-walk): вид питомца, цвет группы, стена, пол, декор. */
