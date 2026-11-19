@@ -42,7 +42,7 @@ function demoToys(states: Record<GroupCode, PetState>): Record<GroupCode, Return
   })) as Record<GroupCode, ReturnType<typeof toyOfDay>>;
 }
 
-/** Демо `?shop=СР3:1,4,7;СР6:2,5`: мебель групп по кодам каталога (неизвестное пропускается), монет нет. */
+/** Демо `?shop=СР3:1,4,7;СР6:2,5`: мебель групп по кодам каталога (неизвестное пропускается), монет нет; `?beach=СР3,СР6` — группы в отпуске. */
 function demoShop(): Record<GroupCode, ShopState> {
   const owned = Object.fromEntries(GROUPS.map((g) => [g, {}])) as Record<GroupCode, ShopState['owned']>;
   for (const part of (params.get('shop') ?? '').split(';')) {
@@ -53,7 +53,8 @@ function demoShop(): Record<GroupCode, ShopState> {
       if (item) owned[group as GroupCode][item.place] = item.id;
     }
   }
-  return Object.fromEntries(GROUPS.map((g) => [g, { coins: 0, spent: 0, balance: 0, owned: owned[g], vacation: false, today: 0 }])) as Record<GroupCode, ShopState>;
+  const beach = (params.get('beach') ?? '').split(',');
+  return Object.fromEntries(GROUPS.map((g) => [g, { coins: 0, spent: 0, balance: 0, owned: owned[g], vacation: beach.includes(g), today: 0 }])) as Record<GroupCode, ShopState>;
 }
 
 /**

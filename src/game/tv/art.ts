@@ -26,6 +26,25 @@ export const DECOR: Record<RoomTheme['decor'], string> = {
     <rect x="20" y="236" width="130" height="10" rx="4" fill="#8c6a47"/><path d="M44 236q0-20 16-20t16 16h8q-4 8-12 6H44z" fill="#f1cf6a"/><circle cx="66" cy="220" r="2" fill="#2e2620"/>`,
 };
 
+/**
+ * Пляж группы в отпуске вместо декора темы: небо, море с солнцем, у стены зонтик и шезлонг. Без `id` внутри: пляж может
+ * быть сразу в нескольких комнатах. Солнце и зонтик ниже табличек (табличка до y 140, табло до y 120).
+ */
+export const DECOR_BEACH = `<rect width="529" height="340" fill="#9ed8f3"/><rect y="196" width="529" height="56" fill="#c3e9f7"/>
+  <circle cx="404" cy="196" r="40" fill="#fff3c4" opacity=".7"/><circle cx="404" cy="196" r="26" fill="#ffd45e"/>
+  <path d="M120 186q8-14 24-8q10-12 26-2q16-2 16 12H120z M300 168q6-10 18-6q8-9 20-1q12-1 12 9h-50z" fill="#fff" opacity=".9"/>
+  <rect y="250" width="529" height="90" fill="#3ea6d8"/>
+  ${[268, 292, 316].map((y, k) => `<path d="M${k * 22} ${y}${'q16-6 32 0t32 0'.repeat(9)}" stroke="#8fd6f2" stroke-width="3" fill="none" opacity=".8"/>`).join('')}
+  <path d="M0 330${'q13-8 26 0t26 0'.repeat(11)}V340H0z" fill="#f4fbff"/>
+  <path d="M71 168l8 172" stroke="#8c6a47" stroke-width="5"/>
+  ${[10, 34, 58, 82, 106].map((x, k) => `<path d="M71 160L${x} 212L${x + 24} 212z" fill="${k % 2 ? '#fff' : '#ef5b5b'}"/>`).join('')}
+  <circle cx="71" cy="159" r="5" fill="#ef5b5b"/>
+  <path d="M424 330l2 10M486 330l8 10M500 300l14 40" stroke="#8c6a47" stroke-width="4"/>
+  <path d="M418 322h70l18-40 10 5-20 43h-78z" fill="#3f8fd6"/><path d="M432 322v8M452 322v8M472 322v8M496 300l9 4M502 288l9 4" stroke="#fff" stroke-width="5"/>`;
+
+/** Песок пляжа вместо пола темы (CSS `background`). */
+export const FLOOR_BEACH = 'linear-gradient(#f3dda5, #e4c07c)';
+
 export type Emote = 'ok' | 'joy' | 'sad' | 'bored' | 'sick' | 'star' | 'smile' | 'alert' | 'cup';
 
 /** Значки в пузыре над питомцем — SVG 40×40, а не эмодзи: на браузере телевизора шрифта эмодзи может не быть. */

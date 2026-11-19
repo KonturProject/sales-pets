@@ -87,6 +87,8 @@ html:has(.tv), html:has(.tv) body { overflow: hidden; }
 /* мебель магазина (RoomView.setFurniture): свой слой (z-index: 0) над полом и декором, под табличкой, табло, ящиками,
    кучками, мячом и игрушкой; рамки вещей — inline (furniture.ts), картинка вписана в рамку */
 .tv-room .furn { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+/* отпуск: мебель ждёт возвращения группы, на песке нет швов досок */
+.tv-room[data-vacation] .furn, .tv-room[data-vacation] .rfloor::before { display: none; }
 .furn .fi { position: absolute; }
 .furn .fi img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .furn .screen {

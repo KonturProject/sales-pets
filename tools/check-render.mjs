@@ -462,6 +462,60 @@ try {
     await cp.close();
   }
 
+  // --- отпуск (часы Playwright): в демо `?beach=` все группы в отпуске, у всех стол и телефон. Пляж только у живых
+  // вылупившихся: `data-vacation`, мебель скрыта, на табличке «в отпуске», питомец в пляжной картинке и она загрузилась;
+  // погибший и яйца — в обычной комнате. За 7 мин ни одного звонка, мяч в отпуске катается, узлов комнат не прибавилось
+  {
+    const ALL = ['СР1', 'СР2', 'СР3', 'СР5', 'СР6', 'СР9'];
+    const vp = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+    const vErrors = [];
+    vp.on('pageerror', (e) => vErrors.push(e.message));
+    vp.on('console', (m) => { if (m.type() === 'error') vErrors.push(m.text()); });
+    await vp.addInitScript(() => {
+      window.__rang = {};
+      new MutationObserver((ms) => ms.forEach((m) => { if (m.target.dataset.call) window.__rang[m.target.dataset.group] = true; }))
+        .observe(document, { subtree: true, attributes: true, attributeFilter: ['data-call'] });
+    });
+    await vp.clock.install();
+    await vp.goto(`${base}?demo=1&beach=${encodeURIComponent(ALL.join(','))}&shop=${encodeURIComponent(ALL.map((g) => `${g}:1,7`).join(';'))}`, { waitUntil: 'networkidle' });
+    await vp.waitForFunction(() => [...document.querySelectorAll('.tv-world > .pet img')].every((i) => i.complete), null, { timeout: 10_000 }).catch(() => {});
+    const look = () => vp.evaluate(() => {
+      const pets = [...document.querySelectorAll('.tv-world > .pet')];
+      return [...document.querySelectorAll('.tv-room')].map((r, i) => {
+        const img = pets[i]?.querySelector('img');
+        return {
+          group: r.dataset.group,
+          beachy: r.dataset.alive === 'true' && r.dataset.phase === 'pet',
+          vacation: r.dataset.vacation === '1',
+          furn: [...r.querySelectorAll('.furn .fi')].filter((f) => f.checkVisibility()).length,
+          sub: r.querySelector('.sign .sub').textContent,
+          src: img?.getAttribute('src') ?? '',
+          loaded: (img?.naturalWidth ?? 0) > 0,
+          ball: r.querySelector('.ball').style.cssText,
+          nodes: r.querySelectorAll('*:not(.ticker *)').length,
+        };
+      });
+    });
+    const first = await look();
+    check(first.some((r) => r.beachy) && first.some((r) => !r.beachy), `отпуск: в демо нет живых или погибших/яиц ${JSON.stringify(first.map((r) => [r.group, r.beachy]))}`);
+    for (const r of first) {
+      if (r.beachy) {
+        check(r.vacation && r.furn === 0 && r.sub.includes('в отпуске'), `отпуск ${r.group}: комната не пляж (${JSON.stringify(r)})`);
+        check(r.src.endsWith('-beach.png') && r.loaded, `отпуск ${r.group}: питомец не в пляжной картинке (${r.src}, загружена: ${r.loaded})`);
+      } else {
+        check(!r.vacation && !r.sub.includes('в отпуске') && !r.src.includes('beach'), `отпуск ${r.group}: пляж у погибшего или яйца (${JSON.stringify(r)})`);
+      }
+    }
+    await vp.clock.runFor(420_000);
+    const later = await look();
+    const rang = await vp.evaluate(() => window.__rang);
+    check(Object.keys(rang).length === 0, `отпуск: в отпуске звонил телефон ${JSON.stringify(rang)}`);
+    check(later.some((r, i) => r.beachy && r.ball !== first[i].ball), 'отпуск: за 7 мин мяч ни в одной комнате не сдвинулся');
+    check(later.every((r, i) => r.nodes === first[i].nodes), `отпуск: узлов в комнатах было ${first.map((r) => r.nodes)}, стало ${later.map((r) => r.nodes)}`);
+    check(vErrors.length === 0, `отпуск: ошибки страницы ${vErrors.join('; ')}`);
+    await vp.close();
+  }
+
   // мусор в ?asOf= не должен вешать вкладку: рисуется дата по умолчанию
   await page.goto(`${base}?demo=1&asOf=today`, { waitUntil: 'networkidle', timeout: 10_000 });
   check((await read()).length === 6, 'asOf=today: ожидалось 6 групп (откат на дату по умолчанию)');

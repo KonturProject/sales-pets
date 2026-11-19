@@ -3,7 +3,7 @@ import type { PetState } from '@/engine/pet';
 import { PLACES, type Place, type ShopState } from '@/engine/shop';
 import type { GroupCode } from '@/engine/types';
 import { MOOD_LABEL } from '@/game/PetView';
-import { DECOR, GIFT, PLUS, SPARK } from './art';
+import { DECOR, DECOR_BEACH, FLOOR_BEACH, GIFT, PLUS, SPARK } from './art';
 import { SCREEN, furnitureLayout, spotX } from './furniture';
 import { HOUSE, type RoomRect } from './layout';
 import { tickerItems, type FunnelTotal, type TickerItem } from './metrics';
@@ -136,6 +136,10 @@ export class RoomView {
   private ringEl: HTMLElement | null = null;
   private clientEl: HTMLElement | null = null;
   private clientTimer: ReturnType<typeof setTimeout> | undefined;
+  /** отпуск (`setVacation`): пляж вместо декора и пола темы */
+  vacation = false;
+  private readonly decor: SVGSVGElement;
+  private readonly floor: HTMLElement;
 
   constructor(readonly group: GroupCode, index: number, readonly rect: RoomRect) {
     const theme = THEME[group];
@@ -152,8 +156,10 @@ export class RoomView {
     decor.setAttribute('class', 'decor');
     decor.setAttribute('viewBox', '0 0 529 340');
     decor.innerHTML = DECOR[theme.decor];
+    this.decor = decor;
     const floor = el('div', 'rfloor');
     floor.style.background = theme.floor;
+    this.floor = floor;
 
     const sign = el('header', 'sign');
     const title = el('div', 'title');
@@ -236,6 +242,20 @@ export class RoomView {
       const text = (this.screens.length > 1 ? [lines[i] ?? ''] : lines).join('\n');
       if (screen.textContent !== text) screen.textContent = text;
     });
+  }
+
+  /**
+   * Отпуск группы: у комнаты `data-vacation`, стена — пляж, пол — песок, мебель спрятана (CSS) и вернётся с возвращением,
+   * идущий звонок обрывается. Подпись «в отпуске» на табличке ставит `update` (зовите до него).
+   */
+  setVacation(on: boolean): void {
+    if (on === this.vacation) return;
+    this.vacation = on;
+    if (on) this.el.dataset.vacation = '1';
+    else delete this.el.dataset.vacation;
+    this.decor.innerHTML = on ? DECOR_BEACH : DECOR[THEME[this.group].decor];
+    this.floor.style.background = on ? FLOOR_BEACH : THEME[this.group].floor;
+    if (on) this.stopCall();
   }
 
   /** Вещь на месте `place` (дрожь телефона, мигание экрана) или `null`. */
@@ -480,7 +500,7 @@ export class RoomView {
     this.species.textContent = v.phase === 'pet' ? THEME[this.group].species : '???';
     this.mood.textContent = MOOD_LABEL[v.mood];
     this.sub.textContent = !v.alive ? 'питомец погиб'
-      : v.phase === 'pet' ? `стадия ${v.stage} · оплат ${v.totalPayments}`
+      : v.phase === 'pet' ? `${this.vacation ? 'в отпуске' : `стадия ${v.stage}`} · оплат ${v.totalPayments}`
       : `яйцо · оплат ${v.totalPayments}`;
     this.sat.style.width = `${v.alive ? Math.round(v.satiety * 100) : 0}%`;
     this.stock.medkits = v.medkits;

@@ -8,6 +8,7 @@ import { GROUPS, type DateStr, type GroupCode } from '@/engine/types';
 import type { PowerMode } from '@/game/PowerSaver';
 import { mountRanking, short } from '@/game/RankingPanel';
 import { PLANTS } from './art';
+import { showBeach } from './beach';
 import { dayRoomMs, daySteps, enqueueDay, staleDay, type DayEventPlan, type RoomEvent } from './dayEvent';
 import { Hall } from './Hall';
 import { BOARDS, CAMERA, roomCamera, roomRect, STAGE } from './layout';
@@ -292,7 +293,7 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     // событие придерживает только то, что оно показывает (кучки, аптечки, игрушки); оплаты, стадия, настроение — живые
     const shown = was && { ...states[g], piles: was.piles, medkits: was.medkits, toys: was.toys };
     rooms[i].update(states[g], totals?.[g], shown, pop);
-    pets[i].update(shown ?? states[g]);
+    pets[i].update(shown ?? states[g], rooms[i].vacation);
   };
 
   /**
@@ -561,6 +562,7 @@ export function mountTv(root: HTMLElement, o: TvOptions): Tv {
     moments = [...moments, ...growthMoments(states, next)].slice(-MAX_MOMENTS);
     states = next;
     rooms.forEach((r, i) => {
+      r.setVacation(showBeach(next[r.group], shop?.[r.group] ?? null)); // до `paint`: подпись «в отпуске» и пляжный питомец
       paint(i);
       r.setToy(toyForRoom(toys?.[r.group] ?? null, next[r.group]), false); // после перезагрузки игрушка уже лежит
       r.setFurniture(shop?.[r.group] ?? null, next[r.group]);

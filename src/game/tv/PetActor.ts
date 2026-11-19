@@ -145,10 +145,12 @@ export class PetActor {
     this.place();
   }
 
-  update(s: PetState): void {
+  /** `beach` — группа в отпуске (`showBeach`): вылупившийся питомец в пляжной картинке, размер по стадии как обычно. */
+  update(s: PetState, beach = false): void {
     const kind: Kind = !s.alive ? 'grave' : s.phase === 'pet' ? 'pet' : 'egg';
     const src = kind === 'grave' ? ART.grave
       : kind === 'egg' ? ART.eggs[this.group][Number(s.phase.slice(3))]
+      : beach ? ART.beach[this.group]
       : stageSprite(ART.pets[this.group], s.stage);
     if (this.sprite.getAttribute('src') !== src) this.sprite.src = src;
     const size = kind === 'pet' ? Math.round(PET_SIZE * petScale(s.stage)) : kind === 'egg' ? EGG_SIZE : GRAVE_SIZE;
