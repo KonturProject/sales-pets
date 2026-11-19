@@ -1769,6 +1769,60 @@ try {
     const seen = `${dump}\n${logs.join('\n')}`;
     check(!seen.includes(pinOf(GROUP)), `PIN группы ${GROUP} остался в DOM, адресе, хранилище или консоли после выхода`);
   });
+  await scenario('РГ: отпуск — ниже порога без кнопки, при 100% «Отправить» с подтверждением, «Вернуть», PIN не остаётся', async ({ mock, newPage, check, urls, logs }) => {
+    const GROUP = 'СР2'; // в свежем моке 16% плана (у СР6 ровно 100%)
+    const pin = mock.groupPins[GROUP];
+    const post = async (body) => (await fetch(mock.url, {
+      method: 'POST', headers: { 'content-type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body),
+    })).json();
+    const onServer = async () => JSON.stringify((await publicSnapshot(mock)).overrides.filter((o) => o.group === GROUP && o.kind === 'vacation').map((o) => o.delta));
+    const rg = await newPage();
+    const posts = [];
+    rg.on('request', (r) => { if (r.method() === 'POST' && (r.postData() ?? '').includes('"vacation"')) posts.push(r.postData()); });
+    await rg.goto(`${urls.rg}&pollMs=1000`, { waitUntil: 'networkidle' });
+    await rg.selectOption('form[data-login] [data-field="group"]', GROUP);
+    await rg.locator('form[data-login] input[type="password"]').fill(pin);
+    await rg.click('form[data-login] button[type="submit"]');
+    const line = () => rg.locator('[data-vacation-line]').textContent().catch(() => '');
+    const action = rg.locator('[data-vacation-action]');
+    const dialog = rg.locator('.shop-ask[role="dialog"]');
+    await rg.waitForFunction(() => document.querySelector('[data-vacation-line]')?.textContent, null, { timeout: 8_000 }).catch(() => {});
+    check(/^До отпуска: \d+% из 100%$/.test(await line()) && await action.isHidden(), `ниже порога: «${await line()}», кнопка видна: ${await action.isVisible()}`);
+
+    // оплаты до 100% плана — кнопка «Отправить в отпуск»; «Отмена» ничего не пишет
+    const bumped = await post({ action: 'setProvisional', pin: MOCK_ADMIN_PIN, date: '2026-11-12', group: GROUP, count: 2000 });
+    check(bumped.ok === true, `предварительные оплаты ${GROUP}: ${bumped.error}`);
+    await rg.waitForFunction(() => document.querySelector('[data-vacation-action]')?.hidden === false, null, { timeout: 8_000 }).catch(() => {});
+    check(await action.textContent() === 'Отправить в отпуск' && (await line()).includes('100%'), `при 100%: «${await line()}», кнопка «${await action.textContent()}»`);
+    await action.click();
+    check(await dialog.isVisible() && (await dialog.textContent()).includes('Отправить группу в отпуск?'), 'после «Отправить в отпуск» нет вопроса');
+    await rg.click('[data-confirm="no"]');
+    await rg.waitForTimeout(300);
+    check(posts.length === 0 && await dialog.isHidden(), '«Отмена» отправила отпуск или не закрыла вопрос');
+
+    // двойной клик по «Отправить» — одна строка `vacation 1` (ответ — не раньше, чем через полсекунды после вопроса)
+    await action.click();
+    await rg.waitForTimeout(600);
+    await rg.dblclick('[data-confirm="yes"]');
+    await rg.waitForFunction(() => document.querySelector('[data-vacation-line]')?.textContent === 'Группа в отпуске', null, { timeout: 8_000 }).catch(() => {});
+    check(await line() === 'Группа в отпуске' && await action.textContent() === 'Вернуть из отпуска', `после отпуска: «${await line()}», кнопка «${await action.textContent()}»`);
+    check(await onServer() === '[1]' && posts.length === 1, `отпуск: строки ${await onServer()}, запросов ${posts.length}`);
+
+    // «Вернуть из отпуска» — строка `vacation 0`
+    await rg.waitForFunction(() => document.querySelector('[data-vacation-action]')?.disabled === false, null, { timeout: 5_000 }).catch(() => {});
+    await action.click();
+    check((await dialog.textContent()).includes('Вернуть группу из отпуска?'), 'после «Вернуть из отпуска» нет вопроса');
+    await rg.waitForTimeout(600);
+    await rg.click('[data-confirm="yes"]');
+    await rg.waitForFunction(() => document.querySelector('[data-vacation-line]')?.textContent?.startsWith('План выполнен'), null, { timeout: 8_000 }).catch(() => {});
+    check(await onServer() === '[1,0]', `возвращение: строки ${await onServer()}`);
+    check(await action.textContent() === 'Отправить в отпуск', `после возвращения кнопка «${await action.textContent()}»`);
+
+    await rg.click('button[data-logout]');
+    await rg.waitForSelector('form[data-login]', { timeout: 5_000 }).catch(() => {});
+    const dump = await rg.evaluate(() => JSON.stringify({ html: document.documentElement.outerHTML, href: location.href, local: { ...localStorage }, session: { ...sessionStorage } }));
+    check(!`${dump}\n${logs.join('\n')}`.includes(pin), `PIN группы ${GROUP} остался в DOM, адресе, хранилище или консоли после выхода`);
+  });
   await scenario('итоги: день по умолчанию, раскрытие, правка длинных и отмена', async ({ mock, newPage, check, urls }) => {
     const DAY = '2026-11-11';
     const admin = await newPage();
@@ -2324,4 +2378,4 @@ if (failures.length) {
   console.error(`FAIL (${failures.length}):\n- ${failures.join('\n- ')}`);
   process.exit(1);
 }
-console.log('OK: админка — вход и блокировка, «Итоги» с правкой и отменой, разбор загрузки воронки и оплат с правкой, оплаты → экран, импорт оплат и воронки, штат и отсутствия, нормы, выходные дни и ручные правки → экран, РГ — вход и расход предмета → экран, магазин РГ, PIN групп не остаются в DOM, хранилище и консоли');
+console.log('OK: админка — вход и блокировка, «Итоги» с правкой и отменой, разбор загрузки воронки и оплат с правкой, оплаты → экран, импорт оплат и воронки, штат и отсутствия, нормы, выходные дни и ручные правки → экран, РГ — вход и расход предмета → экран, магазин и отпуск РГ, PIN групп не остаются в DOM, хранилище и консоли');

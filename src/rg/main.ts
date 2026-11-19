@@ -10,7 +10,7 @@ import { MAX_STAGE, PetView } from '@/game/PetView';
 import { errorText, h, newVersionSlot } from '@/admin/dom';
 import { dragStep, type DragEvent, type DragResult, type DragState, type Point, type Rect } from './drag';
 import { createSpender, type Item } from './spend';
-import { coinsWord, confirmText, purchaseError, shopCards } from './shop';
+import { coinsWord, confirmText, purchaseError, shopCards, vacationBlock } from './shop';
 import type { ShopItem, ShopState } from '@/engine/shop';
 
 /** Магазин до первого снимка: пусто, всё недоступно. */
@@ -19,8 +19,8 @@ const EMPTY_SHOP: ShopState = { coins: 0, spent: 0, balance: 0, owned: {}, vacat
 /** Кнопки заблокированы ещё на это время после расхода: быстрый ответ не должен пропускать второй клик двойного нажатия. */
 const COOLDOWN_MS = 600;
 /**
- * Щелчок по «Купить» раньше этого срока после появления вопроса — второй щелчок того же двойного нажатия по карточке
- * (вопрос встаёт под курсор), а не ответ. 500 мс — время двойного щелчка в Windows по умолчанию.
+ * Щелчок по «Да» раньше этого срока после появления вопроса — второй щелчок того же двойного нажатия по карточке или
+ * кнопке отпуска (вопрос встаёт под курсор), а не ответ. 500 мс — время двойного щелчка в Windows по умолчанию.
  */
 const ASK_GUARD_MS = 500;
 
@@ -102,7 +102,7 @@ function showWork(group: GroupCode, groupPin: string): void {
   const coins = h('b', { 'data-coins': true }, '0');
   const shopAlert = h('p', { role: 'alert', 'data-shop-alert': true });
   const askText = h('p', {});
-  const yes = h('button', { type: 'button', 'data-confirm': 'yes', onclick: () => void purchase() }, 'Купить');
+  const yes = h('button', { type: 'button', 'data-confirm': 'yes', onclick: () => void confirmed() }, 'Купить');
   const no = h('button', { type: 'button', 'data-confirm': 'no', onclick: () => closeAsk() }, 'Отмена');
   const ask = h('div', { class: 'shop-ask', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Покупка', hidden: true }, askText, h('div', { class: 'shop-ask-buttons' }, yes, no));
   const cards = new Map<number, { button: HTMLButtonElement; note: HTMLElement }>();
@@ -124,6 +124,12 @@ function showWork(group: GroupCode, groupPin: string): void {
       return button;
     })),
   ));
+  // Отпуск: тот же вопрос с подтверждением, что у покупки; ключ повтора по направлению — `vacation:1` / `vacation:0`.
+  const vacationer = createSpender<string>({ send: (key, ref) => api.post('vacation', { group, groupPin, on: key === 'vacation:1', ref }) });
+  const vacLine = h('p', { 'data-vacation-line': true });
+  const vacButton = h('button', { type: 'button', 'data-vacation-action': true, hidden: true, onclick: () => askVacation() });
+  const vacAlert = h('p', { role: 'alert', 'data-vacation-alert': true });
+  const vacationSection = h('section', { class: 'shop vacation', 'data-vacation': true }, h('h2', {}, 'Отпуск'), vacLine, vacButton, vacAlert);
   const shopSection = h(
     'section',
     { class: 'shop', 'data-shop': true },
@@ -134,10 +140,11 @@ function showWork(group: GroupCode, groupPin: string): void {
     ...places,
   );
   let shop: ShopState = EMPTY_SHOP;
-  let asking: ShopItem | null = null;
+  /** о чём спрашивает вопрос: покупка вещи или отпуск (`go` — уехать, `back` — вернуться) */
+  let asking: ShopItem | 'go' | 'back' | null = null;
   let askedAt = 0;
 
-  const main = h('main', { hidden: true }, h('div', { class: 'arena' }, medkit.button, view.el, toy.button), hint, stageText, alert, shopSection);
+  const main = h('main', { hidden: true }, h('div', { class: 'arena' }, medkit.button, view.el, toy.button), hint, stageText, alert, vacationSection, shopSection);
   let locked = false;
 
   // Состояние считается на «сегодня» сервера (R23), как и в админке.
@@ -154,6 +161,11 @@ function showWork(group: GroupCode, groupPin: string): void {
       c.button.disabled = locked || asking !== null || state !== 'buy';
       c.note.textContent = state === 'owned' ? 'Стоит у вас' : state === 'needDesk' ? 'Сначала стол' : state === 'short' ? `Не хватает ${short}` : 'Купить';
     }
+    const vac = vacationBlock(shop);
+    vacLine.textContent = vac.line;
+    vacButton.hidden = !vac.action;
+    vacButton.textContent = vac.action === 'back' ? 'Вернуть из отпуска' : 'Отправить в отпуск';
+    vacButton.disabled = locked || asking !== null;
     view.update(s);
     stageText.textContent = !s.alive ? 'Питомец погиб' : s.phase === 'pet' ? `стадия ${s.stage} из ${MAX_STAGE}` : 'яйцо';
     medkit.stock.textContent = String(s.medkits);
@@ -284,10 +296,24 @@ function showWork(group: GroupCode, groupPin: string): void {
   function askBuy(item: ShopItem): void {
     if (locked) return;
     asking = item;
-    askText.textContent = confirmText(item, shop);
+    openAsk('Покупка', confirmText(item, shop), 'Купить');
+  }
+
+  function askVacation(): void {
+    const { action, confirm } = vacationBlock(shop);
+    if (locked || !action || !confirm) return;
+    asking = action;
+    openAsk('Отпуск', confirm, action === 'go' ? 'Отправить' : 'Вернуть');
+  }
+
+  function openAsk(label: string, text: string, yesText: string): void {
+    ask.setAttribute('aria-label', label);
+    askText.textContent = text;
+    yes.textContent = yesText;
     ask.hidden = false;
     askedAt = performance.now();
     shopAlert.textContent = '';
+    vacAlert.textContent = '';
     paint();
     yes.focus();
   }
@@ -298,23 +324,27 @@ function showWork(group: GroupCode, groupPin: string): void {
     paint();
   }
 
-  /** «Купить» в вопросе: вопрос закрывается сразу, поэтому второй клик того же двойного нажатия ничего не шлёт. */
-  async function purchase(): Promise<void> {
+  /** «Да» в вопросе: вопрос закрывается сразу, поэтому второй клик того же двойного нажатия ничего не шлёт. */
+  async function confirmed(): Promise<void> {
     if (performance.now() - askedAt < ASK_GUARD_MS) return;
-    const item = asking;
+    const what = asking;
     closeAsk();
-    if (!item || locked) return;
+    if (!what || locked) return;
+    const vacation = typeof what === 'string';
     locked = true;
     paint();
     try {
-      await buyer.spend(`buy:${item.code}`);
+      if (vacation) await vacationer.spend(`vacation:${what === 'go' ? 1 : 0}`);
+      else await buyer.spend(`buy:${what.code}`);
       await store.refresh();
     } catch (e) {
       if (e instanceof ApiError && (e.code === 'invalid_pin' || e.code === 'locked')) {
         logout(errorText(e));
         return;
       }
-      shopAlert.textContent = e instanceof ApiError && e.code === 'bad_request' ? purchaseError(e.code) : errorText(e);
+      const refused = e instanceof ApiError && e.code === 'bad_request';
+      if (vacation) vacAlert.textContent = refused ? 'Сервер не принял отпуск: обновите страницу или попробуйте позже' : errorText(e);
+      else shopAlert.textContent = refused ? purchaseError(e.code) : errorText(e);
     }
     setTimeout(() => {
       locked = false;

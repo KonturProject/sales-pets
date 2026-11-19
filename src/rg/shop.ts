@@ -1,4 +1,4 @@
-import { CATALOG, NEEDS_DESK, PLACES, PLACE_TITLE, type Place, type ShopItem, type ShopState } from '@/engine/shop';
+import { CATALOG, NEEDS_DESK, PLACES, PLACE_TITLE, VACATION_AT, type Place, type ShopItem, type ShopState } from '@/engine/shop';
 
 /** `buy` — можно купить; `owned` — уже стоит; `needDesk` — компьютер/телефон без стола; `short` — не хватает монет. */
 export type CardState = 'buy' | 'owned' | 'needDesk' | 'short';
@@ -42,4 +42,15 @@ export function confirmText(item: ShopItem, shop: ShopState): string {
 /** Ошибка покупки для РГ. `bad_request` — дневной предел или старый бэкенд без магазина. */
 export function purchaseError(code: string): string {
   return code === 'bad_request' ? 'Сервер не принял покупку: обновите страницу или попробуйте позже' : 'Покупка не прошла';
+}
+
+/** Блок отпуска: монеты группы = процент плана; траты в магазине отпуску не мешают. */
+export function vacationBlock(shop: ShopState): { line: string; action: 'go' | 'back' | null; confirm: string | null } {
+  if (shop.vacation) return { line: 'Группа в отпуске', action: 'back', confirm: 'Вернуть группу из отпуска?' };
+  if (shop.coins < VACATION_AT) return { line: `До отпуска: ${shop.coins}% из ${VACATION_AT}%`, action: null, confirm: null };
+  return {
+    line: `План выполнен на ${VACATION_AT}%: группа может уйти в отпуск`,
+    action: 'go',
+    confirm: 'Отправить группу в отпуск? Комната на ТВ станет пляжем, мебель дождётся возвращения.',
+  };
 }

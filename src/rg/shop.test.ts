@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { PLACES, itemByCode, type ShopState } from '@/engine/shop';
-import { coinsWord, confirmText, purchaseError, shopCards } from './shop';
+import { coinsWord, confirmText, purchaseError, shopCards, vacationBlock } from './shop';
 
 const shop = (o: Partial<ShopState> = {}): ShopState => ({ coins: 50, spent: 0, balance: 50, owned: {}, vacation: false, today: 0, ...o });
 const card = (s: ShopState, code: number) => shopCards(s).flatMap((g) => g.cards).find((c) => c.item.code === code)!;
@@ -45,5 +45,24 @@ describe('тексты магазина РГ', () => {
 
   test('отказ сервера — понятная ошибка покупки', () => {
     expect(purchaseError('bad_request')).toBe('Сервер не принял покупку: обновите страницу или попробуйте позже');
+  });
+});
+
+describe('отпуск группы', () => {
+  test('до 100% плана — сколько осталось, кнопки нет', () => {
+    expect(vacationBlock(shop({ coins: 45 }))).toEqual({ line: 'До отпуска: 45% из 100%', action: null, confirm: null });
+    expect(vacationBlock(shop({ coins: 99, balance: 0 }))).toMatchObject({ action: null });
+  });
+
+  test('со 100% плана — «в отпуск» с подтверждением, траты не мешают', () => {
+    expect(vacationBlock(shop({ coins: 100, balance: 3 }))).toEqual({
+      line: 'План выполнен на 100%: группа может уйти в отпуск',
+      action: 'go',
+      confirm: 'Отправить группу в отпуск? Комната на ТВ станет пляжем, мебель дождётся возвращения.',
+    });
+  });
+
+  test('в отпуске — «вернуть» с подтверждением', () => {
+    expect(vacationBlock(shop({ coins: 120, vacation: true }))).toEqual({ line: 'Группа в отпуске', action: 'back', confirm: 'Вернуть группу из отпуска?' });
   });
 });
