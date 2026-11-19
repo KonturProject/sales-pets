@@ -18,6 +18,11 @@ const EMPTY_SHOP: ShopState = { coins: 0, spent: 0, balance: 0, owned: {}, vacat
 
 /** Кнопки заблокированы ещё на это время после расхода: быстрый ответ не должен пропускать второй клик двойного нажатия. */
 const COOLDOWN_MS = 600;
+/**
+ * Щелчок по «Купить» раньше этого срока после появления вопроса — второй щелчок того же двойного нажатия по карточке
+ * (вопрос встаёт под курсор), а не ответ. 500 мс — время двойного щелчка в Windows по умолчанию.
+ */
+const ASK_GUARD_MS = 500;
 
 const root = document.getElementById('app')!;
 
@@ -130,6 +135,7 @@ function showWork(group: GroupCode, groupPin: string): void {
   );
   let shop: ShopState = EMPTY_SHOP;
   let asking: ShopItem | null = null;
+  let askedAt = 0;
 
   const main = h('main', { hidden: true }, h('div', { class: 'arena' }, medkit.button, view.el, toy.button), hint, stageText, alert, shopSection);
   let locked = false;
@@ -280,6 +286,7 @@ function showWork(group: GroupCode, groupPin: string): void {
     asking = item;
     askText.textContent = confirmText(item, shop);
     ask.hidden = false;
+    askedAt = performance.now();
     shopAlert.textContent = '';
     paint();
     yes.focus();
@@ -293,6 +300,7 @@ function showWork(group: GroupCode, groupPin: string): void {
 
   /** «Купить» в вопросе: вопрос закрывается сразу, поэтому второй клик того же двойного нажатия ничего не шлёт. */
   async function purchase(): Promise<void> {
+    if (performance.now() - askedAt < ASK_GUARD_MS) return;
     const item = asking;
     closeAsk();
     if (!item || locked) return;

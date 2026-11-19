@@ -1719,8 +1719,30 @@ try {
     await rg.click('[data-confirm="no"]');
     await rg.waitForTimeout(300);
     check(buyPosts.length === 0 && await rg.locator('[data-shop] [role="dialog"]').isHidden(), '«Отмена» отправила покупку или не закрыла вопрос');
-    // двойной клик по «Купить» пишет одну покупку
+    // двойной щелчок по карточке не покупает: второй щелчок приходится туда, где после первого встал вопрос. Точка — на
+    // пересечении карточки (без вопроса) и кнопки «Купить» (с вопросом): у начала раздела и с карточкой у верха окна
+    const askBox = rg.locator('[data-shop] [role="dialog"]');
+    let overlaps = 0;
+    for (const scroll of ['section', 'card']) {
+      await (scroll === 'section' ? rg.locator('[data-shop] h2') : card(1)).evaluate((e) => { e.scrollIntoView({ block: 'start' }); window.scrollBy(0, -10); });
+      const c = await card(1).boundingBox();
+      await rg.mouse.click(c.x + c.width / 2, c.y + c.height / 2);
+      const y = await rg.locator('[data-confirm="yes"]').boundingBox();
+      await rg.click('[data-confirm="no"]');
+      const x0 = Math.max(c.x, y.x), x1 = Math.min(c.x + c.width, y.x + y.width);
+      const y0 = Math.max(c.y, y.y), y1 = Math.min(c.y + c.height, y.y + y.height);
+      if (x1 - x0 < 4 || y1 - y0 < 4) continue;
+      overlaps++;
+      await rg.mouse.dblclick((x0 + x1) / 2, (y0 + y1) / 2);
+      await rg.waitForTimeout(300);
+      check(buyPosts.length === 0, `двойной щелчок по карточке (${scroll}) купил стол без подтверждения`);
+      if (await askBox.isVisible()) await rg.click('[data-confirm="no"]');
+      if (buyPosts.length) break;
+    }
+    check(overlaps > 0, 'двойной щелчок по карточке: кнопка «Купить» ни разу не встала на место карточки — сценарий ничего не проверил');
+    // двойной клик по «Купить» пишет одну покупку (ответ — не раньше, чем через полсекунды после вопроса)
     await card(1).click();
+    await rg.waitForTimeout(600);
     await rg.dblclick('[data-confirm="yes"]');
     await rg.waitForFunction((want) => Number(document.querySelector('[data-coins]')?.textContent) === want, coins0 - 8, { timeout: 8_000 }).catch(() => {});
     check(await coins() === coins0 - 8, `после покупки стола монет ${await coins()}, ожидалось ${coins0 - 8}`);
