@@ -109,9 +109,9 @@
     "semantic_hash": ""
   },
   "src/art/manifest.ts": {
-    "mtime": 1795026512.5190203,
-    "seen": 1795028608.2866566,
-    "ast_hash": "249e6b28386254bbceb6b9f586ae42f6",
+    "mtime": 1795029373.3336692,
+    "seen": 1795110095.5868547,
+    "ast_hash": "b8c0493840707bcea127705678f83c80",
     "semantic_hash": ""
   },
   "src/demo/demoFacts.test.ts": {
@@ -217,9 +217,9 @@
     "semantic_hash": ""
   },
   "src/main.ts": {
-    "mtime": 1795026743.786881,
-    "seen": 1795028608.2867641,
-    "ast_hash": "8def3830824ab0897d8e6739c33c87ec",
+    "mtime": 1795029408.9229596,
+    "seen": 1795110095.5869505,
+    "ast_hash": "f75d2d4f6a6561e07c28e84c44211c2a",
     "semantic_hash": ""
   },
   "src/vite-env.d.ts": {
@@ -229,9 +229,9 @@
     "semantic_hash": ""
   },
   "tools/check-render.mjs": {
-    "mtime": 1795027348.3063312,
-    "seen": 1795028608.2867885,
-    "ast_hash": "d67fabc7eebb3ed3cca55e3678ebd07e",
+    "mtime": 1795029463.1238782,
+    "seen": 1795110095.5869753,
+    "ast_hash": "240969162914a0f80309ddbabb60270b",
     "semantic_hash": ""
   },
   "tools/make-art.mjs": {
@@ -289,9 +289,9 @@
     "semantic_hash": ""
   },
   ".claude/skills/game-architecture/SKILL.md": {
-    "mtime": 1795027872.2057014,
-    "seen": 1795028608.2868416,
-    "ast_hash": "65724964ad90ed559b396248c5709b41",
+    "mtime": 1795109084.2122402,
+    "seen": 1795110095.5870302,
+    "ast_hash": "689124a8c15c68d1b6731bfe8da89c78",
     "semantic_hash": ""
   },
   ".claude/skills/game-assets/SKILL.md": {
@@ -427,15 +427,15 @@
     "semantic_hash": ""
   },
   "CREDITS.md": {
-    "mtime": 1795026525.0794268,
-    "seen": 1795028608.2868695,
-    "ast_hash": "0d1f59a9befa7b38c341c0b0b7e7ae0f",
+    "mtime": 1795109071.455797,
+    "seen": 1795110095.5870595,
+    "ast_hash": "7cd60da80a16055e46689f62e2488498",
     "semantic_hash": ""
   },
   "PLAN.md": {
-    "mtime": 1795027885.327512,
-    "seen": 1795028608.2868707,
-    "ast_hash": "3c83159e65557e5908228c887148ffff",
+    "mtime": 1795109094.222931,
+    "seen": 1795110095.5870605,
+    "ast_hash": "8d9df15cbd3b1ce256d772cf7f89d3f2",
     "semantic_hash": ""
   },
   "README.assets.md": {
@@ -883,9 +883,9 @@
     "semantic_hash": ""
   },
   "tools/check-admin.mjs": {
-    "mtime": 1795026542.7809813,
-    "seen": 1795028608.2867851,
-    "ast_hash": "7fdb5e97c10d06d13657d838371554be",
+    "mtime": 1795108636.7060711,
+    "seen": 1795110095.586972,
+    "ast_hash": "4dc8d3d610c92eae9b8a9d55dc8bb847",
     "semantic_hash": ""
   },
   "admin.html": {
@@ -979,9 +979,9 @@
     "semantic_hash": ""
   },
   "src/rg/main.ts": {
-    "mtime": 1795026542.715592,
-    "seen": 1795028608.2867677,
-    "ast_hash": "e5788eef1a0a353f070ccaaa9f9509f9",
+    "mtime": 1795108636.6842954,
+    "seen": 1795110095.5869544,
+    "ast_hash": "add2b47febe25f3a15e5cdeef4fcb3c9",
     "semantic_hash": ""
   },
   "src/rg/spend.test.ts": {
@@ -1069,9 +1069,9 @@
     "semantic_hash": ""
   },
   "docs/deploy.md": {
-    "mtime": 1795027863.3632166,
-    "seen": 1795028608.2868779,
-    "ast_hash": "9f48335a26eefdf233ad64afee2075d8",
+    "mtime": 1795029659.0327654,
+    "seen": 1795110095.5870674,
+    "ast_hash": "a8b6b012299cc56104515ca48c922745",
     "semantic_hash": ""
   },
   "docs/game-kit-setup.md": {
@@ -1093,27 +1093,27 @@
     "semantic_hash": ""
   },
   "src/game/tv/PetActor.ts": {
-    "mtime": 1795027464.5689678,
-    "seen": 1795028608.286717,
-    "ast_hash": "b5ceb38accd3a22ee86e22bd1fa4f551",
+    "mtime": 1795029397.6183875,
+    "seen": 1795110095.5869002,
+    "ast_hash": "0545735f431ababbcebc80652a1b1eaa",
     "semantic_hash": ""
   },
   "src/game/tv/RoomView.ts": {
-    "mtime": 1795027401.332834,
-    "seen": 1795028608.286718,
-    "ast_hash": "f95d0384841a6014f52180a8b2521cc8",
+    "mtime": 1795029387.0763316,
+    "seen": 1795110095.5869014,
+    "ast_hash": "affa0ed16eba08c69edb9bafa41ea42b",
     "semantic_hash": ""
   },
   "src/game/tv/TvScreen.ts": {
-    "mtime": 1795026743.5212414,
-    "seen": 1795028608.286719,
-    "ast_hash": "a9beaf125dd4ff2356803fe0eeb24747",
+    "mtime": 1795029402.275216,
+    "seen": 1795110095.5869026,
+    "ast_hash": "e8fc1709d0cf7d88163e67df963137e0",
     "semantic_hash": ""
   },
   "src/game/tv/art.ts": {
-    "mtime": 1795027386.2330856,
-    "seen": 1795028608.28672,
-    "ast_hash": "ba7e84b8272fafd6a2d074b8bf941480",
+    "mtime": 1795029373.3326797,
+    "seen": 1795110095.5869036,
+    "ast_hash": "6fcd614bdc775a83cf4e6be16ab2afaf",
     "semantic_hash": ""
   },
   "src/game/tv/layout.ts": {
@@ -2077,15 +2077,15 @@
     "semantic_hash": ""
   },
   "src/rg/shop.test.ts": {
-    "mtime": 1795025901.08094,
-    "seen": 1795028608.2867687,
-    "ast_hash": "fa78940ed62b1dbf3c3b478369d547be",
+    "mtime": 1795029101.5219426,
+    "seen": 1795110095.5869553,
+    "ast_hash": "5cf448495db59704d01e713732150bb5",
     "semantic_hash": ""
   },
   "src/rg/shop.ts": {
-    "mtime": 1795025910.7798202,
-    "seen": 1795028608.2867696,
-    "ast_hash": "75c4859de0ef91af3c5638baa9ba22f9",
+    "mtime": 1795029209.433922,
+    "seen": 1795110095.5869563,
+    "ast_hash": "5943effb32e01ac136a1fb2c02238f4b",
     "semantic_hash": ""
   },
   "tools/slice-sheet.py": {
@@ -2254,6 +2254,54 @@
     "mtime": 1795026484.8952396,
     "seen": 1795028608.2869565,
     "ast_hash": "56aa550ba9b6e6d6b0077e7f01399246",
+    "semantic_hash": ""
+  },
+  "src/game/tv/beach.test.ts": {
+    "mtime": 1795028692.212925,
+    "seen": 1795110095.5869076,
+    "ast_hash": "098fce9f34fe73e985fa63eac54c98bd",
+    "semantic_hash": ""
+  },
+  "src/game/tv/beach.ts": {
+    "mtime": 1795028700.8578298,
+    "seen": 1795110095.5869095,
+    "ast_hash": "34dd0d9542b6f204e18f682b50615b6e",
+    "semantic_hash": ""
+  },
+  "public/assets/pets/sr1-beach.png": {
+    "mtime": 1795030124.0341988,
+    "seen": 1795110095.5871646,
+    "ast_hash": "3fa54dcaf69b21a2e01ca9db7f81b049",
+    "semantic_hash": ""
+  },
+  "public/assets/pets/sr2-beach.png": {
+    "mtime": 1795030124.082637,
+    "seen": 1795110095.5871737,
+    "ast_hash": "7460a771e16b508f1d0173483651778b",
+    "semantic_hash": ""
+  },
+  "public/assets/pets/sr3-beach.png": {
+    "mtime": 1795030124.1010418,
+    "seen": 1795110095.5871825,
+    "ast_hash": "cdbb604391e69a81d007e4fad8e3d6b4",
+    "semantic_hash": ""
+  },
+  "public/assets/pets/sr5-beach.png": {
+    "mtime": 1795030124.1219685,
+    "seen": 1795110095.5871916,
+    "ast_hash": "f0e2059abf6e7108e55f97632bd2a092",
+    "semantic_hash": ""
+  },
+  "public/assets/pets/sr6-beach.png": {
+    "mtime": 1795030124.1604347,
+    "seen": 1795110095.587201,
+    "ast_hash": "d6637af68ca0c3688f59c8d8edde1d59",
+    "semantic_hash": ""
+  },
+  "public/assets/pets/sr9-beach.png": {
+    "mtime": 1795030124.1923296,
+    "seen": 1795110095.5872102,
+    "ast_hash": "fc40f6bcc80ed29aa15c3fd2fcf3969f",
     "semantic_hash": ""
   }
 }
