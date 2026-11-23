@@ -11,7 +11,7 @@ const pet = (o: Partial<PetState> = {}): PetState => ({
   medkits: 0, toys: 0, piles: 0, mood: 'ok', satiety: 0.5, noPayDays: 0, ...o,
 });
 const shop = (o: Partial<ShopState> = {}): ShopState => ({
-  coins: 30, spent: 18, balance: 12, owned: { desk: 'desk-office', phone: 'phone-office' }, vacation: false, today: 1, ...o,
+  coins: 30, granted: 0, spent: 18, balance: 12, owned: { desk: 'desk-office', phone: 'phone-office' }, vacation: false, today: 1, ...o,
 });
 
 describe('звонки клиентов', () => {

@@ -9,7 +9,7 @@ const pet = (o: Partial<PetState> = {}): PetState => ({
   medkits: 0, toys: 0, piles: 0, mood: 'ok', satiety: 0.5, noPayDays: 0, ...o,
 });
 const shop = (o: Partial<ShopState> = {}): ShopState => ({
-  coins: 100, spent: 18, balance: 82, owned: { desk: 'desk-office', phone: 'phone-office' }, vacation: true, today: 2, ...o,
+  coins: 100, granted: 0, spent: 18, balance: 82, owned: { desk: 'desk-office', phone: 'phone-office' }, vacation: true, today: 2, ...o,
 });
 
 describe('отпуск на ТВ', () => {

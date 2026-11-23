@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { PLACES, itemByCode, type ShopState } from '@/engine/shop';
 import { coinsWord, confirmText, purchaseError, shopCards, vacationBlock } from './shop';
 
-const shop = (o: Partial<ShopState> = {}): ShopState => ({ coins: 50, spent: 0, balance: 50, owned: {}, vacation: false, today: 0, ...o });
+const shop = (o: Partial<ShopState> = {}): ShopState => ({ coins: 50, granted: 0, spent: 0, balance: 50, owned: {}, vacation: false, today: 0, ...o });
 const card = (s: ShopState, code: number) => shopCards(s).flatMap((g) => g.cards).find((c) => c.item.code === code)!;
 
 describe('карточки магазина РГ', () => {

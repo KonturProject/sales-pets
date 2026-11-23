@@ -7,9 +7,10 @@ export interface Override {
   date: DateStr;
   /**
    * piles/medkits/toys: прибавить delta (может быть < 0); useMedkit/useToy: потратить один предмет;
-   * buy (delta — код вещи) и vacation (1 — уехать, 0 — вернуться) — магазин РГ (`shop.ts`), питомца не меняют
+   * buy (delta — код вещи), vacation (1 — уехать, 0 — вернуться) и coins (монеты от админа, delta может быть < 0) —
+   * магазин РГ (`shop.ts`), питомца не меняют
    */
-  kind: 'piles' | 'medkits' | 'toys' | 'useMedkit' | 'useToy' | 'buy' | 'vacation';
+  kind: 'piles' | 'medkits' | 'toys' | 'useMedkit' | 'useToy' | 'buy' | 'vacation' | 'coins';
   delta: number;
 }
 

@@ -5,6 +5,7 @@ export type OverrideKind = 'piles' | 'medkits' | 'toys';
 
 const KIND_TITLE: Record<Override['kind'], string> = {
   piles: 'Кучки', medkits: 'Аптечки', toys: 'Игрушки', useMedkit: 'РГ: аптечка', useToy: 'РГ: игрушка', buy: 'РГ: покупка', vacation: 'РГ: отпуск',
+  coins: 'Монеты',
 };
 
 /** Строка списка последних правок: вид и значение (дельта со знаком, у покупки — вещь, у отпуска — уехал/вернулся). */
@@ -26,6 +27,15 @@ export function overrideDelta(kind: OverrideKind, mode: 'give' | 'reset', amount
 export function parseAmount(text: string): number | { error: string } {
   const n = /^\d+$/.test(text.trim()) ? Number(text.trim()) : 0;
   return n >= 1 && n <= DELTA_MAX ? n : { error: `Количество — целое число от 1 до ${DELTA_MAX}` };
+}
+
+/** Предел одной выдачи монет на сервере (`COINS_DELTA_MAX` в Code.gs). */
+const COINS_MAX = 100;
+
+/** Монеты группе: целое от −100 до 100, кроме 0; минус — забрать. Уходят одной записью. */
+export function parseCoins(text: string): number | { error: string } {
+  const n = /^-?\d+$/.test(text.trim()) ? Number(text.trim()) : 0;
+  return n !== 0 && Math.abs(n) <= COINS_MAX ? n : { error: `Монеты — целое число от −${COINS_MAX} до ${COINS_MAX}, кроме 0` };
 }
 
 /** Одна правка на сервере не больше 20 по модулю: большой сброс уходит несколькими. */

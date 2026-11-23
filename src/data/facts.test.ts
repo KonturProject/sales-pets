@@ -555,4 +555,16 @@ describe('магазин групп (facts.shop)', () => {
     expect(before).toBe(50);
     expect(buildFacts(snap({ ...base, corrections }), '2026-11-05').shop.СР1.coins).toBe(83);
   });
+
+  test('монеты от админа (coins) прибавляются только к остатку: питомец, % плана и отпуск не меняются', () => {
+    const base = { staff, payments: pays('2026-11-03', 3) };
+    const without = buildFacts(snap(base), '2026-11-05');
+    const withGrant = buildFacts(snap({ ...base, overrides: [ov(1, '2026-11-04', 'СР1', 'coins', 60)] }), '2026-11-05');
+    expect(withGrant.states).toEqual(without.states);
+    expect(withGrant.shop.СР1.coins).toBe(without.shop.СР1.coins);
+    expect(withGrant.shop.СР1.coins).toBe(50);
+    expect(withGrant.shop.СР1.balance).toBe(without.shop.СР1.balance + 60);
+    expect(withGrant.shop.СР1).toMatchObject({ granted: 60, vacation: false });
+    expect(withGrant.shop.СР2).toEqual(without.shop.СР2);
+  });
 });

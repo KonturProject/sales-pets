@@ -54,7 +54,7 @@ function demoShop(): Record<GroupCode, ShopState> {
     }
   }
   const beach = (params.get('beach') ?? '').split(',');
-  return Object.fromEntries(GROUPS.map((g) => [g, { coins: 0, spent: 0, balance: 0, owned: owned[g], vacation: beach.includes(g), today: 0 }])) as Record<GroupCode, ShopState>;
+  return Object.fromEntries(GROUPS.map((g) => [g, { coins: 0, granted: 0, spent: 0, balance: 0, owned: owned[g], vacation: beach.includes(g), today: 0 }])) as Record<GroupCode, ShopState>;
 }
 
 /**

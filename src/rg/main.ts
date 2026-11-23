@@ -14,7 +14,7 @@ import { coinsWord, confirmText, purchaseError, shopCards, vacationBlock } from 
 import type { ShopItem, ShopState } from '@/engine/shop';
 
 /** Магазин до первого снимка: пусто, всё недоступно. */
-const EMPTY_SHOP: ShopState = { coins: 0, spent: 0, balance: 0, owned: {}, vacation: false, today: 0 };
+const EMPTY_SHOP: ShopState = { coins: 0, granted: 0, spent: 0, balance: 0, owned: {}, vacation: false, today: 0 };
 
 /** Кнопки заблокированы ещё на это время после расхода: быстрый ответ не должен пропускать второй клик двойного нажатия. */
 const COOLDOWN_MS = 600;

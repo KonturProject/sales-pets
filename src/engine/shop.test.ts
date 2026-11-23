@@ -110,6 +110,35 @@ describe('покупки при пересчёте', () => {
   });
 });
 
+describe('выдача монет админом (coins)', () => {
+  const grant = (date: DateStr, n: number) => ({ date, kind: 'coins' as Override['kind'], delta: n });
+  /** 40% плана: 40 оплат на план в 100. */
+  const at40 = (overrides: { date: DateStr; kind: Override['kind']; delta: number }[], asOf: DateStr = '2026-11-20') =>
+    shopState({ paymentsByDay: { [START]: 40 }, gameCents: 10000, startDate: START, asOf, overrides });
+
+  it('прибавляется к остатку, а не к заработанным монетам; минус забирает', () => {
+    const s = at40([grant(START, 15), grant('2026-11-10', -5)]);
+    expect(s).toMatchObject({ coins: 40, granted: 10, spent: 0, balance: 50 });
+    expect(at40([])).toMatchObject({ coins: 40, granted: 0, balance: 40 });
+  });
+
+  it('выдача с датой позже asOf не считается', () => {
+    expect(at40([grant('2026-11-21', 15)], '2026-11-20')).toMatchObject({ granted: 0, balance: 40 });
+  });
+
+  it('покупка тратит выданное', () => {
+    const s = at40([grant(START, 20), buy(START, 3), buy(START, 6), buy(START, 15)]); // стол 15 + два монитора 20 + кофемашина 12
+    expect(s).toMatchObject({ coins: 40, granted: 20, spent: 47, balance: 13 });
+  });
+
+  it('выдача не открывает отпуск и не меняет монеты для порога', () => {
+    const s = at40([grant(START, 100)]);
+    expect(s.coins).toBe(40);
+    expect(s.coins < VACATION_AT).toBe(true);
+    expect(s.vacation).toBe(false);
+  });
+});
+
 describe('отпуск', () => {
   it('решает последняя запись, процент при пересчёте не проверяется', () => {
     const none = shopState({ paymentsByDay: {}, gameCents: 1000, startDate: START, asOf: START, overrides: [] });

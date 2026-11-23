@@ -68,8 +68,10 @@ export const itemByCode = (code: number): ShopItem | undefined => (Number.isInte
 export interface ShopState {
   /** процент плана группы на игру по всем оплатам с начала игры: гибель питомца его не обнуляет */
   coins: number;
+  /** монеты, выданные админом записями `coins` (может быть < 0); в `coins` и порог отпуска не входят */
+  granted: number;
   spent: number;
-  /** `coins − spent`, может быть < 0 (покупки при пересчёте монеты не проверяют); показывать `max(0, balance)` */
+  /** `coins + granted − spent`, может быть < 0 (покупки при пересчёте монеты не проверяют); показывать `max(0, balance)` */
   balance: number;
   owned: Partial<Record<Place, ItemId>>;
   vacation: boolean;
@@ -95,10 +97,12 @@ export function shopState(i: {
 
   const owned: Partial<Record<Place, ItemId>> = {};
   let spent = 0;
+  let granted = 0;
   let vacation = false;
   for (const o of i.overrides) {
     if (o.date > i.asOf) continue;
     if (o.kind === 'vacation') vacation = o.delta === 1;
+    if (o.kind === 'coins') granted += o.delta;
     if (o.kind !== 'buy') continue;
     const item = itemByCode(o.delta);
     if (!item || owned[item.place] === item.id) continue;
@@ -106,5 +110,5 @@ export function shopState(i: {
     owned[item.place] = item.id;
     spent += item.price;
   }
-  return { coins, spent, balance: coins - spent, owned, vacation, today: i.paymentsByDay[i.asOf] ?? 0 };
+  return { coins, granted, spent, balance: coins + granted - spent, owned, vacation, today: i.paymentsByDay[i.asOf] ?? 0 };
 }
