@@ -38,8 +38,10 @@ const NORM_MAX = 50;
 /** Пороги стадий 2..5 — проценты плана оплат группы на игру. */
 const STAGE_COUNT = 4;
 const STAGE_THRESHOLD_MAX = 1000;
-const OVERRIDE_KINDS = ['piles', 'medkits', 'toys'];
+const OVERRIDE_KINDS = ['piles', 'medkits', 'toys', 'coins'];
 const OVERRIDE_DELTA_MAX = 20;
+/** Монеты, которые админ выдаёт группе (`coins`): своя граница одной записи. */
+const COINS_DELTA_MAX = 100;
 /** Предмет, который тратит РГ → вид строки в Overrides (тот же `kind`, что у движка). */
 const ITEM_KINDS = { medkit: 'useMedkit', toy: 'useToy' };
 const MAX_USES_PER_DAY = 20;
@@ -825,7 +827,8 @@ function removeConfigChangeAction_(body) {
 /** Ручная правка админа: дельта к кучкам, аптечкам или игрушкам группы на дату (не позже сегодня). Исправляется компенсирующей правкой. */
 function setOverrideAction_(body) {
   if (!isDate_(body.date) || body.date > today_() || !isGroup_(body.group)) fail_();
-  if (OVERRIDE_KINDS.indexOf(body.kind) < 0 || body.delta === 0 || !isIntIn_(body.delta, -OVERRIDE_DELTA_MAX, OVERRIDE_DELTA_MAX)) fail_();
+  const max = body.kind === 'coins' ? COINS_DELTA_MAX : OVERRIDE_DELTA_MAX;
+  if (OVERRIDE_KINDS.indexOf(body.kind) < 0 || body.delta === 0 || !isIntIn_(body.delta, -max, max)) fail_();
   const rows = readRows_('Overrides');
   const id = appendOverride_(rows, body.date, body.group, body.kind, body.delta, '');
   return { ok: true, version: bump_({}), id: id };

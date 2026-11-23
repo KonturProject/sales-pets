@@ -1076,6 +1076,24 @@ describe('ручные правки и расходы РГ', () => {
     expect(b.get()).toEqual(before);
   });
 
+  test('setOverride coins: выдача монет до ±100 за запись, минус забирает; 0, дробь и больше 100 — bad_request', () => {
+    const b = loadBackend();
+    expect(setOverride(b, { kind: 'coins', delta: 50 }).ok).toBe(true);
+    expect(setOverride(b, { group: 'СР6', kind: 'coins', delta: -30 }).ok).toBe(true);
+    expect(setOverride(b, { kind: 'coins', delta: 100 }).ok).toBe(true);
+    expect(setOverride(b, { kind: 'coins', delta: -100 }).ok).toBe(true);
+    expect(b.get().overrides.slice(0, 2)).toEqual([
+      { id: 1, date: TODAY, group: 'СР1', kind: 'coins', delta: 50 },
+      { id: 2, date: TODAY, group: 'СР6', kind: 'coins', delta: -30 },
+    ]);
+    const before = b.get();
+    for (const delta of [0, 101, -101, 2.5, '10', null]) {
+      expect(setOverride(b, { kind: 'coins', delta }), JSON.stringify(delta)).toEqual({ ok: false, error: 'bad_request' });
+    }
+    expect(setOverride(b, { kind: 'piles', delta: 21 })).toEqual({ ok: false, error: 'bad_request' });
+    expect(b.get()).toEqual(before);
+  });
+
   test('useItem: расход пишется группе из PIN на сегодняшнюю дату сервера (дата из тела игнорируется), ref в GET не попадает', () => {
     const { b, use } = withGroups();
     const v0 = b.get().version;
