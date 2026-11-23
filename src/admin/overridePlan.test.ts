@@ -43,10 +43,12 @@ describe('parseCoins', () => {
     expect(parseCoins(' -5 ')).toBe(-5);
     expect(parseCoins('100')).toBe(100);
     expect(parseCoins('-100')).toBe(-100);
+    expect(parseCoins('+15')).toBe(15);
+    expect(parseCoins('−5')).toBe(-5); // минус из подсказки «от −100 до 100»
   });
 
   test('ноль, дробь, пусто, мусор и больше 100 по модулю — ошибка', () => {
-    for (const bad of ['0', '-0', '2.5', '', 'abc', '101', '-101', '+5', '1e2']) {
+    for (const bad of ['0', '-0', '+0', '2.5', '', 'abc', '101', '-101', '+-5', '--5', '1e2']) {
       expect(parseCoins(bad), JSON.stringify(bad)).toHaveProperty('error');
     }
   });

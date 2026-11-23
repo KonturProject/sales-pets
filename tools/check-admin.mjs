@@ -1514,6 +1514,76 @@ try {
     check(Number(await now('toys')) === toys0 + 1, `игрушек после выдачи ${await now('toys')}, ожидалось ${toys0 + 1}`);
   });
 
+  await scenario('ручные правки: монеты группе → остаток на странице РГ, питомец не меняется', async ({ mock, newPage, check, urls }) => {
+    const GROUP = 'СР6';
+    const coinsOnServer = async () => (await publicSnapshot(mock)).overrides.filter((o) => o.kind === 'coins');
+
+    const rg = await newPage();
+    await rg.goto(`${urls.rg}&pollMs=1000`, { waitUntil: 'networkidle' });
+    await rg.selectOption('form[data-login] [data-field="group"]', GROUP);
+    await rg.locator('form[data-login] input[type="password"]').fill(mock.groupPins[GROUP]);
+    await rg.click('form[data-login] button[type="submit"]');
+    await rg.waitForSelector('[data-shop] [data-buy="1"]', { timeout: 8_000 }).catch(() => {});
+    const rgCoins = () => rg.$eval('[data-coins]', (e) => Number(e.textContent)).catch(() => NaN);
+    const rgWait = (want) => rg.waitForFunction((w) => Number(document.querySelector('[data-coins]')?.textContent) === w, want, { timeout: 8_000 }).catch(() => {});
+
+    const admin = await newPage();
+    await loginAdmin(admin, urls.admin);
+    await admin.click('[role="tab"][data-tab="overrides"]');
+    await admin.waitForSelector('[data-now="coins"]', { timeout: 8_000 });
+    await admin.selectOption('[data-field="group"]', GROUP);
+    const now = (kind) => textOf(admin, `[data-now="${kind}"]`);
+    const alert = () => textOf(admin, '[data-alert="overrides"]');
+    // «Сохранено» появляется до перерисовки — ждём саму ячейку остатка (таблицу правок рисует тот же вызов)
+    const done = async (want) => {
+      await admin.waitForFunction((w) => document.querySelector('[data-now="coins"]')?.textContent === String(w) || document.querySelector('[data-alert="overrides"]')?.textContent, want, { timeout: 8_000 }).catch(() => {});
+    };
+    const lastRow = async () => (await admin.locator('[data-table="overrides"] tr[data-override]').first().locator('td').allTextContents()).slice(1);
+
+    const balance0 = Number(await now('coins'));
+    const rg0 = await rgCoins();
+    check(Number.isFinite(balance0) && balance0 === rg0, `остаток ${GROUP}: вкладка «${await now('coins')}», страница РГ ${rg0}`);
+    const pet0 = [await now('piles'), await now('medkits'), await now('toys')].join('/');
+    check(await admin.locator('[data-reset="coins"]').count() === 0, 'у монет есть кнопка «Сбросить»');
+
+    // выдать 15 → остаток +15 во вкладке и на странице РГ, строка «Монеты» «+15»
+    await admin.fill('[data-field="amount"]', '15');
+    await admin.click('[data-give="coins"]');
+    await done(balance0 + 15);
+    check((await coinsOnServer()).map((o) => o.delta).join() === '15', `на сервере выдачи: ${(await coinsOnServer()).map((o) => o.delta).join() || 'нет'}: «${await alert()}»`);
+    check(Number(await now('coins')) === balance0 + 15, `после выдачи во вкладке ${await now('coins')}, ожидалось ${balance0 + 15}`);
+    check((await lastRow()).join(' ') === `${GROUP} Монеты +15`, `строка правок: «${(await lastRow()).join(' ')}»`);
+    await rgWait(rg0 + 15);
+    check(await rgCoins() === rg0 + 15, `страница РГ: монет ${await rgCoins()}, ожидалось ${rg0 + 15}`);
+
+    // минус забирает
+    await admin.fill('[data-field="amount"]', '-5');
+    await admin.click('[data-give="coins"]');
+    await done(balance0 + 10);
+    check(Number(await now('coins')) === balance0 + 10, `после −5 во вкладке ${await now('coins')}, ожидалось ${balance0 + 10}`);
+    check((await lastRow()).join(' ') === `${GROUP} Монеты -5`, `строка правок после −5: «${(await lastRow()).join(' ')}»`);
+    await rgWait(rg0 + 10);
+    check(await rgCoins() === rg0 + 10, `страница РГ после −5: монет ${await rgCoins()}, ожидалось ${rg0 + 10}`);
+
+    // больше 100 и 0 — отказ без записи
+    const n1 = (await coinsOnServer()).length;
+    for (const bad of ['101', '0']) {
+      await admin.fill('[data-field="amount"]', bad);
+      await admin.click('[data-give="coins"]');
+      check((await alert()).includes('от −100 до 100') && (await coinsOnServer()).length === n1, `монеты ${bad}: «${await alert()}»`);
+    }
+
+    // двойной клик записывает одну выдачу
+    await admin.fill('[data-field="amount"]', '3');
+    await admin.dblclick('[data-give="coins"]');
+    await done(balance0 + 13);
+    check((await coinsOnServer()).length === n1 + 1, `двойной клик записал ${(await coinsOnServer()).length - n1} выдач вместо одной`);
+    check(Number(await now('coins')) === balance0 + 13, `после двойного клика во вкладке ${await now('coins')}, ожидалось ${balance0 + 13}`);
+
+    // кучки, аптечки и игрушки группы те же
+    check([await now('piles'), await now('medkits'), await now('toys')].join('/') === pet0, `питомец изменился: было ${pet0}`);
+  });
+
   await scenario('РГ: вход, расход предмета → экран, PIN не остаётся', async ({ mock, newPage, check, urls, logs }) => {
     const pinOf = (group) => mock.groupPins[group];
     const wrongOf = (pin) => String((Number(pin) + 1) % 1_000_000).padStart(6, '0');

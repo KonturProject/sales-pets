@@ -52,6 +52,8 @@ describe('отпуск группы', () => {
   test('до 100% плана — сколько осталось, кнопки нет', () => {
     expect(vacationBlock(shop({ coins: 45 }))).toEqual({ line: 'До отпуска: 45% из 100%', action: null, confirm: null });
     expect(vacationBlock(shop({ coins: 99, balance: 0 }))).toMatchObject({ action: null });
+    // монеты от админа порог не двигают: считается только заработанное
+    expect(vacationBlock(shop({ coins: 60, granted: 50, balance: 110 }))).toEqual({ line: 'До отпуска: 60% из 100%', action: null, confirm: null });
   });
 
   test('со 100% плана — «в отпуск» с подтверждением, траты не мешают', () => {

@@ -32,9 +32,10 @@ export function parseAmount(text: string): number | { error: string } {
 /** Предел одной выдачи монет на сервере (`COINS_DELTA_MAX` в Code.gs). */
 const COINS_MAX = 100;
 
-/** Монеты группе: целое от −100 до 100, кроме 0; минус — забрать. Уходят одной записью. */
+/** Монеты группе: целое от −100 до 100, кроме 0; минус (- или −) — забрать, «+» допустим. Уходят одной записью. */
 export function parseCoins(text: string): number | { error: string } {
-  const n = /^-?\d+$/.test(text.trim()) ? Number(text.trim()) : 0;
+  const t = text.trim().replace('−', '-');
+  const n = /^[-+]?\d+$/.test(t) ? Number(t) : 0;
   return n !== 0 && Math.abs(n) <= COINS_MAX ? n : { error: `Монеты — целое число от −${COINS_MAX} до ${COINS_MAX}, кроме 0` };
 }
 

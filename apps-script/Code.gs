@@ -824,7 +824,7 @@ function removeConfigChangeAction_(body) {
   return { ok: true, version: bump_({ configChanges: JSON.stringify(kept) }), configChanges: kept };
 }
 
-/** Ручная правка админа: дельта к кучкам, аптечкам или игрушкам группы на дату (не позже сегодня). Исправляется компенсирующей правкой. */
+/** Ручная правка админа: дельта к кучкам, аптечкам или игрушкам группы или монеты для магазина РГ (`coins`) на дату (не позже сегодня). Исправляется компенсирующей правкой. */
 function setOverrideAction_(body) {
   if (!isDate_(body.date) || body.date > today_() || !isGroup_(body.group)) fail_();
   const max = body.kind === 'coins' ? COINS_DELTA_MAX : OVERRIDE_DELTA_MAX;
